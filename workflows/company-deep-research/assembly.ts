@@ -1316,11 +1316,6 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   }
   return { markdown: normalizedLines.join('\n').replace(/\n{3,}/gu, '\n\n'), repairs, diagnostics }
 }
-const optionalGaps: Record<string, string> = {
-  valuation: '研究缺口：本轮尚未建立同一基准日股价、股本、盈利预测和可比公司估值的完整可复算组合。已尝试配置行情、公司财报与公开业务资料；历史财务及行情不能代替预测盈利和可比口径。影响：不作目标价或估值安全边际判断。',
-  'bull-base-bear': '研究缺口：缺少分部销量、价格、利润率与资本需求的来源绑定预测假设及情景概率。已尝试定期报告和公开产品、行业材料；定性增长条件尚不能计算三种情景的盈利与回报。影响：保留增长和风险条件，不提供虚构的情景收益率。',
-  'variant-perception': '研究缺口：未取得有日期、样本覆盖和统一期间口径的市场一致预期，以及可比的公司指引。已尝试配置来源、公司披露与公开投资者材料；搜索摘要和个别观点不能代表一致预期。影响：不能量化预期差，不能据此声称市场已充分或未充分定价。',
-}
 const schema = {type:'object',additionalProperties:false,required:['sections'],properties:{sections:{type:'array',minItems:2,maxItems:2,items:{type:'object',additionalProperties:false,required:['id','markdown','sourceCandidateIds'],properties:{id:{type:'string',enum:finalIds},markdown:{type:'string',minLength:1,maxLength:5000},sourceCandidateIds:{type:'array',items:{type:'string'}}}}}}} as const
 
 function synthesisNumericRepairEvidence(issues: readonly NumericGroundingDiagnostic[], methods: readonly CompanyResearchMethodResult[], sources: CompanyResearchInput['sources'], allowedLocations: ReadonlySet<string>): string[] {
@@ -2076,10 +2071,6 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     const owners=methods.filter(method=>method.sections.some(section=>section.id===id))
     return {id,title,markdown:owners.map(method=>method.sections.find(section=>section.id===id)!.markdown).join('\n\n') || `研究缺口：${title} 尚未完成。缺失对应方法结果；已尝试本轮配置来源。影响：不能据此作出结论。`,sourceCandidateIds:[...new Set(owners.flatMap(method=>method.sourceCandidateIds))],proposalIds:[] as string[]}
   })
-  for (const section of sections) if (optionalGaps[section.id] !== undefined) {
-    section.markdown = optionalGaps[section.id]!
-    section.sourceCandidateIds = []
-  }
   const tableDiagnostics = validateCompanyResearchSectionTables(sections)
   const available=methods.filter(method=>method.status==='complete')
   const allowed=new Set(input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? [])
@@ -2225,16 +2216,6 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       const validated: {id:string;markdown:string;sourceCandidateIds:string[]}[]=[]
       for(const section of value.sections) {
         if(!finalIds.includes(section.id)||typeof section.markdown!=='string'||!section.markdown.trim()||!Array.isArray(section.sourceCandidateIds)) throw new Error('REFERENCE_ERROR: final section contract invalid')
-        // These three sections are always replaced with deterministic, bounded
-        // gap text below. Do not validate citations or claims in model drafts
-        // that will never be published; otherwise an irrelevant guessed
-        // locator can exhaust synthesis retries while the final artifact would
-        // contain only the safe fixed gap. Core thesis and monitoring sections
-        // still pass through every citation and numeric guard.
-        if (optionalGaps[section.id] !== undefined) {
-          validated.push({id:section.id,markdown:optionalGaps[section.id]!,sourceCandidateIds:[]})
-          continue
-        }
         const normalizedMarkdown=normalizeCompanySynthesisCitations(section.markdown)
         const finalTableRepair=repairCompanyFinalSynthesisTable(section.id,normalizedMarkdown)
         if(finalTableRepair.repairs.length)diagnostics.push(`${attempt}:DETERMINISTIC_TABLE_REPAIR:${finalTableRepair.repairs.join(',')}`)
@@ -2261,7 +2242,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
           }
           if(grounding.status!=='grounded') {numericRepairIssues=grounding.diagnostics;throw new Error(`NUMERIC_GROUNDING_ERROR:${grounding.diagnostics.map(d=>d.token).join(',')}`)}
         }
-        validated.push({id:section.id,markdown:optional?optionalGaps[section.id]!:sectionMarkdown,sourceCandidateIds:optional?[]:[...new Set([...citationIds,...[...sectionMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!)])]})
+        validated.push({id:section.id,markdown:sectionMarkdown,sourceCandidateIds:[...new Set([...citationIds,...[...sectionMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!)])]})
       }
       for(const section of validated) Object.assign(sections.find(s=>s.id===section.id)!,section)
       synthesisMode='reasoning_executor';break

@@ -429,7 +429,20 @@ test('content gate rejects a currency unit asserted in the same sentence as an e
   value[index] = { ...value[index]!, markdown: '商誉原值63,399；单位行未提供，金额单位无法核实。' }
   assert.ok(!evaluateCompanyResearchContent({ sections: value }).issues.includes('risks:UNVERIFIED_CURRENCY_UNIT_ASSERTED'))
 })
-test('optional valuation gaps do not block core completion', () => { assert.equal(evaluateCompanyResearchContent({ sections: [...sections(), { id: 'valuation', markdown: '研究缺口：无法获取估值基础', sourceCandidateIds: [] }] }).passed, true) })
+test('valuation, scenarios, and variant perception are required substantive sections', () => {
+  const requiredIds = ['valuation', 'bull-base-bear', 'variant-perception']
+  assert.equal(COMPANY_CORE_SECTION_IDS.length, 19)
+  for (const sectionId of requiredIds) {
+    const value = sections()
+    const index = value.findIndex(section => section.id === sectionId)
+    assert.notEqual(index, -1, `${sectionId} is present in the stable company report slots`)
+    value[index] = { ...value[index]!, markdown: '研究缺口：本轮未取得足以支持本节结论的来源。', sourceCandidateIds: ['annual-report'] }
+    const quality = evaluateCompanyResearchContent({ sections: value })
+    assert.equal(quality.passed, false, sectionId)
+    assert.ok(quality.sectionChecks.find(check => check.sectionId === sectionId)?.reasons.includes('RESEARCH_GAP'), sectionId)
+    assert.equal(quality.coreCoverage.required, 19)
+  }
+})
 test('broad executive-division gap is rejected when the report already states executive roles, while a specific new-hire gap is retained', () => {
   const value = sections()
   const management = COMPANY_CORE_SECTION_IDS.indexOf('management-capital-allocation')
@@ -1837,7 +1850,7 @@ test('a shared section is not counted complete when one required owning method f
   const failed:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'failed',attempts:2,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:[],limitations:['尚未完成资本配置'],risks:[],diagnostics:[]}
   const quality=evaluateCompanyResearchContent({sections:sections(),methodResults:[failed]})
   assert.equal(quality.passed,false)
-  assert.equal(quality.coreCoverage.completed,15)
+  assert.equal(quality.coreCoverage.completed,18)
   assert.ok(quality.sectionChecks.find(check=>check.sectionId==='management-capital-allocation')!.reasons.includes('OWNER_METHOD_NOT_COMPLETED:capital_allocation_review'))
 })
 

@@ -28,8 +28,12 @@ function businessDriverSegmentClassificationIssue(markdown: string, packets: rea
       for (const location of citedLocations) {
         const paragraph = Number(/^paragraph:(\d+)$/.exec(location)?.[1] ?? 0)
         const row = excerpts.get(location)
-        if (!paragraph || !row || !/\d/.test(row) || (row.match(/\d[\d,，]*(?:\.\d+)?/g)?.length ?? 0) < 2) continue
-        const rowNumbers = [...row.matchAll(/(?<![\d.,])[-−]?\d[\d,]*(?:\.\d+)?\s*[%％]?/gu)].map(match => match[0]!.replace(/[\s,]/g, '').replace('−', '-'))
+        if (!paragraph || !row) continue
+        // Product and technology prose often contains digit-letter identifiers
+        // such as 100G, 400G, or PAM4. They are not numeric table cells and must
+        // not cause a distant classification marker to be treated as row context.
+        const rowNumbers = [...row.matchAll(/(?<![\p{L}\d.,])[-−]?\d[\d,，]*(?:\.\d+)?\s*[%％]?(?![\p{L}\d])/gu)].map(match => match[0]!.replace(/[\s,]/g, '').replace('−', '-'))
+        if (rowNumbers.length < 2) continue
         if (!rowNumbers.some(value => claimNumbers.includes(value))) continue
         let markerParagraph = 0
         for (let cursor = paragraph - 2; cursor >= Math.max(0, paragraph - 31); cursor--) {

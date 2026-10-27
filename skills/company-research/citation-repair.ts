@@ -148,7 +148,7 @@ function reinforceFinancialQualityMarginCitations(markdown: string, sections: re
   return { sections: updated, repairs }
 }
 
-/** Repair a narrowly recognizable malformed source ID only when its exact supplied paragraph resolves uniquely. */
+/** Preserve existing narrow citation fixes; repeated-substring source-ID repairs are limited to finding evidence. */
 export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonly CompanyEvidencePacket[], input: CompanyResearchInput): { readonly output: T; readonly repairs: readonly CompanyCitationRepair[] } {
   let raw: unknown = output
   if (typeof raw === 'string') {
@@ -157,30 +157,19 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output, repairs: [] }
   const value = structuredClone(raw) as Record<string, unknown>
   if (typeof value.markdown !== 'string' || !Array.isArray(value.sections) || !Array.isArray(value.findings)) return { output, repairs: [] }
-  const byTypo = new Map<string, CompanyMethodEvidenceRef[]>()
+  const repairs: CompanyCitationRepair[] = []
+  const legacyRepairs = new Map<string, CompanyMethodEvidenceRef[]>()
   const packetIds = [...new Set(packets.map(packet => packet.sourceCandidateId))]
-  const isKnownTypo = (malformedId: string, candidateId: string): boolean => {
-    // Some official IDs are emitted with one extra terminal character while
-    // the provider also substitutes the canonical final character. Restrict
-    // this case to the exact official-ID prefix and a two- or three-character
-    // tail; source uniqueness and exact locator text are checked in resolve().
+  const isKnownLegacyTypo = (malformedId: string, candidateId: string): boolean => {
     const canonicalPrefix = candidateId.slice(0, -1)
     const malformedTailLength = malformedId.length - canonicalPrefix.length
     if (malformedId.startsWith('official-') && candidateId.startsWith('official-')
       && malformedId.startsWith(canonicalPrefix)
       && malformedTailLength >= 2 && malformedTailLength <= 3) return true
     if (malformedId.length === candidateId.length + 1 && malformedId.startsWith(candidateId)) return true
-    // Some providers replace the final character instead of appending an
-    // extra one. Keep this repair deliberately limited to one terminal
-    // substitution; the exact supplied paragraph and unique-source checks in
-    // resolve() remain mandatory before any citation is rewritten.
     if (malformedId.length === candidateId.length
       && malformedId.startsWith(candidateId.slice(0, -1))
       && malformedId.at(-1) !== candidateId.at(-1)) return true
-    // Some model outputs repeat a long tail of an official document ID after
-    // one stray character. Accept only IDs that share all but the final source
-    // character and end in an exact >=10-character suffix of that same ID.
-    // Exact paragraph/text uniqueness below remains mandatory.
     if (!malformedId.startsWith('official-') || !candidateId.startsWith('official-')) return false
     let commonPrefix = 0
     while (commonPrefix < malformedId.length && commonPrefix < candidateId.length && malformedId[commonPrefix] === candidateId[commonPrefix]) commonPrefix++
@@ -190,13 +179,25 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
     const stray = tail[0]!
     const repeatedTail = tail.slice(1)
     if (candidateId.indexOf(stray) < 0) return false
-    for (let start = 0; start <= candidateId.length - 10; start++) {
-      if (candidateId.slice(start) === repeatedTail) return true
+    for (let start = 0; start <= candidateId.length - 10; start++) if (candidateId.slice(start) === repeatedTail) return true
+    return false
+  }
+  const isRepeatedSubstringTypo = (malformedId: string, candidateId: string): boolean => {
+    if (!malformedId.startsWith('official-') || !candidateId.startsWith('official-')) return false
+    // Accept only an insertion that duplicates an immediately adjacent 3-8
+    // character substring of the canonical ID. This covers repeated ID tails
+    // while excluding arbitrary edits, transpositions, and one-character typos.
+    for (let insertion = 1; insertion < candidateId.length; insertion++) {
+      for (let length = 3; length <= 8; length++) {
+        const repeated = candidateId.slice(insertion - length, insertion)
+        if (repeated.length === length
+          && malformedId === `${candidateId.slice(0, insertion)}${repeated}${candidateId.slice(insertion)}`) return true
+      }
     }
     return false
   }
-  const resolve = (sourceId: string, location: string): CompanyMethodEvidenceRef | undefined => {
-    const candidates = packetIds.filter(id => isKnownTypo(sourceId, id))
+  const resolve = (sourceId: string, location: string, includeRepeatedSubstring = false): CompanyMethodEvidenceRef | undefined => {
+    const candidates = packetIds.filter(id => isKnownLegacyTypo(sourceId, id) || includeRepeatedSubstring && isRepeatedSubstringTypo(sourceId, id))
       .filter(id => {
         const sourceMatches = input.sources.filter(source => source.candidate.candidateId === id)
         const packetMatches = packets.filter(packet => packet.sourceCandidateId === id)
@@ -211,44 +212,46 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
       })
     return candidates.length === 1 ? { sourceCandidateId: candidates[0]!, location } : undefined
   }
-  const repairs: CompanyCitationRepair[] = []
-  const normalize = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, location: string) => {
+  const normalizeLegacyText = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, location: string) => {
     const corrected = resolve(sourceId, location)
     if (!corrected) return literal
     const key = `${sourceId}@${location}`
-    const ref = { sourceCandidateId: corrected.sourceCandidateId, location: corrected.location }
-    byTypo.set(key, [...(byTypo.get(key) ?? []), ref])
-    return `[${ref.sourceCandidateId}@${ref.location}]`
+    legacyRepairs.set(key, [...(legacyRepairs.get(key) ?? []), corrected])
+    return `[${corrected.sourceCandidateId}@${corrected.location}]`
   })
-  const markdown = normalize(value.markdown)
-  const sections = value.sections.map((item) => {
+  const markdown = normalizeLegacyText(value.markdown)
+  const sections = value.sections.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const section = item as Record<string, unknown>
-    return typeof section.markdown === 'string' ? { ...section, markdown: normalize(section.markdown) } : section
+    return typeof section.markdown === 'string' ? { ...section, markdown: normalizeLegacyText(section.markdown) } : section
   })
-  const findings = value.findings.map((item) => {
+  const findings = value.findings.map((item, findingIndex) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const finding = item as Record<string, unknown>
     if (!Array.isArray(finding.evidence)) return finding
+    const findingRepairs: { original: CompanyMethodEvidenceRef; corrected: CompanyMethodEvidenceRef }[] = []
+    const evidence = finding.evidence.map(ref => {
+      if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return ref
+      const row = ref as Record<string, unknown>
+      if (typeof row.sourceCandidateId !== 'string' || typeof row.location !== 'string') return ref
+      const corrected = resolve(row.sourceCandidateId, row.location, true)
+      if (!corrected) return ref
+      findingRepairs.push({ original: { sourceCandidateId: row.sourceCandidateId, location: row.location }, corrected })
+      return corrected
+    })
+    if (findingRepairs.length) {
+      const uniqueRepairs = [...new Map(findingRepairs.map(item => [`${item.original.sourceCandidateId}@${item.original.location}->${item.corrected.sourceCandidateId}@${item.corrected.location}`, item])).values()]
+      repairs.push({ findingIndex, inputText: String(finding.text ?? ''), originalReferences: uniqueRepairs.map(item => item.original), addedReferences: uniqueRepairs.map(item => item.corrected), reason: 'The finding source ID contains an exactly duplicated adjacent substring; one unique source and supplied paragraph exactly match the canonical source line.' })
+    }
     return {
       ...finding,
-      evidence: finding.evidence.map(ref => {
-        if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return ref
-        const row = ref as Record<string, unknown>
-        if (typeof row.sourceCandidateId !== 'string' || typeof row.location !== 'string') return ref
-      const corrected = resolve(row.sourceCandidateId, row.location)
-      if (!corrected) return ref
-      const key = `${row.sourceCandidateId}@${row.location}`
-      byTypo.set(key, [...(byTypo.get(key) ?? []), corrected])
-      return corrected
-      }),
+      evidence,
     }
   })
-  for (const [key, additions] of byTypo) {
+  for (const [key, additions] of legacyRepairs) {
     const [sourceCandidateId, location] = key.split('@')
     const corrected = [...new Map(additions.map(ref => [`${ref.sourceCandidateId}@${ref.location}`, ref])).values()]
-    if (corrected.length !== 1) continue
-    repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched a narrowly recognized official-ID suffix pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
+    if (corrected.length === 1) repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched an existing narrow typo pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
   }
   return { output: { ...value, markdown, sections, findings } as T, repairs }
 }

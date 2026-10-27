@@ -63,7 +63,7 @@ test('synthesis citation handoff rejects findings without exact eligible method-
   }
 })
 
-test('final synthesis requests only the two core sections and keeps optional gaps deterministic', async () => {
+test('final synthesis keeps all 19 stable report section ids while requesting only its two synthesis sections', async () => {
   let requestPayload: { instruction: string; input: { requiredSectionIds: string[] }; outputContract: { properties: { sections: { minItems: number; maxItems: number; items: { properties: { markdown: { maxLength: number } } } } } } } | undefined
   const executor: ReasoningExecutor = { capabilities, execute: async request => {
     requestPayload = request as typeof requestPayload
@@ -79,8 +79,28 @@ test('final synthesis requests only the two core sections and keeps optional gap
   assert.match(requestPayload?.instruction ?? '', /不在这两节抄录数字/)
   assert.doesNotMatch(requestPayload?.instruction ?? '', /吉利银河|银河E8/)
   assert.equal(result.sections.length, 19)
+  assert.deepEqual(result.sections.map(section => section.id), [
+    'company-overview', 'business-model', 'business-segments', 'revenue-profit-drivers', 'products', 'technologies', 'industry-exposure', 'supply-chain', 'competition', 'financial-quality', 'growth-drivers', 'management-capital-allocation', 'catalysts', 'risks', 'valuation', 'bull-base-bear', 'variant-perception', 'investment-thesis', 'monitoring-checklist',
+  ])
   for (const id of ['valuation', 'bull-base-bear', 'variant-perception']) {
     assert.match(result.sections.find(section => section.id === id)?.markdown ?? '', /^研究缺口：/)
+  }
+})
+
+test('assembly preserves substantive supplied valuation, scenario, and variant sections', async () => {
+  const suppliedSections = [
+    { id: 'valuation', markdown: '基于同一基准日和已核验盈利基础，估值区间为可复算结果。[annual@paragraph:1]' },
+    { id: 'bull-base-bear', markdown: 'Bull、Base、Bear 情景均明确假设、概率和对应结果。[annual@paragraph:1]' },
+    { id: 'variant-perception', markdown: '公司指引与可比市场预期采用同一期间和指标后仍存在差异。[annual@paragraph:1]' },
+  ]
+  const suppliedMethod = { ...method, sections: [...method.sections, ...suppliedSections] }
+  const result = await assembleCompanyResearch(input, [suppliedMethod], undefined, () => input.asOf)
+  assert.equal(result.sections.length, 19)
+  for (const supplied of suppliedSections) {
+    const section = result.sections.find(item => item.id === supplied.id)
+    assert.ok(section, supplied.id)
+    assert.equal(section.markdown, supplied.markdown, supplied.id)
+    assert.deepEqual(section.sourceCandidateIds, ['annual'], supplied.id)
   }
 })
 const capabilities = () => ({ maxContextTokens: 100000, maxOutputTokens: 16000, structuredOutputSupport: true, maxConcurrency: 1 })

@@ -1,0 +1,73 @@
+# Company Research P0-19 Gate 1 — Data and Feasibility Audit
+
+**Task:** `RHL-CQR-P0-19-CHANGE-001`
+**Audit date:** 2026-10-27 (Asia/Shanghai)
+**Reference checkout:** `codex/company-research-p0-01-06` at `00cf506d0ba62b565311f376a51e88d5fdbabee5`
+**Status:** `IN_PROGRESS — contracts and persisted-run evidence audited; new-field live probes pending Workflow wiring`
+
+## Scope and governing boundary
+
+The scope-change order makes all 19 stable report sections required. It supersedes the former 16-core completion rule. This audit does not treat existing catalogs, Skills, or provider policies as proof of data availability. All acceptance remains read-only against disposable Knowledge Bases. Existing Data Layer contracts and the flat Skill/Workflow architecture remain binding; no new provider, Data Layer public field, Knowledge schema, forecast-model Skill, or Knowledge write path is introduced by this audit.
+
+## Existing ownership and execution paths
+
+| Research output | Existing owner / implementation | Company Research integration found at audit | Gate 1 conclusion |
+|---|---|---|---|
+| Valuation basis and multiples | `workflows/valuation/workflow.ts`; `workflows/valuation/basis-evidence.ts`; `skills/valuation/financials.ts`; `valuation_basis`, `comps_valuation`, and DCF/reverse-DCF Skills | Company Workflow currently does not resolve the valuation market-price/EPS/BVPS requirements. `assembly.ts` replaces the section with a static gap. | Reusable only through typed DataResolver results and deterministic helpers; do not call the Valuation Workflow as an opaque report generator or reuse its Knowledge path. |
+| Bull / Base / Bear | `scenario_valuation` and deterministic scenario functions under `skills/valuation/financials.ts`; existing Valuation Workflow assumption validation and sensitivity calculation | Company Workflow supplies no scenario input contract and assembly overwrites the section with a static gap. | Reuse existing computation only after a source-bounded same-method, same-basis, same-target-year assumption plan is validated. No scenario values currently exist for either target. |
+| Variant Perception | `expectation_gap`, consensus and guidance Skills/Workflows; `data/valuation-earnings-policies.ts` | Company Workflow does not resolve estimate requirements or run a comparable-expectations calculation; assembly overwrites the section with a static gap. | Requires two actual, PIT-comparable expectation surfaces. No qualifying pair currently exists for either target. |
+| Original 16-section Company Research | Ten peer methods in `skills/company-research/methods.ts`; deterministic financial prep and section ownership are Workflow-owned | R33 leaves `business_driver_analysis` failed for both companies, blocking at 13/16. | Must repair before any 19-section acceptance run; no attempt or evidence gate may be relaxed. |
+
+## Field lineage and live evidence coverage
+
+| Domain / canonical field | Existing route and raw contract | Required period, unit, and provenance checks | BYD `002594` R33 evidence | Dongshan `002384` R33 evidence | Gap / consequence |
+|---|---|---|---|---|---|
+| Market price: `valuation_market_price` | `data/valuation-earnings-policies.ts` → EastMoney historical market data, Tencent fallback; `plugins/research-acquisition/valuation-data.ts` | Exact exchange close date at or before `asOf`; currency, adjustment method, retrieval time, source origin, market session freshness, and point-in-time eligibility | No valid same-date quote. R33 records EastMoney `push2.eastmoney.com` / `push2his.eastmoney.com` failures and Tencent failure. | Same failure modes; no valid same-date quote. | PE/PB and market-implied values cannot be established from R33. Retry through the existing DataResolver policy before concluding source unavailability. |
+| EPS: `valuation_eps` | EastMoney valuation financial indicators; legacy EastMoney fallback | Exact fiscal year, CNY/share, published annual report date, revision/value-version status; historical `asOf` requires historical value-version proof | Financial history was available as a consolidated report, but R33 did not resolve this valuation requirement or establish an EPS valuation basis. | Same. | Do not equate an existing financial paragraph with a PIT-qualified EPS value. |
+| BVPS: `valuation_bvps` | EastMoney valuation financial indicators; legacy EastMoney fallback | Exact fiscal year, CNY/share, publication date, version and reconciliation to equity/share count | No R33 valuation requirement result. | No R33 valuation requirement result. | PB cannot be computed until the exact per-share basis and its version status are validated. |
+| Annual-report publication date: `valuation_annual_report_publication` | CNINFO annual-report publication policy and resolver | Issuer, report year, exact announcement/publication date and URL; publication date is not proof of the numeric aggregator's historical value version | CNINFO returned 2025 annual, 2024 annual and 2026 H1 reports; valuation-publication requirement not separately resolved. | Same annual/H1 coverage. | Can establish the filing publication boundary, not retroactively validate EastMoney numeric revisions. |
+| Peer candidates: `valuation_peer_candidate_evidence` | EastMoney peer comparison; `workflows/valuation/automatic-comps.ts` | Verified ticker/exchange/company identity, business comparability and exclusion reason; same close date, fiscal basis, currency and multiple; exact EPS/BVPS/EBITDA provenance | Public filings and sector evidence exist; no R33 resolved peer valuation set. | Public competitor quote pages exist, but have no dated, basis-aligned valuation inputs. | A company name or peer article alone cannot produce comparable multiples. |
+| Estimate EPS: `earnings_expectation_eps` | THS institution forecast primary; EastMoney individual research reports and legacy fallback; `plugins/research-acquisition/earnings-data.ts` | Issuer/contributor, measure (EPS), exact target fiscal year, raw value and unit, publication timestamp, vintage/value-version, sample count and deduplication | No estimate-provider attempt/result in R33 provider outcomes. | No estimate-provider attempt/result in R33 provider outcomes. | No qualifying consensus EPS is currently established. A single dated broker view is not consensus. |
+| Estimate net profit: `earnings_expectation_net_profit` | THS institution forecast primary; EastMoney research-report fallbacks | Exact consolidated/attributable scope, CNY amount/unit, target year, publication vintage, contributor coverage and corrections | No estimate-provider attempt/result in R33. | No estimate-provider attempt/result in R33. | Cannot compare or normalize analyst consensus from R33. |
+| Issuer guidance / company forecast | Existing guidance and official-filing capabilities; CNINFO company reports and forecasts | Exact metric, target period, range, issue/publication date and issuer scope | CNINFO filings acquired, but no same-target-year quantitative guidance paired with a current consensus measure was identified in R33. | Same. | Need a comparable second expectation surface; a qualitative growth plan is not a numeric forecast. |
+| Scenario assumptions and calculation | Existing `scenario_valuation`; deterministic PE/PB/DCF scenario and sensitivity functions in Valuation code | One method, valuation date, reference fiscal year, target year, unit/currency; all assumptions source-bound or explicitly classified and bounded; arithmetic code-owned; finite inputs and consistent Bear ≤ Base ≤ Bull | No sourced scenario plan or sensitivity inputs in R33. | No sourced scenario plan or sensitivity inputs in R33. | No three-scenario valuation can be populated from the existing R33 outputs. Do not invent growth rates, multiples, discount rates or probabilities. |
+
+### R33 run evidence
+
+| Company | Run ID | Runtime/provider outcome | Report result | Knowledge |
+|---|---|---|---|---|
+| BYD (002594) | `d2128c29-d278-4517-a793-ffc624075a9e` | Root Runtime/API; configured `openai-codex/gpt-6-luna`; CNINFO 3 usable documents; EastMoney historical financial data available; market quote/history attempts failed; public-web evidence available but no expectation estimates. | Blocked, 13/16 former core sections. Valuation, Bull/Base/Bear, Variant Perception have zero located evidence and empty source refs. | Read-only; hashes unchanged. |
+| Dongshan Precision (002384) | `1c2013e7-4504-4676-b3f5-9a1a1a3a4513` | Same Runtime/model; CNINFO 3 usable documents; EastMoney historical financial data available; market quote/history attempts failed; public-web/peer pages did not provide dated consensus coverage. | Blocked, 13/16 former core sections. The three expanded sections have zero located evidence and empty source refs. | Read-only; hashes unchanged. |
+
+R33 saved provider outcomes, normalized source bodies, report sections, and method attempt diagnostics are under the ignored directory `runtime-data/company-quality-acceptance/2026-10-27-p0-readonly-repair-33/`. The tracked compact acceptance record is `tests/validation/evidence/company-quality-live-review.json`. Source publication dates in the R33 summaries are 2026-03-27 (BYD FY2025), 2026-04-21 (Dongshan FY2025), and 2026-08-28 / 2026-08-21 (the respective 2026 H1 reports). Structured historical actuals support reported results; they do not by themselves establish a forecast or a historical numeric value-version.
+
+## Feasible reuse versus unresolved capability
+
+1. **No new Data Layer public field is required to probe the existing routes.** The catalog already contains the market price, EPS, BVPS, filing publication, peer evidence, and earnings-estimate requirements. The first implementation slice should materialize those existing requirements through Company Workflow's current resolver boundary, retain each resolved source/result in a typed run-local valuation evidence object, and reuse pure basis/scenario/expectation calculations.
+2. **The existing requirements are not yet declared for Company Research.** `COMMON_DATA_CATALOG` currently lists valuation metrics only for `valuation`, and estimate metrics only for `earnings-review`; `materializePhase2CommonRequirement` checks that consumer list and the matching policy's Workflow ID. A Company Research implementation cannot silently borrow those route identities. Gate 1 therefore records an internal consumer/policy wiring change as required; it must preserve each source policy and be covered for PIT, period, and fallback behavior. This is a routing-consumer addition, not a new metric ID or public data shape.
+3. **No Company Research atomic method should call another Skill or Workflow.** Workflow selects peer methods and owns input readiness, calculations, synthesis, and section status. Deterministic arithmetic remains in existing pure calculation functions. Company Research renders exact source-bound results, not arbitrary model-supplied numbers.
+4. **No basis means blocked.** A failed quote/estimate route must result in a per-section missing-field diagnostic with attempted provider/operation, period, and impact. A prose-only assumption or a fixed `optionalGaps` sentence cannot make any expanded section pass.
+5. **The P0 driver blockers remain separate from new-section availability.** BYD R33 attempt 2 failed on an unsupported, duplicated source-ID spelling for paragraph 719 in a method finding. Dongshan R33 failed on the driver classifier's exact classification-marker + numeric-row requirement at paragraph 359 (attempt 1) and paragraph 876 (attempt 2). These failures must be repaired without broadening allowed citations or bypassing the marker/row contract.
+
+## Gate 1 status and next evidence required
+
+Gate 1 is **not yet complete**. The current audit confirms existing contracts, code paths, persisted failure evidence, and that R33 cannot supply a valid new-section data basis. Before closing this gate, the integrated Workflow must perform read-only resolver probes for both tickers for:
+
+- current close at the nearest completed session;
+- latest annual EPS and BVPS with filing publication and numeric-version status;
+- at least one qualifying peer set if the comps route is chosen;
+- exact target-year EPS and net-profit estimates, including provider, contributors/coverage, publication vintage, corrections, and units;
+- any issuer guidance/expectation surface intended for Variant Perception.
+
+The evidence must show request period and `asOf`, every configured provider attempt/fallback, returned raw-field map, normalized value, source/version metadata, and a fail-closed reason when unavailable. No production Knowledge write is permitted. If the existing routes fail to return enough data, report the specific unavailable requirement/provider and do not expand schema or source access implicitly.
+
+## References
+
+- `docs/architecture/RESEARCH_SKILL_ARCHITECTURE_V1.md`
+- `docs/architecture/RESEARCHHUB_DATA_LAYER_ARCHITECTURE_V1.md`
+- `docs/architecture/RESEARCH_SKILL_CATALOG_V1.md`
+- `docs/engineering/specs/2026-10-14-company-research-quality.md` (superseded only in its 16-core completion rule by the P0-19 change order)
+- `docs/engineering/reports/2026-10-08-data-layer-phase2-valuation-earnings.md`
+- `docs/engineering/reports/2026-10-10-exec-003-a-002-valuation-live-data.md`
+- `docs/engineering/reports/2026-10-10-exec-003-a-003-earnings-live-data.md`
+- R33 artifacts and tracked index listed above

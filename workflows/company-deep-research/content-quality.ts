@@ -24,7 +24,7 @@ export interface CompanyResearchQuality {
   readonly issues: readonly string[]
   readonly sectionChecks: readonly { readonly sectionId: string; readonly core: boolean; readonly passed: boolean; readonly reasons: readonly string[] }[]
 }
-export const COMPANY_CORE_SECTION_IDS = ['company-overview', 'business-model', 'business-segments', 'revenue-profit-drivers', 'products', 'technologies', 'industry-exposure', 'supply-chain', 'competition', 'financial-quality', 'growth-drivers', 'management-capital-allocation', 'catalysts', 'risks', 'investment-thesis', 'monitoring-checklist'] as const
+export const COMPANY_CORE_SECTION_IDS = ['company-overview', 'business-model', 'business-segments', 'revenue-profit-drivers', 'products', 'technologies', 'industry-exposure', 'supply-chain', 'competition', 'financial-quality', 'growth-drivers', 'management-capital-allocation', 'catalysts', 'risks', 'valuation', 'bull-base-bear', 'variant-perception', 'investment-thesis', 'monitoring-checklist'] as const
 const gap = /^(?:Research gap:|Market data gap:|研究缺口[：:]|数据缺口[：:]|证据不足[：:]|no bounded evidence was supplied|无可用证据|未获取到.*(?:证据|资料))/i
 
 /** Fingerprint only the exact, still-resolvable evidence cited by a synthesis. */

@@ -9,7 +9,7 @@ import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
 import { ReasoningExecutorError, summarizeReasoningFailure } from '../../plugins/reasoning/errors.ts'
-import { repairUnavailableCompanyMethodCitations } from '../../skills/company-research/citation-repair.ts'
+import { repairCompanyTrailingSourceIdTypo, repairUnavailableCompanyMethodCitations } from '../../skills/company-research/citation-repair.ts'
 
 const source: NormalizedResearchSource = {
   candidate: { candidateId: 'filing-1', title: '年报', kind: 'official_disclosure', tier: 1, provider: 'fixture' },
@@ -19,6 +19,50 @@ const source: NormalizedResearchSource = {
 }
 const output = { status: 'complete', answer: '公司历史有证据支持。', markdown: '公司经历业务转型。[filing-1@paragraph:251]', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。[filing-1@paragraph:251]' }], findings: [{ text: '公司经历业务转型。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:251' }] }], limitations: [], risks: [] }
 const executor = (run: (request: unknown, signal?: AbortSignal) => Promise<unknown>): ReasoningExecutor => ({ capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 4000, structuredOutputSupport: true, maxConcurrency: 2 }), execute: async (request, signal) => ({ operation: request.operation, output: await run(request, signal) }) })
+
+test('repeated-substring source ID repair changes only finding evidence after unique exact-locator proof', () => {
+  const sourceId = 'official-c19c34dd239b2e9c'
+  const malformedId = 'official-c19c34dd239b2e9b2e9c'
+  const line = '比上年同'
+  const lines = Array<string>(719).fill('一般披露事项。')
+  lines[718] = line
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: sourceId }, content: lines.join('\n') }
+  const packet = { sourceCandidateId: sourceId, title: '2026年半年度报告', publisher: 'CNINFO', excerpts: [{ sourceCandidateId: sourceId, location: 'paragraph:719', text: line }] }
+  const malformed = {
+    markdown: `finding claim [${malformedId}@paragraph:719]`,
+    sections: [{ id: 'drivers', markdown: `section claim [${malformedId}@paragraph:719]` }],
+    findings: [{ text: 'finding claim', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:719' }] }],
+  }
+  const result = repairCompanyTrailingSourceIdTypo(malformed, [packet], { company: { symbol: '002594' }, asOf: '2026-10-26', sources: [filing] } as any)
+  assert.deepEqual(result.output.findings[0]!.evidence, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
+  assert.equal(result.output.markdown, malformed.markdown, 'inline citations are outside this finding-evidence repair')
+  assert.equal(result.output.sections[0]!.markdown, malformed.sections[0]!.markdown)
+  assert.equal(result.repairs.length, 1)
+  assert.equal(result.repairs[0]!.findingIndex, 0)
+  assert.deepEqual(result.repairs[0]!.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
+  assert.deepEqual(result.repairs[0]!.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
+})
+
+test('repeated-substring source ID repair leaves ambiguous sources and missing supplied locators unchanged', () => {
+  const sourceId = 'official-c19c34dd239b2e9c'
+  const malformedId = 'official-c19c34dd239b2e9b2e9c'
+  const line = '分行业表的毛利率数据。'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: sourceId }, content: line }
+  const packet = { sourceCandidateId: sourceId, title: '2026年半年度报告', publisher: 'CNINFO', excerpts: [{ sourceCandidateId: sourceId, location: 'paragraph:1', text: line }] }
+  const makeOutput = () => ({ markdown: '', sections: [], findings: [{ text: 'finding claim', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:1' }] }] })
+  const input = { company: { symbol: '002594' }, asOf: '2026-10-26', sources: [filing] } as any
+
+  const ambiguous = makeOutput()
+  const ambiguousResult = repairCompanyTrailingSourceIdTypo(ambiguous, [packet, packet], input)
+  assert.deepEqual(ambiguousResult.output.findings[0]!.evidence, ambiguous.findings[0]!.evidence)
+  assert.equal(ambiguousResult.repairs.length, 0)
+
+  const missingLocator = makeOutput()
+  const missingPacket = { ...packet, excerpts: [] }
+  const missingResult = repairCompanyTrailingSourceIdTypo(missingLocator, [missingPacket], input)
+  assert.deepEqual(missingResult.output.findings[0]!.evidence, missingLocator.findings[0]!.evidence)
+  assert.equal(missingResult.repairs.length, 0)
+})
 
 test('citation repair resolves a malformed source id only from a unique same-claim source and exact supplied locator', () => {
   const sourceId = 'official-f7c8d23d2829a5e8'
@@ -677,10 +721,12 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
     '制造业 100 20%', '其他行业 400 80%', '分产品', '新能源汽车 100 20%', '其他产品 400 80%',
     '单位：元', '2025年', '营业收入 营业成本 毛利率', '分行业', '制造业 100 80 20%', '分产品', '新能源汽车 100 80 20%',
   ]
+  while (lines.length < 49) lines.push('公司经营情况按原披露口径理解。')
+  lines.push('公司自研100GPAM4EML芯片已应用于400G及800G光模块，相关产品收入增长仍需观察。')
   const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
-  const packets = selectCompanyEvidence([filing], [id], ['收入', '成本', '毛利率', '占比'], { purpose: 'business_driver_analysis' })
+  const packets = selectCompanyEvidence([filing], [id], ['收入', '成本', '毛利率', '占比', 'GPAM4'], { purpose: 'business_driver_analysis' })
   const excerptLocations = new Set(packets[0]?.excerpts.map(row => row.location) ?? [])
-  for (const paragraph of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]) {
+  for (const paragraph of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 50]) {
     assert.ok(excerptLocations.has(`paragraph:${paragraph}`), `complete annual table context includes paragraph ${paragraph}`)
   }
   const refs = (paragraphs: number[]) => paragraphs.map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` }))
@@ -706,6 +752,13 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
     skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => makeDraft(productClaim, [1, 2, 3, 4, 8, 9])),
   })
   assert.equal(productValid.status, 'complete', JSON.stringify(productValid.diagnostics))
+
+  const productWithUnrelatedTechnicalCitation = await executeCompanyResearchMethod({
+    company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => makeDraft(productClaim, [1, 2, 3, 4, 8, 9, 50])),
+  })
+  assert.equal(productWithUnrelatedTechnicalCitation.status, 'complete', JSON.stringify(productWithUnrelatedTechnicalCitation.diagnostics))
 
   const mislabeled = await executeCompanyResearchMethod({
     company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
