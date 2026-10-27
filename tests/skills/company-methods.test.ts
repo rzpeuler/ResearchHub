@@ -772,6 +772,47 @@ test('business-driver splits a two-industry margin finding before exact row bind
   assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
 })
 
+test('business-driver separates product revenue composition from its margin table before exact row binding', async () => {
+  const id = 'product-revenue-and-margin-tables'
+  const lines = [
+    '2025年年度报告', '单位：元', '2025年 2024年', '同比增减', '金额 占营业收入比重 金额 占营业收入比重',
+    '分产品', '精密组件产品 5,930,242,495.99 14.78% 4,540,319,354.27 12.35% 30.61%',
+    '其他经营披露。', '其他经营披露。', '单位：元', '营业收入 营业成本 毛利率', '营业收入比上年同期增减',
+    '营业成本比上年同期增减', '毛利率比上年同期增减', '分产品',
+    '精密组件产品 5,930,242,495.99 5,383,316,361.13 9.22% 30.61% 38.36% -5.08%',
+  ]
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
+  const base = {
+    status: 'complete', answer: '产品收入增长但毛利率承压。', markdown: '分产品收入与利润率需要分表核对。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `产品收入结构和毛利率提供不同维度的经营信息。[${id}@paragraph:6]` },
+      { id: 'growth-drivers', markdown: `持续跟踪精密组件产品同口径收入与利润率。[${id}@paragraph:6]` },
+      { id: 'catalysts', markdown: `现有披露未提供该产品未来量价目标。[${id}@paragraph:6]` },
+    ],
+    findings: [{
+      text: '2025年分产品精密组件产品收入59.30亿元、占比14.78%；收入同比增减30.61%、营业成本同比增减38.36%、毛利率9.22%，毛利率比上年同期增减-5.08%。成本增长更快与毛利率承压并存。',
+      kind: 'fact' as const,
+      evidence: [2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })),
+    }],
+    limitations: [], risks: [],
+  }
+  const run = (valueFiling: typeof filing) => executeCompanyResearchMethod({
+    company: { symbol: '002384', name: '东山精密', exchange: 'SZ' }, asOf: '2026-10-27',
+    sources: [valueFiling], reportSourceCandidateIds: [id], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => base),
+  })
+  const accepted = await run(filing)
+  assert.equal(accepted.status, 'complete', JSON.stringify({ findings: accepted.findings, diagnostics: accepted.diagnostics }))
+  assert.equal(accepted.findings.length, 2)
+  assert.ok(accepted.findings.some(finding => finding.text.includes('14.78%') && !finding.text.includes('38.36%') && finding.evidence.some(ref => ref.location === 'paragraph:7')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('38.36%') && finding.text.includes('-5.08%') && finding.evidence.some(ref => ref.location === 'paragraph:16')))
+
+  const mismatched = { ...filing, content: lines.map(line => line.replace('38.36%', '38.35%')).join('\n') }
+  const rejected = await run(mismatched)
+  assert.equal(rejected.status, 'failed')
+  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
+})
+
 test('business-driver revenue table keeps annual industry rows and rejects product rows under an industry label', async () => {
   const id = 'annual-segment-classification'
   const lines = [

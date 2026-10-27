@@ -738,6 +738,27 @@ function buildRiskNumericRetryPreservation(output: unknown, packets: readonly Co
   return `风险方法数值重试的引用保全清单（只含上一稿中可在本次同一原文定位核实的数字）：${[...preserved].slice(0, 32).join('；')}。逐项保留每个非错误风险表数值及其对应的原文行引用；修复缺引数字时，引用必须来自repairTargets中实际包含该数值且科目、期间、单位相符的同一数据行。candidateExcerpts.context仅供辨认表头/标签，不能引用其邻段代替数值行；禁止用p919、p928或任何相邻段落支持客户占比或其他数值，只有该段原文逐字包含该数值和对应行标签时才可引用。修复后逐数字复核整张风险表和findings，不能为补一个数字而丢掉其他已有效的数字引用。`
 }
 
+/** Separate revenue-composition and margin-table claims before exact row binding. */
+function splitMultiTableProductDriverFinding<T extends { readonly findings: readonly CompanyMethodFinding[] }>(output: T): T {
+  let changed = false
+  const findings = output.findings.flatMap(finding => {
+    const clauses = finding.text.split(/[；;]/u).map(clause => clause.trim()).filter(Boolean)
+    if (clauses.length !== 2) return [finding]
+    const [revenueClause, marginClause] = clauses as [string, string]
+    if (!/分产品/u.test(revenueClause) || !/收入/u.test(revenueClause) || !/占比/u.test(revenueClause)
+      || !/营业成本/u.test(marginClause) || !/毛利率/u.test(marginClause)) return [finding]
+    const year = revenueClause.match(/20\d{2}年/u)?.[0]
+    const label = revenueClause.match(/分产品(?:表)?[“"「]?([^，,。；;“”"」]{2,32}?)收入/u)?.[1]?.trim()
+    if (!year || !label || !/产品/u.test(label)) return [finding]
+    changed = true
+    return [
+      { ...finding, text: revenueClause },
+      { ...finding, text: `${year}分产品${label}：${marginClause}` },
+    ]
+  })
+  return changed ? { ...output, findings } : output
+}
+
 /**
  * Keep separate disclosed industry margin rows in separate findings. The
  * downstream row binder and numeric validator still require a unique exact
@@ -1650,7 +1671,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
       const rowBound = input.skillId === 'business_driver_analysis'
-        ? repairCompanySegmentFindingLabels(bindExactSplitProductDriverFinding(bindExactCompanyTableRows(splitMultiIndustryMarginFindings(yearBound), packets, input.sources), packets, input.sources), packets, input.sources)
+        ? repairCompanySegmentFindingLabels(bindExactSplitProductDriverFinding(bindExactCompanyTableRows(splitMultiIndustryMarginFindings(splitMultiTableProductDriverFinding(yearBound)), packets, input.sources), packets, input.sources), packets, input.sources)
         : input.skillId === 'market_structure_analysis'
           ? bindExactCompanyTableRows(yearBound, packets, input.sources, true)
         : yearBound
