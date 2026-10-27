@@ -77,6 +77,30 @@ test('Valuation market acquisition falls back to Tencent with bounded dates and 
   assert.equal(result.source?.observationAvailableAt, '2026-09-08T07:00:00.000Z')
 })
 
+test('valuation calendar coverage uses the Shanghai as-of date across a UTC day boundary', async () => {
+  const asOf = '2026-09-09T17:00:00.000Z' // 2026-09-10 01:00 in Shanghai
+  const fixture = clients()
+  const quoteRequests: Array<{ readonly startDate?: string; readonly endDate?: string }> = []
+  const calendarRequests: Array<{ readonly startDate?: string; readonly endDate?: string }> = []
+  const akshare: AkshareDataClient = {
+    ...fixture.akshare,
+    historicalMarketData: async () => { throw new Error('ProxyError: EastMoney request failed') },
+    historicalMarketDataTencent: async (request) => { quoteRequests.push(request); return [{ date: '2026-09-09', close: 160 }] },
+    tradingCalendar: async (request) => {
+      calendarRequests.push(request)
+      return ['2026-09-08', '2026-09-09', '2026-09-10'].map((trade_date) => ({ trade_date }))
+    },
+  }
+  const resolver = createValuationDataResolver({ akshare, officialDisclosure: fixture.officialDisclosure, company, valuationDate: asOf, now: () => asOf })
+  const requirementWithLocalPeriodEnd = { ...requirement('valuation_market_price', asOf), period: { end: '2026-09-09' } }
+  const result = await resolver.resolveOne(requirementWithLocalPeriodEnd)
+  assert.equal(result.status, 'AVAILABLE', JSON.stringify(result.attempts))
+  assert.equal(result.source?.observedAt, '2026-09-09')
+  assert.equal(result.source?.marketFreshness?.status, 'FRESH')
+  assert.equal(quoteRequests[0]?.endDate, '20260909', 'the market observation remains bounded by the requested UTC period end')
+  assert.equal(calendarRequests[0]?.endDate, '20260910', 'the session calendar must cover the Shanghai-local as-of date')
+})
+
 test('Historical numeric source stays unavailable without value-version proof after publication', async () => {
   const fixture = clients()
   const resolver = createValuationDataResolver({ ...fixture, company, valuationDate: NOW, historicalAsOf: NOW, now: () => NOW })
