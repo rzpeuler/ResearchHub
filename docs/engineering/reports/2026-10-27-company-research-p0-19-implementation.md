@@ -173,3 +173,10 @@ P0-19 remains incomplete. Neither live report passed all 19 required section che
 - This live pair confirms the competitive method completes on BYD after the retry-handling fix, but the overall reports remain blocked by missing sourced operating-scenario inputs and unverified forecast vintages. Contract changes to bind value-version/EPS basis remain pending user approval. P0-19 is incomplete; Hermes side-by-side review and full acceptance remain outstanding.
 
 P0-19 remains incomplete pending sourced scenario inputs, verified forecast vintages, independent semantic review, Hermes comparison, and all required real acceptance gates.
+
+### Full regression comparison at `3c55216` (2026-10-27)
+
+- `npm run test:node` ran 3,167 tests: 3,146 passed and 21 failed. The 21 `(filePath,testTitle)` failure identities exactly match the saved post-`136a085` baseline (3,159 tests, 21 failures); no failure identity was added or cleared. The total count is eight higher than that baseline.
+- `npm run client:test` ran 223 tests: 218 passed and 5 failed. All five current failure identities are in the prior saved root baseline; no new identity appeared and one prior failure identity did not recur. The command exits 1 for those known failures. `npm run client:typecheck` passed.
+- Exact commands, totals, failure identities, baseline comparison, and local log locations are recorded in `tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json`. No failure logs or runtime/source bodies are committed.
+- This run adds regression evidence only; it does not change the two blocked live reports or close Gate 4. P0-19 remains incomplete.
