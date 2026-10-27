@@ -1,0 +1,44 @@
+{
+  "evidenceType": "sanitized-company-research-p0-19-full-regression",
+  "capturedAt": "2026-10-28",
+  "task": "RHL-CQR-P0-19-CHANGE-001",
+  "sourceRevision": "042ddaa38d5cd52ed02759590d0e1805c9c5b90a",
+  "baselineRevision": "dcfb144b0a81f0f3995bf1f64c9371e98c487ad5",
+  "node": {
+    "command": "npm run test:node",
+    "total": 3190,
+    "passed": 3169,
+    "failed": 21,
+    "comparisonKey": "(filePath,testTitle)",
+    "baselineFailureIdentities": 21,
+    "addedFailureIdentities": 0,
+    "disappearedFailureIdentities": 0,
+    "rawLog": "ignored local tmp/p0-19-node-042ddaa.log"
+  },
+  "client": {
+    "command": "npm run client:test",
+    "total": 223,
+    "passed": 218,
+    "failed": 5,
+    "comparisonKey": "(filePath,testTitle)",
+    "baselineFailureIdentities": 5,
+    "addedFailureIdentities": 0,
+    "disappearedFailureIdentities": 0,
+    "rawLog": "ignored local tmp/p0-19-client-042ddaa.log"
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "passed": true
+  },
+  "clientTypecheck": {
+    "command": "npm run client:typecheck",
+    "passed": true
+  },
+  "clientBuild": {
+    "command": "npm run client:build",
+    "passed": true,
+    "mainBundleBytes": 743020,
+    "advisory": "Existing main JavaScript chunk exceeds 500 kB"
+  },
+  "acceptance": "P0-19 remains incomplete; full regression does not substitute for live BYD and Dongshan 19-section acceptance."
+}

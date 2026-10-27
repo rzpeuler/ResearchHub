@@ -393,3 +393,10 @@ P0-19 remains incomplete: both live reports are blocked at 17/19; sourced scenar
 - This pair confirms the risk methods complete under live execution, but neither output repeated the exact Juno Newco finding that failed in the prior BYD run; the repaired finding path is therefore verified by the focused deterministic regression, not by a matching fresh model output. Sanitized run IDs, report hashes, method/section states, Knowledge hashes, and limitations are recorded in `tests/validation/evidence/company-research-p0-19-risk-goodwill-repair.json`. Raw reports and sidecars remain local under ignored `runtime-data/`.
 
 P0-19 remains incomplete. No source-qualified operating scenario plan or per-estimate value-version proof is available for full acceptance. The requested public contract/scenario expansion remains an unapproved proposal in `docs/engineering/specs/2026-10-27-company-research-p0-19-input-contract-proposal.md`; no public Data contract, source policy, Knowledge schema, or production Knowledge data changed.
+
+### Full regression at `042ddaa` (2026-10-28)
+
+- `npm run test:node`: 3,190 tests, 3,169 passed and 21 failed. Compared with the approved `dcfb144` baseline by `(filePath,testTitle)`, all 21 failure identities match; zero added or disappeared.
+- `npm run client:test`: 223 tests, 218 passed and five failed. All five identities match the saved baseline; zero added or disappeared.
+- `npm run typecheck`, `npm run client:typecheck`, and `npm run client:build` passed. Vite retains the existing 743 kB main-chunk advisory. Sanitized totals and baseline comparisons are in `tests/validation/evidence/company-research-p0-19-regression-post-042ddaa.json`; raw logs remain local under ignored `tmp/`.
+- The paired root-Runtime acceptance at `14f4d2a` remains blocked at 17/19 for both companies. Regression and build results do not establish the outstanding live 19-section acceptance; P0-19 remains incomplete.
