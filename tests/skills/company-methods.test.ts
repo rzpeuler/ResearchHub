@@ -725,6 +725,53 @@ test('business-driver finding with one margin value gets its exact same-source d
   assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'), 'the exact row containing -2.67% is attached to this finding')
 })
 
+test('business-driver splits a two-industry margin finding before exact row binding and still rejects mismatched values', async () => {
+  const id = 'two-industry-margin-rows'
+  const lines = [
+    '单位：元',
+    '营业收入 营业成本 毛利率',
+    '营业收入比上年同期增减',
+    '营业成本比上年同期增减',
+    '毛利率比上年同期增减',
+    '分行业',
+    '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%',
+    '交通运输设备及电气制',
+    '造业 275,341,000,000.00 231,234,000,000.00 16.01% -8.98% 1.23% 1.98%',
+  ]
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2026年半年度报告', content: lines.join('\n') }
+  const selected = selectCompanyEvidence([filing], [id], ['收入', '成本', '毛利率', '分行业'], { purpose: 'business_driver_analysis' })[0]!
+  assert.ok(selected.excerpts.some(excerpt => excerpt.location === 'paragraph:7' && excerpt.text === lines[6]))
+  assert.ok(selected.excerpts.some(excerpt => excerpt.location === 'paragraph:8' && excerpt.text === lines[7]))
+  assert.ok(selected.excerpts.some(excerpt => excerpt.location === 'paragraph:9' && excerpt.text === lines[8]))
+  const base = {
+    status: 'complete', answer: '两项行业毛利率变化方向不同。', markdown: '分行业毛利率变化需要结合各行业经营情况理解。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `行业指标提供结构线索，但不足以独立解释集团利润变化。[${id}@paragraph:6]` },
+      { id: 'growth-drivers', markdown: `应跟踪同口径的行业收入和毛利率变化。[${id}@paragraph:6]` },
+      { id: 'catalysts', markdown: `当前材料未提供可核验的未来量价目标。[${id}@paragraph:6]` },
+    ],
+    findings: [{ text: '分行业毛利率变化列显示：日用电子器件制造业毛利率比上年同期增减为-2.67%；交通运输设备及电气制造业毛利率比上年同期增减为1.98%。该列沿用原表百分号，不能改称百分点。', kind: 'fact' as const, evidence: [1, 2, 3, 4, 5, 6].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })) }],
+    limitations: [], risks: [],
+  }
+  const run = (valueFiling: typeof filing) => executeCompanyResearchMethod({
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-27',
+    sources: [valueFiling], reportSourceCandidateIds: [id], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => base),
+  })
+  const accepted = await run(filing)
+  assert.equal(accepted.status, 'complete', JSON.stringify({ findings: accepted.findings, diagnostics: accepted.diagnostics }))
+  assert.equal(accepted.findings.length, 2)
+  assert.ok(accepted.findings.some(finding => finding.text.includes('日用电子器件制造业') && finding.text.includes('-2.67%') && !finding.text.includes('1.98%')
+    && finding.evidence.some(ref => ref.location === 'paragraph:7')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('交通运输设备及电气制造业') && finding.text.includes('1.98%') && !finding.text.includes('-2.67%')
+    && finding.evidence.some(ref => ref.location === 'paragraph:8') && finding.evidence.some(ref => ref.location === 'paragraph:9')))
+
+  const mismatched = { ...filing, content: lines.map(line => line.replace('-2.67%', '-2.66%').replace('1.98%', '1.99%')).join('\n') }
+  const rejected = await run(mismatched)
+  assert.equal(rejected.status, 'failed')
+  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
+})
+
 test('business-driver revenue table keeps annual industry rows and rejects product rows under an industry label', async () => {
   const id = 'annual-segment-classification'
   const lines = [
