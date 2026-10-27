@@ -393,6 +393,49 @@ function removeUnsupportedMethodCitationParagraphs<T>(output: T, packets: readon
   return { output: copy as T, removed }
 }
 
+/** Drop only an unsupported customer-research absence finding when the same
+ * exact limitation is already retained. Absence from supplied materials is a
+ * scope limitation, not a source-backed product fact; never rebind it to a
+ * neighboring or same-number paragraph. */
+function removeUnsupportedCustomerResearchAbsenceFinding<T>(output: T, packets: readonly CompanyEvidencePacket[]): { output: T; repairs: readonly CompanyCitationRepair[] } {
+  let raw: unknown = output
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { return { output, repairs: [] } }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output, repairs: [] }
+  const copy = structuredClone(raw) as Record<string, unknown>
+  if (copy.status !== 'complete' || !Array.isArray(copy.findings) || copy.findings.length < 2 || !Array.isArray(copy.limitations)) return { output, repairs: [] }
+  const allowed = new Set(packets.flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))
+  const absenceClaim = /(?:没有|未(?:有|见|提供|发现|获)|缺少|缺乏|无)[^。；;\n]{0,60}(?:客户|消费者)[^。；;\n]{0,24}(?:调研|调查|反馈|访谈|购买行为|偏好(?:证据|信息))|(?:客户|消费者)[^。；;\n]{0,24}(?:调研|调查|反馈|访谈|购买行为)[^。；;\n]{0,40}(?:没有|未(?:有|见|提供|发现|获)|缺少|缺乏|无)[^。；;\n]{0,16}(?:证据|材料|信息)?/u
+  const removed: CompanyCitationRepair[] = []
+  const kept = copy.findings.filter((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return true
+    const finding = item as Record<string, unknown>
+    if (typeof finding.text !== 'string' || !absenceClaim.test(finding.text) || !Array.isArray(finding.evidence)) return true
+    const findingText = finding.text
+    const limitations = copy.limitations as unknown[]
+    const missingEvidenceTerms = ['调研', '调查', '访谈', '反馈', '购买行为'].filter(term => findingText.includes(term))
+    const retainedGap = missingEvidenceTerms.length > 0 && limitations.some(item => typeof item === 'string'
+      && /(?:没有|未(?:有|见|提供|发现|获)|缺少|缺乏|无)/u.test(item)
+      && /(?:客户|消费者)/u.test(item)
+      && missingEvidenceTerms.every(term => item.includes(term)))
+    if (!retainedGap) return true
+    const references = finding.evidence.flatMap(ref => {
+      if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return []
+      const value = ref as Record<string, unknown>
+      return typeof value.sourceCandidateId === 'string' && typeof value.location === 'string'
+        ? [{ sourceCandidateId: value.sourceCandidateId, location: value.location }]
+        : []
+    })
+    if (!references.some(ref => !allowed.has(`${ref.sourceCandidateId}@${ref.location}`))) return true
+    removed.push({ findingIndex: index, inputText: findingText, originalReferences: references, addedReferences: [], reason: 'Removed an unsupported customer-research-absence finding because at least one exact source/paragraph pair was not supplied and the same absence remains scoped as a limitation; no replacement citation was inferred.' })
+    return false
+  })
+  if (!removed.length || kept.length === 0) return { output, repairs: [] }
+  copy.findings = kept
+  return { output: copy as T, repairs: removed }
+}
+
 export const COMPANY_RESEARCH_METHOD_IDS = ['company_history_strategy', 'business_model_map', 'product_technology_analysis', 'business_driver_analysis', 'financial_quality_analysis', 'market_structure_analysis', 'competitive_market_map', 'management_governance_analysis', 'capital_allocation_review', 'company_risk_analysis'] as const
 export type CompanyResearchMethodId = typeof COMPANY_RESEARCH_METHOD_IDS[number]
 export const COMPANY_METHOD_SECTION_IDS: Readonly<Record<CompanyResearchMethodId, readonly string[]>> = {
@@ -1835,7 +1878,11 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         ? repairUniqueRiskGoodwillTotalReferences(exactQuotedCitationRepair.output, packets)
         : { output: exactQuotedCitationRepair.output, repairs: [] as CompanyCitationRepair[] }
       citationRepairs.push(...goodwillTotalReferenceRepair.repairs.map((repair) => ({ ...repair, attempt })))
-      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(goodwillTotalReferenceRepair.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
+      const unsupportedCustomerAbsenceRepair = input.skillId === 'product_technology_analysis'
+        ? removeUnsupportedCustomerResearchAbsenceFinding(goodwillTotalReferenceRepair.output, packets)
+        : { output: goodwillTotalReferenceRepair.output, repairs: [] as readonly CompanyCitationRepair[] }
+      citationRepairs.push(...unsupportedCustomerAbsenceRepair.repairs.map((repair) => ({ ...repair, attempt })))
+      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(unsupportedCustomerAbsenceRepair.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)

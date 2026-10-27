@@ -2602,6 +2602,40 @@ test('product method repairs unsupported customer preferences into an explicit u
   assert.equal(result.findings[0]!.kind,'assumption')
 })
 
+test('product method drops only an unsupplied customer-research absence finding when the exact gap remains a limitation', async () => {
+  const filing={...source,content:'公司披露新能源汽车产品覆盖乘用车和商用车。'}
+  const draft={
+    status:'complete' as const,
+    answer:'公司披露新能源汽车产品覆盖乘用车和商用车。',
+    markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]',
+    sections:[
+      {id:'products',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]'},
+      {id:'technologies',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车；本节未取得可验证的技术测试信息。[filing-1@paragraph:1]'},
+    ],
+    findings:[
+      {text:'公司披露新能源汽车产品覆盖乘用车和商用车。',kind:'fact' as const,evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]},
+      {text:'没有客户调研、反馈或购买行为证据，不能将产品用途升级为实际客户偏好。',kind:'inference' as const,evidence:[{sourceCandidateId:'filing-1',location:'paragraph:999'}]},
+    ],
+    limitations:['没有客户调研/反馈/购买行为证据，不能验证客户偏好。'],
+    risks:[],
+  }
+  let calls=0
+  const repaired=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>{calls++;return draft})})
+  assert.equal(calls,1)
+  assert.equal(repaired.status,'complete',JSON.stringify(repaired.diagnostics))
+  assert.equal(repaired.findings.length,1)
+  assert.equal(repaired.findings[0]!.text,'公司披露新能源汽车产品覆盖乘用车和商用车。')
+  assert.deepEqual(repaired.limitations,draft.limitations)
+  assert.ok(repaired.citationRepairs?.some(repair=>repair.findingIndex===1&&repair.originalReferences.some(ref=>ref.location==='paragraph:999')&&repair.addedReferences.length===0))
+
+  const unscoped={...draft,limitations:['没有客户调研资料。']}
+  calls=0
+  const rejected=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>{calls++;return unscoped})})
+  assert.equal(calls,2)
+  assert.equal(rejected.status,'failed')
+  assert.ok(rejected.diagnostics.some(diagnostic=>diagnostic.code==='REFERENCE_ERROR'))
+})
+
 test('product method accepts bounded insufficient-promotion denials but rejects an adjacent affirmative preference', async () => {
   const filing={...source,content:'公司披露产品组合覆盖多个应用领域。'}
   const acceptedDenials=[
