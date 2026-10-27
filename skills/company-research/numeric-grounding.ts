@@ -181,7 +181,14 @@ function directionBefore(text: string, index: number): -1 | 1 {
     const remaining = before.slice(direction.index! + direction[0].length)
     // A conjunction-only numeric list still shares its explicit direction:
     // "分别下降1.82和2.06个百分点". Completed units or new prose end it.
-    if (!/^\s*(?:约)?-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?(?:\s*(?:和|及|、)\s*-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?)*\s*(?:和|及|、)\s*$/.test(remaining)) return 1
+    const sharedNumericList = /^\s*(?:约)?-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?(?:\s*(?:和|及|、)\s*-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?)*\s*(?:和|及|、)\s*$/
+    // Separately marked percentages also share a preceding direction when
+    // each enumerated value repeats its own approximation marker, e.g.
+    // "分别同比下降约7.13%、约21.24%及约20.54%". Keep this grammar limited
+    // to a percent-only list so intervening prose or a new metric cannot
+    // inherit the direction.
+    const sharedPercentList = /^\s*(?:约|大约)?-?[\d,，]+(?:\.\d+)?\s*[%％](?:\s*(?:和|及|、)\s*(?:约|大约)?-?[\d,，]+(?:\.\d+)?\s*[%％])*(?:\s*(?:和|及|、)\s*(?:约|大约)?)?\s*$/
+    if (!sharedNumericList.test(remaining) && !sharedPercentList.test(remaining)) return 1
   }
   return direction && /下降|减少|下滑|净流出|净减少|^降$/.test(direction[0]) ? -1 : 1
 }

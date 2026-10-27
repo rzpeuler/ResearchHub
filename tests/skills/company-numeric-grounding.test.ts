@@ -175,6 +175,12 @@ test('BYD real half-year split header and industry rows ground both claims indep
   const markdown = `半年报分行业表列示：日用电子器件制造业毛利率5.04%，同比下降2.67%。${dailyRefs}；交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。${transportRefs}`
   const result = validateCompanyNumericGrounding({ markdown, sources: [filing] })
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
+  const missingTransportRowRefs = [716, 717, 724, 725, 726, 727, 728].map(paragraph => `[${candidateId}@paragraph:${paragraph}]`).join(' ')
+  const unsupportedWithoutValueRow = validateCompanyNumericGrounding({
+    markdown: `交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。${missingTransportRowRefs}`,
+    sources: [filing],
+  })
+  assert.equal(unsupportedWithoutValueRow.status, 'unsupported_numbers', 'the transportation row locator remains required for 22.33% and 1.98%')
 })
 
 test('segment gross-margin changes cannot borrow an equal-valued row from the other classification', () => {
@@ -1113,6 +1119,26 @@ test('numeric grounding carries a shared decline direction across separately per
     preparedAnalysis,
   })
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
+})
+
+test('numeric grounding carries one decline direction across an enumerated percent list with repeated approximation markers', () => {
+  const financial = { ...source, content: '结构化财务数据。' }
+  const preparedAnalysis = { financial: { growth: [
+    { metric: 'revenue', growthPercent: -7.128167265937922, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'operatingProfit', growthPercent: -21.239504732736314, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'netProfit', growthPercent: -20.535238859941177, sourceCandidateIds: ['filing-2025-003'] },
+  ] } }
+  const markdown = '营业收入、营业利润及净利润分别同比下降约7.13%、约21.24%及约20.54%。[filing-2025-003@paragraph:1]'
+  const grounded = validateCompanyNumericGrounding({ markdown, sources: [financial], preparedAnalysis })
+  assert.equal(grounded.status, 'grounded', JSON.stringify(grounded.diagnostics))
+
+  const wrongValueDirection = { financial: { growth: [
+    { metric: 'revenue', growthPercent: -7.128167265937922, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'operatingProfit', growthPercent: 21.239504732736314, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'netProfit', growthPercent: -20.535238859941177, sourceCandidateIds: ['filing-2025-003'] },
+  ] } }
+  assert.equal(validateCompanyNumericGrounding({ markdown, sources: [financial], preparedAnalysis: wrongValueDirection }).status, 'unsupported_numbers', 'shared decline wording cannot ground a positive prepared value')
+  assert.equal(validateCompanyNumericGrounding({ markdown: markdown.replace('下降', '增长'), sources: [financial], preparedAnalysis }).status, 'unsupported_numbers', 'shared growth wording cannot ground negative prepared values')
 })
 
 test('numeric grounding supports explicitly shared monetary unit in one table cell only', () => {
