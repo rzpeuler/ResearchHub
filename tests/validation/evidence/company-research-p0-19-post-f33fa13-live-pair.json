@@ -1,0 +1,206 @@
+{
+  "task": "RHL-CQR-P0-19",
+  "evidenceType": "sanitized_root_runtime_acceptance",
+  "runDate": "2026-10-27",
+  "sourceRevision": "f33fa13891e91d8ca22f88e226ca14867eeea689",
+  "notes": [
+    "Summary sectionStatuses was empty because it queried the wrong sidecar property; this record is derived from contentQuality.sectionChecks.",
+    "Full report bodies, source bodies, runtime sidecars, and disposable Knowledge data are excluded."
+  ],
+  "runs": [
+    {
+      "company": {
+        "symbol": "002594",
+        "name": "比亚迪",
+        "exchange": "SZ"
+      },
+      "runId": "d29d8e83-d9d2-4345-af36-4701dc0844bc",
+      "sourceRevision": "f33fa13891e91d8ca22f88e226ca14867eeea689",
+      "status": "blocked",
+      "reportAvailable": true,
+      "sectionCount": 19,
+      "passedSectionCount": 17,
+      "failedSections": [
+        {
+          "sectionId": "bull-base-bear",
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        }
+      ],
+      "reviewAttempts": 0,
+      "reviewRounds": 0,
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "52ab0c473b46d58ccbe7121ac5aecf2698578f533d9caa513376815ba0d455c4",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "52ab0c473b46d58ccbe7121ac5aecf2698578f533d9caa513376815ba0d455c4",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    },
+    {
+      "company": {
+        "symbol": "002384",
+        "name": "东山精密",
+        "exchange": "SZ"
+      },
+      "runId": "b74b44be-2b46-4b2f-8e4b-8875610b0ca5",
+      "sourceRevision": "f33fa13891e91d8ca22f88e226ca14867eeea689",
+      "status": "blocked",
+      "reportAvailable": true,
+      "sectionCount": 19,
+      "passedSectionCount": 17,
+      "failedSections": [
+        {
+          "sectionId": "bull-base-bear",
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "semanticAttempts": 1
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "semanticAttempts": 1
+        }
+      ],
+      "reviewAttempts": 0,
+      "reviewRounds": 0,
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "b862a0c9c7760b248d23fbd900b923706ae08dade63ec39866c8e933cc7f26f7",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "b862a0c9c7760b248d23fbd900b923706ae08dade63ec39866c8e933cc7f26f7",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    }
+  ]
+}
