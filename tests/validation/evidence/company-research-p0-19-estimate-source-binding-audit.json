@@ -1,0 +1,38 @@
+{
+  "evidenceType": "sanitized-estimate-source-binding-audit",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "6d85b91e0ae033ec27aa0cafaccbdef7b9b9a1f5",
+  "task": "RHL-CQR-P0-19-CHANGE-001",
+  "acceptance": "NOT_ACCEPTED",
+  "codePaths": {
+    "workflowQualification": "workflows/company-deep-research/valuation-sections.ts",
+    "estimatePointContract": "skills/earnings-review/expectations/contracts.ts",
+    "eastMoneyProjection": "plugins/research-acquisition/earnings-expectations-eastmoney-akshare.ts",
+    "thsProjection": "plugins/research-acquisition/earnings-expectations-ths.ts"
+  },
+  "findings": {
+    "variantSelector": "Matches target FY, EPS unit, finite value, publisher-reported date <= asOf, and sourceCandidateId membership. Contributor overlaps are deduplicated by institution.",
+    "versionGate": "Uses acquisition-level valueVersion evidence; it does not verify each selected EstimatePoint against an immutable original report or an explicit EPS basis.",
+    "eastMoneyRows": "The row carries a report PDF URL and the projected source content includes the row, but the adapter does not fetch or parse the PDF and emits no point-level version or EPS-basis proof.",
+    "thsRows": "The projected source links to the current institution forecast page; it lacks original report URL, immutable version identity, and explicit EPS basis.",
+    "estimatePointContract": "Contains estimate identity, metric, period, value, unit, institution, publishedAt, and sourceCandidateIds; it has no per-point value-version or EPS-basis field.",
+    "manualPdfProbe": "Existing exact-report matches remain CANDIDATE_ONLY; they are not bound to the live selected EstimatePoint in runtime.",
+    "privateBindingOption": "A Workflow/Plugin-local map can avoid changing the shared Data Layer schema, but it needs exact document-to-point proof, source-rights review, bounded acquisition, and tests for corrections and mismatches."
+  },
+  "existingEvidence": {
+    "pdfProbe": "tests/validation/evidence/company-research-p0-19-estimate-pdf-version-probes.json",
+    "eastMoneyVintageAudit": "tests/validation/evidence/company-research-p0-19-eastmoney-vintage-audit.json",
+    "thsVintageAudit": "tests/validation/evidence/company-research-p0-19-ths-vintage-audit.json",
+    "latestLivePair": "tests/validation/evidence/company-research-p0-19-post-da166c0-live-pair.json"
+  },
+  "liveStatus": {
+    "byd": "blocked at 17/19; variant-perception value version unverified",
+    "dongshan": "blocked at 17/19; variant-perception value version unverified",
+    "workflowSemanticReview": "not reached because structural sections remain blocked"
+  },
+  "limitations": [
+    "No report bodies, forecast values, or provider payloads are included.",
+    "No provider was queried and no live report was run for this audit.",
+    "No code, public contract, source policy, or Knowledge data changed."
+  ]
+}
