@@ -205,7 +205,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
   // no named candidate exists. Never infer customer overlap or actual rivalry.
-  const broadCandidateDenial = /(?:[，,]\s*)?(?:也\s*)?(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
+  const broadCandidateDenial = /(?:[，,]\s*)?(?:(?:现有|目前|所给|本节|就|而|同时|但)?(?:材料|证据|资料)?\s*)?(?:也\s*)?(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
   const vaguePeerComparisonGap = /(?:现有|所给|目前)?(?:材料|证据|资料)(?:尚)?不足以(?:作|进行|形成)(?:直接|完整|同口径)?(?:同业|同行|竞争者|竞品)(?:比较|对比|分析)/g
   const scopedCandidateGap = '具名候选及产品路线见“竞争格局”章节；本节现有证据未验证直接竞标、客户重叠、市场份额或同口径成本/性能胜负'
   const automotiveCandidate = /汽车|乘用车|纯电|插混|车型/.test(candidateFinding)
@@ -268,6 +268,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       changed = true
       return '具名候选及产品路线见“竞争格局”章节；材料不足以作完整同业比较，直接竞标、客户重叠、市场份额及同口径表现仍未验证'
     })
+    markdown = markdown.replace(/(?:现有|目前|当前|本节|就|而|同时|但)\s*[；，,]\s*(?=具名候选及产品路线见[“"]?竞争格局)/gu, '')
     return markdown === section.markdown ? section : { ...section, markdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), ...evidence.map(({ ref }) => ref.sourceCandidateId)])] }
   })
   return changed ? sections : input.sections

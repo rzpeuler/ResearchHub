@@ -649,6 +649,27 @@ test('R104 reconciles broad competitor denials in overview, products, and risks 
   assert.equal(result[3]!.markdown, sections[3]!.markdown)
 })
 
+test('competitor cross-reference replacement removes orphaned Chinese connectives from generated prose', () => {
+  const candidate: CompanyResearchMethodResult = {
+    skillId: 'competitive_market_map', status: 'complete', attempts: 1,
+    answer: '中际旭创是高速光互连的具名候选。', markdown: '已识别中际旭创产品路线。',
+    sections: [{ id: 'competition', markdown: '中际旭创是已识别候选。' }],
+    findings: [{ text: '中际旭创披露高速光互连产品路线，是具名候选；实际竞争关系未证实。', kind: 'fact', evidence: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:26' }] }],
+    sourceCandidateIds: ['public-web-peer'], limitations: [], risks: [], diagnostics: [],
+    executionEvidence: [{ sourceCandidateId: 'public-web-peer', title: '竞品产品资料', publisher: '公开资料', excerpts: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:26', text: '中际旭创披露高速光互连产品路线。' }] }],
+  }
+  const sections = [
+    { id: 'products', markdown: '产品规模可能支持成本改善；现有材料没有具名竞品。' },
+    { id: 'technologies', markdown: '竞争压力仍待核实，就没有具名竞品资料可供比对。' },
+  ]
+  const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
+  for (const section of result) {
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/u)
+    assert.doesNotMatch(section.markdown, /(?:现有|就)[；，,]\s*具名候选/u)
+    assert.doesNotMatch(section.markdown, /中际旭创披露高速光互连产品路线/u)
+  }
+})
+
 test('cross-method reconciliation catches the compact phrase no comparable competitor', () => {
   const candidate: CompanyResearchMethodResult = {
     skillId: 'competitive_market_map', status: 'complete', attempts: 1,
