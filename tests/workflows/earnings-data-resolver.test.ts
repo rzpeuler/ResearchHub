@@ -79,6 +79,32 @@ test('wrong-year THS estimates do not suppress exact-FY EastMoney fallback', asy
   assert.ok(result.value?.kind === 'expectation' && result.value.projection.estimates.every((item) => item.fiscalPeriod === '2026-FY'))
 })
 
+test('Company Research collects both existing EPS provider observations through its Data policy', async () => {
+  const calls: string[] = []
+  const resolver = createEarningsDataResolver({ company, fiscalYear: 2026, period: 'FY', asOf, now, acquisitionPlugins: [], akshare: akshare({
+    profitForecastThs: async () => { calls.push('THS'); return [
+      { 机构名称: 'THS House A', 预测年报每股收益2026预测: 4, 报告日期: '2026-09-01' },
+      { 机构名称: 'THS House B', 预测年报每股收益2026预测: 5, 报告日期: '2026-09-02' },
+    ] },
+    researchReportEm: async () => { calls.push('EastMoney'); return [
+      { 股票代码: '600519', 股票简称: 'Fixture Company', 报告名称: 'House A research', 机构: 'THS House A', '2026-盈利预测-收益': 4.2, 日期: '2026-09-03', 报告PDF链接: 'https://example.test/a.pdf' },
+      { 股票代码: '600519', 股票简称: 'Fixture Company', 报告名称: 'House C research', 机构: 'EastMoney House C', '2026-盈利预测-收益': 6, 日期: '2026-09-04', 报告PDF链接: 'https://example.test/c.pdf' },
+    ] },
+  }) })
+  const epsRequirement = materializePhase2CommonRequirement('earnings_expectation_eps', {
+    workflowId: 'company-deep-research', ticker: company.symbol, companyId: company.name, asOf,
+    period: { fiscalYear: 2026, fiscalPeriod: '2026-FY' }, required: false,
+  })
+  const result = await resolver.resolveOne(epsRequirement)
+  assert.deepEqual(calls, ['THS', 'EastMoney'])
+  assert.equal(result.status, 'AVAILABLE')
+  assert.equal(result.acquisition.observations?.length, 2)
+  assert.deepEqual(result.acquisition.observations?.map(observation => observation.source.sourceId), [
+    'ths-institution-forecast', 'eastmoney-individual-research-report',
+  ])
+  assert.deepEqual(result.acquisition.observations?.map(observation => observation.data.kind), ['expectation', 'expectation'])
+})
+
 test('official filing uses Data policy while Earnings owns exact-period correction selection', async () => {
   const candidates = [
     { candidateId: 'summary', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告摘要', provider: 'cninfo', publishedAt: '2026-08-30T00:00:00.000Z' },

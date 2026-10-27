@@ -24,7 +24,31 @@ export interface CompanyResearchQuality {
   readonly issues: readonly string[]
   readonly sectionChecks: readonly { readonly sectionId: string; readonly core: boolean; readonly passed: boolean; readonly reasons: readonly string[] }[]
 }
-export const COMPANY_CORE_SECTION_IDS = ['company-overview', 'business-model', 'business-segments', 'revenue-profit-drivers', 'products', 'technologies', 'industry-exposure', 'supply-chain', 'competition', 'financial-quality', 'growth-drivers', 'management-capital-allocation', 'catalysts', 'risks', 'investment-thesis', 'monitoring-checklist'] as const
+export const COMPANY_WORKFLOW_SECTION_IDS = ['valuation', 'bull-base-bear', 'variant-perception'] as const
+export const COMPANY_SYNTHESIS_SECTION_IDS = ['investment-thesis', 'monitoring-checklist'] as const
+export const COMPANY_CORE_SECTION_IDS = ['company-overview', 'business-model', 'business-segments', 'revenue-profit-drivers', 'products', 'technologies', 'industry-exposure', 'supply-chain', 'competition', 'financial-quality', 'growth-drivers', 'management-capital-allocation', 'catalysts', 'risks', ...COMPANY_WORKFLOW_SECTION_IDS, ...COMPANY_SYNTHESIS_SECTION_IDS] as const
+export type CompanyCoreSectionId = typeof COMPANY_CORE_SECTION_IDS[number]
+export const COMPANY_SECTION_OWNER_KIND = {
+  'company-overview': 'method',
+  'business-model': 'method',
+  'business-segments': 'method',
+  'revenue-profit-drivers': 'method',
+  products: 'method',
+  technologies: 'method',
+  'industry-exposure': 'method',
+  'supply-chain': 'method',
+  competition: 'method',
+  'financial-quality': 'method',
+  'growth-drivers': 'method',
+  'management-capital-allocation': 'method',
+  catalysts: 'method',
+  risks: 'method',
+  valuation: 'workflow_deterministic',
+  'bull-base-bear': 'workflow_deterministic',
+  'variant-perception': 'workflow_deterministic',
+  'investment-thesis': 'workflow_synthesis',
+  'monitoring-checklist': 'workflow_synthesis',
+} as const satisfies Readonly<Record<CompanyCoreSectionId, 'method' | 'workflow_deterministic' | 'workflow_synthesis'>>
 const gap = /^(?:Research gap:|Market data gap:|研究缺口[：:]|数据缺口[：:]|证据不足[：:]|no bounded evidence was supplied|无可用证据|未获取到.*(?:证据|资料))/i
 
 /** Fingerprint only the exact, still-resolvable evidence cited by a synthesis. */
@@ -3560,7 +3584,7 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
   const sectionChecks = COMPANY_CORE_SECTION_IDS.map((id) => {
     const section = byId.get(id)
     const reasons: string[] = []
-    for (const method of input.methodResults ?? []) if (COMPANY_METHOD_SECTION_IDS[method.skillId].includes(id) && method.status !== 'complete') reasons.push(`OWNER_METHOD_NOT_COMPLETED:${method.skillId}`)
+    for (const method of input.methodResults ?? []) if (COMPANY_SECTION_OWNER_KIND[id] === 'method' && COMPANY_METHOD_SECTION_IDS[method.skillId].includes(id) && method.status !== 'complete') reasons.push(`OWNER_METHOD_NOT_COMPLETED:${method.skillId}`)
     if (!section) reasons.push('MISSING_SECTION')
     else {
       const text = section.markdown.trim()
@@ -3612,6 +3636,17 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
           && /(?:因此|故|影响|限制|不能|无法判断)/.test(analysisBody)
           && /\[[^\]\s]+@paragraph:\d+\]/.test(analysisBody)
         if (!(peerComparison || boundedResearch || citedPeerMatrix)) reasons.push('INSUFFICIENT_COMPETITIVE_ANALYSIS')
+      }
+      if (COMPANY_WORKFLOW_SECTION_IDS.includes(id as typeof COMPANY_WORKFLOW_SECTION_IDS[number])) {
+        const locatedCitations = [...analysisBody.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map((match) => match[1]!)
+        if (!locatedCitations.length) reasons.push('WORKFLOW_SECTION_NO_LOCATED_EVIDENCE')
+        if (id === 'valuation' && !/(?:PE|PB|EV\/|DCF|倍数|每股价值|估值)/i.test(analysisBody)) reasons.push('VALUATION_METHOD_NOT_IDENTIFIED')
+        if (id === 'valuation' && !/(?:=|＝|÷|×|\*|\/|除以|乘以)/.test(analysisBody)) reasons.push('VALUATION_RECALCULATION_NOT_SHOWN')
+        if (id === 'bull-base-bear') {
+          if (!/(?:Bear|悲观)/i.test(analysisBody) || !/(?:Base|基准)/i.test(analysisBody) || !/(?:Bull|乐观)/i.test(analysisBody)) reasons.push('SCENARIO_SET_INCOMPLETE')
+          if (!/(?:敏感|Sensitivity|公式|计算|×|÷|=|＝)/i.test(analysisBody)) reasons.push('SCENARIO_CALCULATION_OR_SENSITIVITY_MISSING')
+        }
+        if (id === 'variant-perception' && new Set(locatedCitations.map((citation) => citation.slice(0, citation.indexOf('@')))).size < 2) reasons.push('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES')
       }
       const normalized = text.replace(/\s+/g, ' ')
       if (normalized && seen.has(normalized)) reasons.push(`DUPLICATE_CONTENT:${seen.get(normalized)}`)

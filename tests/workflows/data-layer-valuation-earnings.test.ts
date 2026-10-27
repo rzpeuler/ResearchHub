@@ -195,13 +195,24 @@ test('Common identities cover only current Valuation and Earnings evidence famil
   for (const metric of ['revenue', 'net_profit', 'gross_margin', 'operating_cash_flow', 'eps']) assert.equal(byId.get(`earnings_actual_${metric}`), 'metric')
 })
 
+test('Company Research EPS collects both existing surfaces while Earnings Review remains first-valid', () => {
+  const review = PHASE2_COMMON_SOURCE_POLICIES.find(policy => policy.requirementMatch.workflow === 'earnings-review' && policy.requirementMatch.metricId === 'earnings_expectation_eps')
+  const company = PHASE2_COMMON_SOURCE_POLICIES.find(policy => policy.requirementMatch.workflow === 'company-deep-research' && policy.requirementMatch.metricId === 'earnings_expectation_eps')
+  assert.equal(review?.selectionMode, 'FIRST_VALID')
+  assert.equal(company?.selectionMode, 'COLLECT_DIVERSE')
+  assert.deepEqual(company?.candidates.map(candidate => candidate.operationId), [
+    'akshare.stock_profit_forecast_ths', 'akshare.stock_research_report_em',
+  ])
+})
+
 test('all Phase 2 Common policies are exact, executable route definitions', () => {
   const byId = new Map(COMMON_DATA_CATALOG.map((entry) => [entry.metricId, entry]))
   assert.equal(new Set(PHASE2_COMMON_SOURCE_POLICIES.map((item) => item.policyId)).size, PHASE2_COMMON_SOURCE_POLICIES.length)
   for (const sourcePolicy of PHASE2_COMMON_SOURCE_POLICIES) {
     const metricId = sourcePolicy.requirementMatch.metricId
     assert.ok(metricId && byId.has(metricId))
-    assert.equal(sourcePolicy.selectionMode, 'FIRST_VALID')
+    const expectedSelection = sourcePolicy.requirementMatch.workflow === 'company-deep-research' && metricId === 'earnings_expectation_eps' ? 'COLLECT_DIVERSE' : 'FIRST_VALID'
+    assert.equal(sourcePolicy.selectionMode, expectedSelection)
     assert.ok(sourcePolicy.candidates.length > 0)
     assert.ok(sourcePolicy.candidates.every((candidate) => candidate.operationId.length > 0 && candidate.supports.metricIds?.includes(metricId)))
     const definition = byId.get(metricId)!
@@ -263,8 +274,11 @@ test('Company Research can materialize existing valuation and expectation metric
     assert.equal(requirement.consumer.workflow, 'company-deep-research', item.metricId)
     assert.equal(requirement.consumer.capability, legacyPolicy?.requirementMatch.capability, item.metricId)
     assert.equal(companyPolicy?.requirementMatch.workflow, 'company-deep-research', item.metricId)
-    assert.equal(companyPolicy?.selectionMode, 'FIRST_VALID', item.metricId)
-    assert.deepEqual(companyPolicy?.candidates, legacyPolicy?.candidates, item.metricId)
+    assert.equal(companyPolicy?.selectionMode, item.metricId === 'earnings_expectation_eps' ? 'COLLECT_DIVERSE' : 'FIRST_VALID', item.metricId)
+    const expectedCandidates = item.metricId === 'earnings_expectation_eps'
+      ? legacyPolicy?.candidates.filter(candidate => candidate.operationId !== 'legacy.eastmoneyResearchReport')
+      : legacyPolicy?.candidates
+    assert.deepEqual(companyPolicy?.candidates, expectedCandidates, item.metricId)
     const wrongWorkflow = item.legacyWorkflow === 'valuation' ? 'earnings-review' : 'valuation'
     assert.throws(() => materializePhase2CommonRequirement(item.metricId, {
       workflowId: wrongWorkflow, ticker: '600001', companyId: 'Example Corp', asOf: cutoff,

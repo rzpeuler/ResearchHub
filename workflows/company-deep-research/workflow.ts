@@ -14,10 +14,8 @@ import { sourceWithDataEvidenceProvenance } from '../../data/research-evidence.t
 import type { DataResolver, ResolvedDataBundle, ResolvedDataItem } from '../../data/resolver.ts'
 import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
-import type { CompanyDeepResearchInput, CompanyDeepResearchResult } from './contracts.ts'
+import type { CompanyDeepResearchInput, CompanyDeepResearchResult, CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { ValuationPeerRequirement } from '../../plugins/research-acquisition/valuation-data.ts'
-import type { ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
-import type { EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import { runResearchQualityGate } from '../research-quality-gate.ts'
 import { calculateCompanyIndustryExposureBridge, renderCompanyIndustryExposureBridge } from './industry-exposure-bridge.ts'
 import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD_METHODOLOGY, executeCompanyResearchMethod, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
@@ -28,18 +26,9 @@ import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareC
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
 import { reviewCompanyResearchSemantics, type CompanySemanticQuality } from './semantic-quality.ts'
+import { buildCompanyValuationSections } from './valuation-sections.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-interface CompanyReadOnlyAcquisition {
-  readonly expectationTargetFiscalYear: number
-  readonly valuationBasisFiscalYear: number
-  readonly valuationRequirements: readonly DataRequirement[]
-  readonly valuationItems: readonly ResolvedDataItem<ValuationDataPayload>[]
-  readonly earningsExpectationRequirements: readonly DataRequirement[]
-  readonly earningsExpectationItems: readonly ResolvedDataItem<EarningsDataPayload>[]
-  readonly valuationError?: string
-  readonly earningsExpectationError?: string
-}
 interface ReadOnlyResolverAttempt<T> {
   readonly bundle?: ResolvedDataBundle<T>
   readonly error?: string
@@ -541,9 +530,6 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     }
     const now = input.now ?? (() => new Date().toISOString())
     const asOf = input.asOf ?? now()
-    const readOnlyAcquisition = await acquireCompanyReadOnlyData(input, company, asOf, now)
-    // Kept in local typed form for internal research assembly; never returned through the service result.
-    void readOnlyAcquisition
     await input.observations?.startStage('data_acquisition', '数据获取')
     const acquisitionBudgetLimitMs = 10 * 60_000
     let acquisitionRemainingMs = acquisitionBudgetLimitMs
@@ -551,6 +537,31 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const startedAt = Date.now()
       try { return await acquire(input,company,asOf,startedAt+acquisitionRemainingMs,terms,previous) }
       finally { acquisitionRemainingMs=Math.max(0,acquisitionRemainingMs-Math.max(0,Date.now()-startedAt)) }
+    }
+    let readOnlyAcquisition: CompanyReadOnlyAcquisition | undefined
+    let readOnlyAcquisitionTimeout = false
+    if (acquisitionRemainingMs > 0 && (input.valuationDataResolverFactory || input.earningsDataResolverFactory)) {
+      const startedAt = Date.now()
+      const controller = new AbortController()
+      const availableMs = acquisitionRemainingMs
+      const signal = input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new Error('COMPANY_READ_ONLY_ACQUISITION_BUDGET_EXHAUSTED'))
+          reject(new Error('COMPANY_READ_ONLY_ACQUISITION_BUDGET_EXHAUSTED'))
+        }, availableMs)
+      })
+      try {
+        readOnlyAcquisition = await Promise.race([acquireCompanyReadOnlyData({ ...input, signal }, company, asOf, now), timeout])
+      } catch (error) {
+        if (input.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+        readOnlyAcquisitionTimeout = String(error instanceof Error ? error.message : error).includes('BUDGET_EXHAUSTED')
+        readOnlyAcquisition = undefined
+      } finally {
+        if (timer) clearTimeout(timer)
+        acquisitionRemainingMs = Math.max(0, acquisitionRemainingMs - Math.max(0, Date.now() - startedAt))
+      }
     }
     // Acquire the target's filings before any semantic method. Peer reports are
     // also useful for competition, but must not displace the target's annual
@@ -619,7 +630,37 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       }
     }
     abortIfNeeded(input.signal)
-    await input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源` })
+    const valuationBuild = buildCompanyValuationSections({ company: { symbol: company.symbol, name: company.name ?? company.symbol }, asOf, acquisition: readOnlyAcquisition, sources: acquired.sources })
+    const valuationAcquisitionDiagnostics = [...new Set([
+      ...(readOnlyAcquisitionTimeout ? ['COMPANY_READ_ONLY_ACQUISITION_BUDGET_EXHAUSTED'] : []),
+      ...(readOnlyAcquisition?.valuationError ? [`VALUATION_RESOLVER_ERROR:${readOnlyAcquisition.valuationError}`] : []),
+      ...(readOnlyAcquisition?.earningsExpectationError ? [`EARNINGS_EXPECTATION_RESOLVER_ERROR:${readOnlyAcquisition.earningsExpectationError}`] : []),
+      ...(readOnlyAcquisition?.valuationItems.filter(item => item.status !== 'AVAILABLE').map(item => `VALUATION_ITEM_${item.metricId}_${item.status}`) ?? []),
+      ...(readOnlyAcquisition?.earningsExpectationItems.filter(item => item.status !== 'AVAILABLE').map(item => `EXPECTATION_ITEM_${item.metricId}_${item.status}`) ?? []),
+      ...(readOnlyAcquisition?.valuationItems.flatMap(item => item.attempts.map(attempt => `VALUATION_ROUTE_${item.metricId}_${attempt.sourceId}_${attempt.status}${attempt.diagnostic ? `:${attempt.diagnostic.slice(0, 180)}` : ''}`)) ?? []),
+      ...(readOnlyAcquisition?.earningsExpectationItems.flatMap(item => item.attempts.map(attempt => `EXPECTATION_ROUTE_${item.metricId}_${attempt.sourceId}_${attempt.status}${attempt.diagnostic ? `:${attempt.diagnostic.slice(0, 180)}` : ''}`)) ?? []),
+      ...valuationBuild.diagnostics,
+    ])]
+    const knownSources = new Map(acquired.sources.map(source => [source.candidate.candidateId, source]))
+    const valuationSourceConflicts = new Set<string>()
+    for (const source of valuationBuild.evidenceSources) {
+      const prior = knownSources.get(source.candidate.candidateId)
+      if (prior && prior.contentHash !== source.contentHash) {
+        valuationSourceConflicts.add(source.candidate.candidateId)
+        continue
+      }
+      knownSources.set(source.candidate.candidateId, source)
+    }
+    let valuationSections = valuationBuild.sections
+    if (valuationSourceConflicts.size) {
+      const unavailable = new Set(valuationSourceConflicts)
+      valuationSections = valuationSections.map(section => section.sourceCandidateIds.some(id => unavailable.has(id))
+        ? { ...section, markdown: `研究缺口：${section.title} 的只读数据来源 ID 与已有证据发生内容冲突。影响：该节不提供估值或预期差结论。`, sourceCandidateIds: [] }
+        : section)
+      valuationAcquisitionDiagnostics.push(...[...valuationSourceConflicts].map(id => `VALUATION_SOURCE_CONTENT_CONFLICT:${id}`))
+    }
+    acquired = { ...acquired, sources: [...knownSources.values()] }
+    await input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源；只读估值诊断 ${valuationAcquisitionDiagnostics.length} 项` })
     const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry())
     const existingKnowledgeProjection = input.useStructuredKnowledge === false ? [] : await gateway.projectExistingKnowledge(input.handle, company)
     await input.observations?.startStage('research_synthesis', '研究综合分析')
@@ -676,6 +717,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
         now,
         remainingSynthesisAttempts,
         { conflictedSourceCandidateIds: sourceConflicts.map(conflict => conflict.candidateId) },
+        valuationSections,
       )
       const normalizedSections = assembled.sections.map(section => {
         const repaired = repairCompanyResearchMarkdownTables(section.markdown)
@@ -770,7 +812,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     }
     for (let round = 0; round <= 2; round++) {
       abortIfNeeded(input.signal)
-      const reportSourceCandidateIds = [...new Set([...acquired.durableSourceCandidateIds, ...(input.asOf === undefined ? acquired.sources.filter(source => source.candidate.provider === 'public-web' && source.content.trim().length >= 120).map(source => source.candidate.candidateId) : [])])]
+      const reportSourceCandidateIds = [...new Set([...acquired.durableSourceCandidateIds, ...valuationBuild.reportSourceCandidateIds.filter(id => !valuationSourceConflicts.has(id)), ...(input.asOf === undefined ? acquired.sources.filter(source => source.candidate.provider === 'public-web' && source.content.trim().length >= 120).map(source => source.candidate.candidateId) : [])])]
       researchInput = { ...researchInput, sources: acquired.sources, durableSourceCandidateIds: acquired.durableSourceCandidateIds, reportSourceCandidateIds }
       researchInput = { ...researchInput, preparedAnalysis: {financial:prepareCompanyFinancialAnalysis(researchInput),...(marketSizing ? {marketSizing} : {})} }
       if (round === 0 && input.reasoningExecutor) {
@@ -991,7 +1033,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     if (acquisitionRemainingMs <= 0) contentQuality = {...contentQuality,passed:false,status:'incomplete',issues:[...contentQuality.issues,'ACQUISITION_BUDGET_EXHAUSTED']}
     const methodExecutions = methodResults.map(method => ({skillId:method.skillId,status:method.status,attempts:method.attempts,summary:method.answer.slice(0,300),...(method.diagnostics.at(-1)?{errorCode:method.diagnostics.at(-1)!.code}:{})}))
     await mkdir(resolve(input.reportRoot), {recursive:true})
-    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisSnapshotStatus,synthesisSnapshotEvidenceFingerprint,synthesisCurrentEvidenceFingerprint,synthesisSnapshotEvidenceAudit,synthesisAttemptOutputs,synthesisAttempts,reviewAttempts,reviewRounds,qualityReviewHistory,tableRepairs:tableRepairRecords,tableRepairDiagnostics,tableDiagnostics:{methodSections:synthesisTableDiagnostics,finalReport:tableDiagnostics},acquisitionBudget:{limitMs:acquisitionBudgetLimitMs,spentMs:acquisitionBudgetLimitMs-acquisitionRemainingMs,remainingMs:acquisitionRemainingMs},sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
+    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisSnapshotStatus,synthesisSnapshotEvidenceFingerprint,synthesisCurrentEvidenceFingerprint,synthesisSnapshotEvidenceAudit,synthesisAttemptOutputs,synthesisAttempts,reviewAttempts,reviewRounds,qualityReviewHistory,tableRepairs:tableRepairRecords,tableRepairDiagnostics,tableDiagnostics:{methodSections:synthesisTableDiagnostics,finalReport:tableDiagnostics},acquisitionBudget:{limitMs:acquisitionBudgetLimitMs,spentMs:acquisitionBudgetLimitMs-acquisitionRemainingMs,remainingMs:acquisitionRemainingMs},valuationAcquisition:{diagnostics:valuationAcquisitionDiagnostics,expectationTargetFiscalYear:readOnlyAcquisition?.expectationTargetFiscalYear,valuationBasisFiscalYear:readOnlyAcquisition?.valuationBasisFiscalYear,valuationRequirements:readOnlyAcquisition?.valuationRequirements,valuationItems:readOnlyAcquisition?.valuationItems.map(item=>({metricId:item.metricId,status:item.status,quality:item.quality,attempts:item.attempts})),earningsExpectationRequirements:readOnlyAcquisition?.earningsExpectationRequirements,earningsExpectationItems:readOnlyAcquisition?.earningsExpectationItems.map(item=>({metricId:item.metricId,status:item.status,quality:item.quality,attempts:item.attempts}))},sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
     const noAcquiredEvidence = acquired.sources.length === 0
     await input.observations?.finishStage('quality_gate', qualityGate.eligibleForGateway && !noAcquiredEvidence && contentQuality.passed ? 'completed' : 'blocked', { summary: contentQuality.passed ? '证据与研究内容质量门已验收' : '公司研究核心内容未完成，未进入 Knowledge Gateway', diagnostics: [...(noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code)),...contentQuality.issues] })
     if (!qualityGate.eligibleForGateway || noAcquiredEvidence || !contentQuality.passed) {

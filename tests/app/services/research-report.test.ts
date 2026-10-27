@@ -17,7 +17,7 @@ test('company report preserves optional quality and evidence locations without c
 
 test('company report accepts two independent review rounds with bounded attempts and rejects excess budget', () => {
   const base: ResearchReport = { reportId: 'review-budget-report', reportType: 'company_research', subjectRefs: ['entity:company-test'], generatedAt: '2026-09-08T00:00:00Z', asOf: '2026-09-08T00:00:00Z', workflowRunId: 'review-budget-run', knowledgeBaseRevision: 0, sourceRefs: [], claimRefs: [], methodology: 'Evidence-bounded research', sections: [{ id: 'company-overview', title: 'Company Overview', markdown: '公司沿革分析。' }], outputPath: 'review-budget-report.md' }
-  const sectionChecks = Array.from({ length: 16 }, (_, index) => ({ sectionId: `section-${index}`, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: [] }))
+  const sectionChecks = Array.from({ length: 19 }, (_, index) => ({ sectionId: `section-${index}`, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: [] }))
   const researchQuality = { ...evaluateCompanyResearchContent({ sections: [] }), semanticReview: { passed: true, status: 'passed' as const, attempts: 3, rounds: 2, sectionChecks, issues: [], diagnostics: [] } }
   assert.equal(validateResearchReport({ ...base, researchQuality }).researchQuality?.semanticReview?.attempts, 3)
   assert.throws(() => validateResearchReport({ ...base, researchQuality: { ...researchQuality, semanticReview: { ...researchQuality.semanticReview, attempts: 5 } } }), /semantic review is invalid/)

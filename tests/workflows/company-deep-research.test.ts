@@ -53,6 +53,46 @@ test('late employee-plan transfer note is routed into governance method evidence
 
 const runCompanyDeepResearch: typeof executeCompanyDeepResearch = (input) => executeCompanyDeepResearch({ ...input, reasoningExecutor: Object.prototype.hasOwnProperty.call(input, 'reasoningExecutor') ? input.reasoningExecutor : completeResearchExecutor() })
 
+function readOnlyValuationFixtures(asOf: string) {
+  const targetDate = asOf.slice(0, 10)
+  const source = (candidateId: string, provider: string, day: number) => ({
+    candidate: { candidateId, kind: 'structured_data', tier: 3, title: `${provider} FY2026 EPS estimate`, provider, publishedAt: `2026-09-${String(day).padStart(2, '0')}T00:00:00.000Z` },
+    title: `${provider} EPS estimate`, content: JSON.stringify({ candidateId }), contentHash: createHash('sha256').update(candidateId).digest('hex'), retrievedAt: asOf,
+    publisher: provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
+  })
+  const thsSources = [source('fixture-ths-a', 'Tonghuashun', 1), source('fixture-ths-b', 'Tonghuashun', 2)]
+  const emSources = [source('fixture-em-a', 'EastMoney', 1), source('fixture-em-b', 'EastMoney', 2)]
+  const projection = (sources: readonly any[], prefix: string, institutions: readonly string[], values: readonly number[]) => ({
+    sources,
+    institutions: institutions.map(name => ({ institutionKey: `${prefix}:${name}`, name, providerCode: name })),
+    estimates: institutions.map((name, index) => ({ estimateId: `${prefix}-${index}`, metric: 'eps', fiscalPeriod: '2026-FY', value: values[index], unit: 'CNY_per_share', institutionKey: `${prefix}:${name}`, publishedAt: sources[index]!.candidate.publishedAt, sourceCandidateIds: [sources[index]!.candidate.candidateId] })),
+  })
+  const ths = projection(thsSources, 'ths-org', ['Fixture THS A', 'Fixture THS B'], [4, 5])
+  const eastmoney = projection(emSources, 'eastmoney-org', ['Fixture EM A', 'Fixture EM B'], [4.5, 5.5])
+  return {
+    valuationDataResolverFactory: () => ({ resolve: async (requirements: readonly any[]) => ({
+      completeness: 'COMPLETE', requiredUnresolved: [], optionalUnresolved: [],
+      items: requirements.map(requirement => ({
+        requirementId: requirement.id, metricId: requirement.metricId, status: 'AVAILABLE', required: false,
+        quality: { pointInTimeSafe: true, valueVersionStatus: 'UNVERIFIED' }, attempts: [{ sourceId: 'fixture-market', status: 'SUCCESS' }],
+        value: requirement.metricId === 'valuation_market_price' ? { kind: 'market', observation: { priceDate: targetDate, close: 100 }, originPublisher: 'Fixture Exchange', retrievalProvider: 'fixture', sourceUrl: 'https://example.test/market', sourceId: 'fixture-market', retrievedAt: asOf } : undefined,
+        acquisition: { observations: [] },
+      })),
+    }) } as any),
+    earningsDataResolverFactory: () => ({ resolve: async (requirements: readonly any[]) => ({
+      completeness: 'COMPLETE', requiredUnresolved: [], optionalUnresolved: [],
+      items: requirements.map(requirement => ({
+        requirementId: requirement.id, metricId: requirement.metricId, status: 'AVAILABLE', required: false,
+        quality: { pointInTimeSafe: true, valueVersionStatus: 'UNVERIFIED' }, attempts: [
+          { sourceId: 'ths-institution-forecast', status: 'SUCCESS' }, { sourceId: 'eastmoney-individual-research-report', status: 'SUCCESS' },
+        ],
+        value: requirement.metricId === 'earnings_expectation_eps' ? { kind: 'expectation', projection: ths } : undefined,
+        acquisition: { observations: requirement.metricId === 'earnings_expectation_eps' ? [{ data: { kind: 'expectation', projection: eastmoney }, source: { sourceId: 'eastmoney-individual-research-report', valueVersion: { status: 'UNVERIFIED', reason: 'Fixture has no historical value revision proof' } } }] : [] },
+      })),
+    }) } as any),
+  }
+}
+
 test('initial company research acquisition prioritizes target filings and business evidence before peer searches', () => {
   const terms = initialCompanyResearchSearchTerms({ symbol: '002594', name: '比亚迪' })
   assert.deepEqual(terms.slice(0, 4), ['比亚迪 年报 半年报 业绩报告', '比亚迪 主营业务 产品 技术', '比亚迪 行业 市场规模 竞争', '比亚迪 管理层 战略 投资者关系'])
@@ -184,7 +224,7 @@ test('a transient CNINFO failure is retried before semantic methods consume thei
       discover: async () => { discoveries++; return [candidate] },
       fetch: async (found) => {
         if (discoveries === 1) throw new Error('HTTP 504')
-        return { candidate: found, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'Fixture Company 2025年度报告：主营业务稳定，产品覆盖多个细分市场。', contentHash: 'd'.repeat(64) }
+        return { candidate: found, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'Fixture Company 2025年度报告：\n基本每股收益 3.58\n主营业务稳定，产品覆盖多个细分市场。', contentHash: 'd'.repeat(64) }
       },
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url!, publisher: 'Fixture Exchange', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
@@ -197,7 +237,8 @@ test('a transient CNINFO failure is retried before semantic methods consume thei
       }
       return delegate.execute(request, signal)
     } }
-    const result = await runCompanyDeepResearch({ workflowRunId: 'company-primary-report-retry', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: options => createCompanyResearchDataResolver({ ...options, officialDisclosure: official }), reportRoot: reports, asOf: '2026-09-08T00:00:00.000Z', now: () => '2026-09-08T00:00:00.000Z', writeKnowledge: false, useStructuredKnowledge: false, reasoningExecutor })
+    const asOf = '2026-09-08T00:00:00.000Z'
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-primary-report-retry', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: options => createCompanyResearchDataResolver({ ...options, officialDisclosure: official }), ...readOnlyValuationFixtures(asOf), reportRoot: reports, asOf, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false, reasoningExecutor })
     assert.ok(discoveries >= 2, 'expected one bounded pre-method CNINFO retry')
     assert.ok(observed.includes('official-primary-retry'), 'official report must be available to methods before semantic calls')
     assert.equal(result.status, 'completed')
@@ -236,20 +277,21 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-reports-'))
   try {
-    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-test', now: '2026-09-08T00:00:00.000Z' })
+    const asOf = '2026-09-08T00:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-test', now: asOf })
     await seedCanonicalCompany(root, '600519', 'Fixture Company')
     const handle = await new KnowledgeBaseRegistry().mount(root)
     const signals: ResearchSignal[] = []
     const signalStore: ResearchSignalStore = { append: async (signal) => { signals.push(signal) }, listForCompany: async () => signals }
-    let content = 'The company reported stable revenue and profit.'
+    let content = '2025年年度报告\n基本每股收益 3.58\nThe company reported stable revenue and profit.'
     const plugin: ResearchAcquisitionPlugin = {
       name: 'fixture-official',
-      discover: async () => [{ candidateId: 'official-1', kind: 'official_disclosure', tier: 1, title: 'Fixture filing', url: 'https://example.com/filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
+      discover: async () => [{ candidateId: 'official-1', kind: 'official_disclosure', tier: 1, title: 'Fixture Company 2025年年度报告', url: 'https://example.com/filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
       fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content, contentHash: content.includes('improved') ? 'c'.repeat(64) : 'b'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const semanticCalls: string[] = []
-    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z', reasoningExecutor: completeResearchExecutor(semanticCalls) }
+    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), ...readOnlyValuationFixtures(asOf), signalStore, reportRoot: reports, now: () => asOf, reasoningExecutor: completeResearchExecutor(semanticCalls) }
     const workflowService = new WorkflowService()
     workflowService.register({ runId: input.workflowRunId, workflowType: 'company_research', objective: 'Company research 600519' })
     const result = await workflowService.start(input.workflowRunId, (signal) => runCompanyDeepResearch({ ...input, signal, observations: workflowService.observationReporter(input.workflowRunId) }))
@@ -283,12 +325,12 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       publishedAt: '2026-09-07T00:00:00.000Z',
       dateStatus: 'QUALIFIED', pointInTimeSafe: true,
     })
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 10)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 9)
     assert.equal(result.knowledgeBaseRevision, 2)
     assert.equal((loaded.objects.find((item) => item.value.id === 'entity:company-600519')?.value as { name?: string } | undefined)?.name, 'Fixture Company')
     assert.deepEqual(result.committedIds, [...result.createdIds, ...result.updatedIds])
 
-    content = 'The company reported improved revenue and profit.'
+    content = '2025年年度报告\n基本每股收益 3.58\nThe company reported improved revenue and profit.'
     const replay = await runCompanyDeepResearch({ ...input, workflowRunId: 'company-run-2', handle: await new KnowledgeBaseRegistry().mount(root) })
     assert.equal(replay.status, 'completed')
     assert.equal(replay.knowledgeBaseRevision, 3)
@@ -338,15 +380,15 @@ test('Verified identity permits first Company Research through DataResolver with
       name: 'fixture-official',
       discover: async ({ company }) => {
         if (company) seen.push(company)
-        return [{ candidateId: 'first-research-filing', kind: 'official_disclosure', tier: 1, title: 'Fixture filing', url: 'https://example.com/first-research-filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }]
+        return [{ candidateId: 'first-research-filing', kind: 'official_disclosure', tier: 1, title: 'Fixture Company 2025年年度报告', url: 'https://example.com/first-research-filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }]
       },
-      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: 'The issuer disclosed its operating results for the period.', contentHash: 'e'.repeat(64) }),
+      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: '2025年年度报告\n基本每股收益 3.58\nThe issuer disclosed its operating results for the period.', contentHash: 'e'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const securityIdentity: VerifiedSecurityIdentity = { symbol: '600519', exchange: 'SH', verifiedName: 'Fixture Company', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: asOf, sourceId: 'akshare-security-identity-directory', sourceUrl: 'https://github.com/akfamily/akshare' }
     const handle = await new KnowledgeBaseRegistry().mount(root)
     const before = await snapshotKnowledgeTree(root)
-    const result = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-readonly', handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false })
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-readonly', handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), ...readOnlyValuationFixtures(asOf), reportRoot: reports, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false })
     assert.equal(result.status, 'completed', result.errors.join('; '))
     assert.deepEqual(seen, Array.from({ length: 2 }, () => ({ symbol: '600519', name: 'Fixture Company', exchange: 'SH' })), 'Profile fallback and evidence collection receive the same verified company')
     assert.ok(result.research?.sourceCandidateIds.includes('first-research-filing'))
@@ -367,7 +409,7 @@ test('Verified identity permits first Company Research through DataResolver with
     assert.equal(assets.objects.filter((item) => item.kind === 'entity' || item.kind === 'source' || item.kind === 'claim').length, 0)
     assert.deepEqual(await snapshotKnowledgeTree(root), before)
     const noWriteBefore = await snapshotKnowledgeTree(root)
-    const writeRequested = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-write-request', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => asOf, writeKnowledge: true, useStructuredKnowledge: false })
+    const writeRequested = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-write-request', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), ...readOnlyValuationFixtures(asOf), reportRoot: reports, now: () => asOf, writeKnowledge: true, useStructuredKnowledge: false })
     assert.equal(writeRequested.status, 'completed', writeRequested.errors.join('; '))
     assert.ok(writeRequested.sourceIds.length > 0)
     assert.ok(writeRequested.claimIds.length > 0)
@@ -465,12 +507,12 @@ test('ResearchService verifies an external identity and starts first Company Res
       discover: async ({ company }) => {
         providerCalls.push('discover')
         if (company) seen.push(company)
-        return [{ candidateId: 'service-first-research-filing', kind: 'official_disclosure', tier: 1, title: 'Fixture filing', url: 'https://example.com/service-first-research-filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }]
+        return [{ candidateId: 'service-first-research-filing', kind: 'official_disclosure', tier: 1, title: 'Fixture Company 2025年年度报告', url: 'https://example.com/service-first-research-filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }]
       },
-      fetch: async (candidate) => { providerCalls.push('fetch'); return { candidate, retrievedAt: asOf, content: 'The issuer disclosed its operating results for the period.', contentHash: 'f'.repeat(64) } },
+      fetch: async (candidate) => { providerCalls.push('fetch'); return { candidate, retrievedAt: asOf, content: '2025年年度报告\n基本每股收益 3.58\nThe issuer disclosed its operating results for the period.', contentHash: 'f'.repeat(64) } },
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), securityIdentityResolver, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin), akshare: { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [] } })
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), securityIdentityResolver, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin), ...readOnlyValuationFixtures(asOf), akshare: { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [] } })
     const result = await service.startResearchCompany({ workflowRunId: 'company-service-first-research-readonly', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false, useStructuredKnowledge: false }).completion
     assert.equal(result.status, 'completed', result.errorSummary)
     assert.equal(directoryCalls.length, 1)
@@ -499,13 +541,15 @@ test('Company Deep Research binds two companies deterministically and is stable 
     await seedCanonicalCompany(root, '000858', 'Company B')
     const plugin: ResearchAcquisitionPlugin = {
       name: 'fixture-official',
-      discover: async (request) => { if (!request.company) return []; return [{ candidateId: `official-${request.company.symbol}`, kind: 'official_disclosure', tier: 1, title: `${request.company.symbol} filing`, url: `https://example.com/${request.company.symbol}`, provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: request.company.symbol } }] },
-      fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: `${candidate.candidateId} reported stable revenue.`, contentHash: candidate.candidateId.includes('600519') ? 'c'.repeat(64) : 'd'.repeat(64) }),
+      discover: async (request) => { if (!request.company) return []; return [{ candidateId: `official-${request.company.symbol}`, kind: 'official_disclosure', tier: 1, title: `${request.company.symbol} 2025年年度报告`, url: `https://example.com/${request.company.symbol}`, provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: request.company.symbol } }] },
+      fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: `${candidate.candidateId} 2025年年度报告\n基本每股收益 3.58\nReported stable revenue.`, contentHash: candidate.candidateId.includes('600519') ? 'c'.repeat(64) : 'd'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const first = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-1', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
-    const second = await runCompanyDeepResearch({ workflowRunId: 'multi-000858-1', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Company B' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
-    const third = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-2', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
+    const asOf = '2026-09-08T00:00:00.000Z'
+    const readOnly = readOnlyValuationFixtures(asOf)
+    const first = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-1', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
+    const second = await runCompanyDeepResearch({ workflowRunId: 'multi-000858-1', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Company B' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
+    const third = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-2', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
     assert.equal(first.status, 'completed', first.errors.join('; '))
     assert.equal(second.status, 'completed', second.errors.join('; '))
     assert.equal(third.status, 'completed', third.errors.join('; '))
@@ -515,7 +559,7 @@ test('Company Deep Research binds two companies deterministically and is stable 
     const loaded = await readCanonicalV04Assets(root)
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('entity:')).length, 2)
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('source:')).length, 2)
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 20)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 18)
     assert.ok(loaded.objects.every((item) => !item.value.id.includes('proposal-')))
     assert.ok(third.resolutionIntents?.some((item) => item.disposition === 'bound_existing'))
   } finally {
@@ -577,6 +621,7 @@ test('Company resolves neutral structured data and keeps signal append between d
       discover: async () => [futureCandidate, { ...futureCandidate, candidateId: 'news-unknown-date', url: 'https://example.com/unknown', publishedAt: undefined }, qualifiedCandidate],
     }
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-data-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], akshare), signalStore, reportRoot: reports, now: () => asOf })
+    assert.equal(result.status, 'blocked', 'current-quantity snapshots cannot replace the required filed EPS and two provider expectation surfaces')
     assert.match(result.research?.sections.find((section) => section.id === 'valuation')?.markdown ?? '', /研究缺口/)
     assert.deepEqual(fetched.sort(), ['news-qualified', 'news-unknown-date', 'official-unknown-date'])
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'), 'unknown-date evidence remains visible as non-PIT-safe context')
@@ -597,9 +642,7 @@ test('Company resolves neutral structured data and keeps signal append between d
     assert.equal(result.qualityGate?.eligibleForGateway, true)
     const canonical = await readCanonicalV04Assets(root)
     const structuredProvenance = canonical.objects.filter((item) => item.kind === 'source').map((item) => (item.value as any).metadata?.dataProvenance).filter((record) => record?.metricId)
-    assert.deepEqual(structuredProvenance.map((record) => record.metricId).sort(), ['company_basic_profile', 'company_financial_history', 'company_market_history'])
-    assert.ok(structuredProvenance.every((record) => record.sourceId && record.originAuthority && record.retrievalProvider === 'AKShare' && record.attempts.length > 0 && record.quality))
-    assert.ok(structuredProvenance.every((record) => record.pointInTimeStatus === 'CURRENT_VALUE_ONLY' && record.qualityStatus === 'CURRENT_VALUE_ONLY' && record.valueVersionStatus === 'UNVERIFIED' && record.valueVersion?.status === 'UNVERIFIED'))
+    assert.deepEqual(structuredProvenance, [], 'blocked quantitative sections prevent Gateway writes for unrelated structured snapshots')
     assert.equal(canonical.objects.some((item) => item.kind === 'source' && 'title' in item.value && item.value.title === 'Official filing'), false, 'unknown-date source must not be written to Knowledge Gateway')
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -652,12 +695,12 @@ test('historical unversioned profile and financial snapshots stay context-only a
     }
     const filing: ResearchAcquisitionPlugin = {
       name: 'fixture-official',
-      discover: async () => [{ candidateId: 'dated-filing', kind: 'official_disclosure', tier: 1, title: 'Dated filing', url: 'https://example.com/dated-filing', provider: 'cninfo', publishedAt: '2026-10-07T12:00:00.000Z' }],
-      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: 'A verified filing.', contentHash: 'a'.repeat(64) }),
+      discover: async () => [{ candidateId: 'dated-filing', kind: 'official_disclosure', tier: 1, title: 'Fixture Company 2025年年度报告', url: 'https://example.com/dated-filing', provider: 'cninfo', publishedAt: '2026-10-07T12:00:00.000Z' }],
+      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: '2025年年度报告\n基本每股收益 3.58\nA verified filing.', contentHash: 'a'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const reasoningExecutor = completeResearchExecutor()
-    const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), reportRoot: reports, asOf, now: () => asOf, reasoningExecutor })
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), ...readOnlyValuationFixtures(asOf), reportRoot: reports, asOf, now: () => asOf, reasoningExecutor })
     assert.equal(result.status, 'completed', result.errors.join('; '))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-basic-600519'))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-financial-600519'))
@@ -810,7 +853,7 @@ test('missing model and exhausted peer method block completion without Knowledge
     const now = '2026-09-08T00:00:00.000Z'
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-method-fail', now })
     await seedCanonicalCompany(root, '600519', 'Fixture Company', now)
-    const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [{ candidateId: '中文年报', kind: 'official_disclosure', tier: 1, title: '年报', url: 'https://example.test/annual.pdf', provider: 'cninfo', publishedAt: now }], fetch: async (candidate) => ({ candidate, retrievedAt: now, content: '公司业务、财务和治理风险披露。', contentHash: '9'.repeat(64) }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }
+    const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [{ candidateId: '中文年报', kind: 'official_disclosure', tier: 1, title: '2025年年度报告', url: 'https://example.test/annual.pdf', provider: 'cninfo', publishedAt: now }], fetch: async (candidate) => ({ candidate, retrievedAt: now, content: '2025年年度报告\n基本每股收益 3.58\n公司业务、财务和治理风险披露。', contentHash: '9'.repeat(64) }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }
     const baseline = await snapshotKnowledgeTree(root)
     const base = { handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => now, writeKnowledge: true }
     const noModel = await runCompanyDeepResearch({ ...base, workflowRunId: 'missing-model', reasoningExecutor: undefined })
@@ -848,14 +891,15 @@ test('missing model and exhausted peer method block completion without Knowledge
     } }
     const retained = await runCompanyDeepResearch({...base,workflowRunId:'review-quota-retain',reasoningExecutor:reviewThenQuotaExecutor})
     assert.equal(retained.status,'blocked')
-    assert.ok(synthesisCalls >= 2,'the bounded synthesis retry must be attempted')
+    assert.equal(synthesisCalls, 1, 'missing quantitative evidence must not consume a synthesis retry')
     const retainedThesis = retained.research?.sections.find((section:any)=>section.id==='investment-thesis')?.markdown ?? ''
-    const retainedMonitoring = retained.research?.sections.find((section:any)=>section.id==='monitoring-checklist')?.markdown ?? ''
     assert.match(retainedThesis,/核心判断|证据支持|研究结论/)
-    assert.match(retainedMonitoring,/跟踪|指标/)
-    assert.match(retainedThesis,/研究未完成/,'Unresolved prior citations must be replaced by an explicit incomplete diagnostic rather than retained as conclusions')
+    for (const sectionId of ['valuation', 'bull-base-bear', 'variant-perception']) {
+      const ownedSection = retained.research?.sections.find((section:any)=>section.id===sectionId)
+      assert.ok(ownedSection?.markdown.includes('研究缺口'), `${sectionId} remains an explicit gap without read-only quantitative inputs`)
+    }
     const retainedAnalysis = JSON.parse(await readFile(join(reports,'company-research-600519-review-quota-retain.analysis.json'),'utf8'))
-    assert.equal(retainedAnalysis.synthesisSnapshotStatus,'not_retained_evidence_changed')
+    assert.ok(retainedAnalysis.valuationAcquisition.diagnostics.some((diagnostic: string) => diagnostic.includes('VALUATION_')))
     assert.equal(retainedAnalysis.contentQuality.passed,false,'retaining structurally validated prose must not override failed semantic review or quota exhaustion')
     assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
     let reviewCalls = 0
@@ -869,10 +913,10 @@ test('missing model and exhausted peer method block completion without Knowledge
     } }
     const budgetBlocked = await runCompanyDeepResearch({...base,workflowRunId:'review-shared-budget',reasoningExecutor:sharedReviewBudgetExecutor})
     assert.equal(budgetBlocked.status,'blocked')
-    assert.equal(reviewCalls,2,'content review has one shared two-call budget across both review rounds')
+    assert.equal(reviewCalls,0,'missing quantitative resolver inputs block before semantic review')
     const budgetAnalysis = JSON.parse(await readFile(join(reports,'company-research-600519-review-shared-budget.analysis.json'),'utf8'))
-    assert.equal(budgetAnalysis.reviewAttempts,2)
-    assert.ok(budgetAnalysis.qualityReviewHistory.some((entry:any)=>entry.review.diagnostics.some((diagnostic:any)=>diagnostic.code==='SEMANTIC_REVIEW_BUDGET_EXHAUSTED')))
+    assert.equal(budgetAnalysis.reviewAttempts,0)
+    assert.ok(budgetAnalysis.valuationAcquisition.diagnostics.some((diagnostic: string) => diagnostic.includes('VALUATION_')))
     assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })

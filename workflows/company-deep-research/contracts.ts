@@ -5,7 +5,7 @@ import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { ResolutionIntentSummary } from '../../knowledge/production/contracts.ts'
 import type { CompanyIndustryExposureInput, IndustryExposureBridgeResult } from './industry-exposure-bridge.ts'
 import type { ResearchQualityGateResult } from '../research-quality-gate.ts'
-import type { DataResolver } from '../../data/resolver.ts'
+import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
 import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
@@ -32,6 +32,18 @@ export interface CompanyDeepResearchEarningsResolverOptions {
   readonly signal?: AbortSignal
 }
 export type CompanyDeepResearchEarningsResolverFactory = (options: CompanyDeepResearchEarningsResolverOptions) => DataResolver<EarningsDataPayload>
+
+/** Workflow-local raw resolver outputs used to build report-owned quantitative sections. */
+export interface CompanyReadOnlyAcquisition {
+  readonly expectationTargetFiscalYear: number
+  readonly valuationBasisFiscalYear: number
+  readonly valuationRequirements: readonly DataRequirement[]
+  readonly valuationItems: readonly ResolvedDataItem<ValuationDataPayload>[]
+  readonly earningsExpectationRequirements: readonly DataRequirement[]
+  readonly earningsExpectationItems: readonly ResolvedDataItem<EarningsDataPayload>[]
+  readonly valuationError?: string
+  readonly earningsExpectationError?: string
+}
 
 
 export interface CompanyDeepResearchResolverOptions {

@@ -2063,7 +2063,7 @@ function reconcileProductSectionCitations(markdown: string, evidence: readonly P
 }
 
 /** Final synthesis assembles conclusions from peer results; it never runs peer Skills. */
-export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2, evidencePolicy: { readonly conflictedSourceCandidateIds?: readonly string[] } = {}): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number; synthesisAttemptOutputs: readonly {attempt:number;output:unknown;allowedCitations:readonly string[]}[]; tableDiagnostics: readonly string[] }> {
+export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2, evidencePolicy: { readonly conflictedSourceCandidateIds?: readonly string[] } = {}, workflowOwnedSections: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }[] = []): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number; synthesisAttemptOutputs: readonly {attempt:number;output:unknown;allowedCitations:readonly string[]}[]; tableDiagnostics: readonly string[] }> {
   if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 2) throw new Error('Invalid synthesis attempt budget')
   const diagnostics: string[] = []
   const sections = COMPANY_RESEARCH_SECTIONS.map(title => {
@@ -2071,6 +2071,18 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     const owners=methods.filter(method=>method.sections.some(section=>section.id===id))
     return {id,title,markdown:owners.map(method=>method.sections.find(section=>section.id===id)!.markdown).join('\n\n') || `研究缺口：${title} 尚未完成。缺失对应方法结果；已尝试本轮配置来源。影响：不能据此作出结论。`,sourceCandidateIds:[...new Set(owners.flatMap(method=>method.sourceCandidateIds))],proposalIds:[] as string[]}
   })
+  const workflowOwnedIds = new Set(['valuation', 'bull-base-bear', 'variant-perception'])
+  if (workflowOwnedSections.some(section => !workflowOwnedIds.has(section.id))
+    || new Set(workflowOwnedSections.map(section => section.id)).size !== workflowOwnedSections.length
+    || workflowOwnedSections.length > 0 && workflowOwnedSections.length !== workflowOwnedIds.size) {
+    throw new Error('Invalid workflow-owned company research section set')
+  }
+  for (const section of workflowOwnedSections) {
+    const target = sections.find(candidate => candidate.id === section.id)
+    if (!target) throw new Error(`Workflow-owned section is not part of the company report: ${section.id}`)
+    target.markdown = section.markdown
+    target.sourceCandidateIds = [...new Set(section.sourceCandidateIds)]
+  }
   const tableDiagnostics = validateCompanyResearchSectionTables(sections)
   const available=methods.filter(method=>method.status==='complete')
   const allowed=new Set(input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? [])

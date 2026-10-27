@@ -1366,7 +1366,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
   if (input.signal?.aborted) return empty('cancelled', 0)
   if (!input.reasoningExecutor || !packets.length) { diagnostics.push({ code: !input.reasoningExecutor ? 'EXECUTOR_UNAVAILABLE' : 'INSUFFICIENT_EVIDENCE', message: !input.reasoningExecutor ? 'No reasoning executor configured' : 'No citation-eligible full-text evidence', attempt: 0 }); return empty('insufficient_evidence', 0) }
   const exampleRef = packets[0]!.excerpts[0]!
-  const explicitCitationInventory = ['competitive_market_map', 'product_technology_analysis'].includes(input.skillId)
+  const explicitCitationInventory = ['business_driver_analysis', 'competitive_market_map', 'product_technology_analysis'].includes(input.skillId)
     ? [...new Set(packets.flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))].sort()
     : undefined
   const citationInventoryInstruction = explicitCitationInventory

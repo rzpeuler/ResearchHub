@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, repairCompanyIndustryExposureRowsFromMethod, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, COMPANY_SECTION_OWNER_KIND, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, repairCompanyIndustryExposureRowsFromMethod, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
 
 test('product analysis carries paired annual category revenue and margin rows, never adjacent industry rows',()=>{
@@ -94,7 +94,13 @@ const sections = () => COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: id 
   ? '公司产品对应服务器PCB细分市场，行业预测显示需求增长；但缺少公司可服务市场边界和份额，因此不能据行业总量推算公司TAM。[annual-report@paragraph:1]'
   : id === 'competition'
     ? '与中际旭创相比，公司披露光模块产品路线和客户类型，但没有同口径成本和份额数据，因此无法判断竞争胜负。[annual-report@paragraph:1]'
-    : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: ['annual-report'] }))
+    : id === 'valuation'
+      ? '截至2026-10-26收盘价为100 CNY/share；FY2025基本EPS为10 CNY/share；PE = 100 ÷ 10 = 10.0x。[annual-report@paragraph:1]'
+      : id === 'bull-base-bear'
+        ? 'Bear/Base/Bull EPS分别取可比预测面低值、中位数和高值，三者均以同一当前PE计算：目标价 = EPS × PE。敏感性显示每股EPS变动1元、倍数不变时，目标价变动10元。[annual-report@paragraph:1]'
+        : id === 'variant-perception'
+          ? 'FY2026 EPS预期比较：研究面A为10元/股，研究面B为9元/股；来源日期与样本口径须逐项核验，差额为1元/股。[annual-report@paragraph:1] [consensus-report@paragraph:1]'
+    : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: id === 'variant-perception' ? ['annual-report', 'consensus-report'] : ['annual-report'] }))
 
 
 test('2025 market figures transcribed from an older annual report remain labeled as historical forecasts',()=>{
@@ -429,17 +435,31 @@ test('content gate rejects a currency unit asserted in the same sentence as an e
   value[index] = { ...value[index]!, markdown: '商誉原值63,399；单位行未提供，金额单位无法核实。' }
   assert.ok(!evaluateCompanyResearchContent({ sections: value }).issues.includes('risks:UNVERIFIED_CURRENCY_UNIT_ASSERTED'))
 })
-test('valuation, scenarios, and variant perception remain stable optional sections with explicit gaps', () => {
-  const requiredIds = ['valuation', 'bull-base-bear', 'variant-perception']
-  assert.equal(COMPANY_CORE_SECTION_IDS.length, 16)
-  const optionalGaps = requiredIds.map(sectionId => ({ id: sectionId, markdown: '研究缺口：本轮未取得足以支持本节结论的来源。影响：不提供未经核验的估值或预期差判断。' }))
-  const value = [...sections(), ...optionalGaps] as any
-  for (const sectionId of requiredIds) {
+test('all 19 stable sections are required and explicitly owned by methods or Workflow', () => {
+  assert.equal(COMPANY_CORE_SECTION_IDS.length, 19)
+  assert.deepEqual(Object.keys(COMPANY_SECTION_OWNER_KIND).sort(), [...COMPANY_CORE_SECTION_IDS].sort())
+  assert.deepEqual(COMPANY_CORE_SECTION_IDS.slice(14, 17), ['valuation', 'bull-base-bear', 'variant-perception'])
+  assert.equal(evaluateCompanyResearchContent({ sections: sections() }).coreCoverage.required, 19)
+})
+
+test('fixed research gaps in any of the three Workflow-owned sections block 19-section completion', () => {
+  for (const sectionId of ['valuation', 'bull-base-bear', 'variant-perception']) {
+    const value = sections()
+    const index = COMPANY_CORE_SECTION_IDS.indexOf(sectionId as typeof COMPANY_CORE_SECTION_IDS[number])
+    value[index] = { ...value[index]!, markdown: '研究缺口：估值输入不可得。影响：不提供未经核验的结果。', sourceCandidateIds: [] }
     const quality = evaluateCompanyResearchContent({ sections: value })
-    assert.equal(quality.passed, true, sectionId)
-    assert.equal(quality.sectionChecks.some(check => check.sectionId === sectionId), false, sectionId)
-    assert.equal(quality.coreCoverage.required, 16)
+    assert.equal(quality.passed, false, sectionId)
+    assert.ok(quality.sectionChecks.find(check => check.sectionId === sectionId)?.reasons.includes('RESEARCH_GAP'), sectionId)
+    assert.equal(quality.coreCoverage.required, 19)
   }
+})
+
+test('variant perception fails when only one cited expectation surface is supplied', () => {
+  const value = sections()
+  const index = COMPANY_CORE_SECTION_IDS.indexOf('variant-perception')
+  value[index] = { ...value[index]!, markdown: 'FY2026 EPS共识为10元/股。[annual-report@paragraph:1]', sourceCandidateIds: ['annual-report'] }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES'))
 })
 test('broad executive-division gap is rejected when the report already states executive roles, while a specific new-hire gap is retained', () => {
   const value = sections()
@@ -1848,7 +1868,7 @@ test('a shared section is not counted complete when one required owning method f
   const failed:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'failed',attempts:2,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:[],limitations:['尚未完成资本配置'],risks:[],diagnostics:[]}
   const quality=evaluateCompanyResearchContent({sections:sections(),methodResults:[failed]})
   assert.equal(quality.passed,false)
-  assert.equal(quality.coreCoverage.completed,15)
+  assert.equal(quality.coreCoverage.completed,18)
   assert.ok(quality.sectionChecks.find(check=>check.sectionId==='management-capital-allocation')!.reasons.includes('OWNER_METHOD_NOT_COMPLETED:capital_allocation_review'))
 })
 

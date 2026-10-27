@@ -40,8 +40,14 @@ const companyResearchExpectations: readonly SourcePolicy[] = earnings
   .filter((sourcePolicy) => ['earnings_expectation_eps', 'earnings_expectation_net_profit'].includes(sourcePolicy.requirementMatch.metricId ?? ''))
   .map((sourcePolicy) => ({
     ...sourcePolicy,
+    ...(sourcePolicy.requirementMatch.metricId === 'earnings_expectation_eps'
+      ? { candidates: sourcePolicy.candidates.filter(candidate => candidate.operationId !== 'legacy.eastmoneyResearchReport') }
+      : {}),
     policyId: `${sourcePolicy.policyId}-company-research`,
     requirementMatch: { ...sourcePolicy.requirementMatch, workflow: 'company-deep-research' },
+    // Company Research needs both existing EPS surfaces for an attributable
+    // variant comparison. Earnings Review keeps its FIRST_VALID policy.
+    ...(sourcePolicy.requirementMatch.metricId === 'earnings_expectation_eps' ? { selectionMode: 'COLLECT_DIVERSE' as const } : {}),
   }))
 
 const management: readonly SourcePolicy[] = [

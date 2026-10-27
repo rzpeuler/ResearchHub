@@ -103,6 +103,21 @@ test('assembly preserves substantive supplied valuation, scenario, and variant s
     assert.deepEqual(section.sourceCandidateIds, ['annual'], supplied.id)
   }
 })
+
+test('assembly accepts the complete workflow-owned quantitative section set directly', async () => {
+  const suppliedSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '参考 PE 由可核验收盘价与年报 EPS 复算。[annual@paragraph:1]', sourceCandidateIds: ['annual'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: 'Bear、Base、Bull 使用同一 FY 和估值基础计算。[annual@paragraph:1]', sourceCandidateIds: ['annual'] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '预期差缺少第二个同口径预期面，保留研究缺口。', sourceCandidateIds: [] },
+  ]
+  const result = await assembleCompanyResearch(input, [method], undefined, () => input.asOf, 0, {}, suppliedSections)
+  for (const supplied of suppliedSections) {
+    const section = result.sections.find(item => item.id === supplied.id)
+    assert.equal(section?.markdown, supplied.markdown)
+    assert.deepEqual(section?.sourceCandidateIds, supplied.sourceCandidateIds)
+  }
+  await assert.rejects(assembleCompanyResearch(input, [method], undefined, () => input.asOf, 0, {}, suppliedSections.slice(0, 2)), /Invalid workflow-owned/)
+})
 const capabilities = () => ({ maxContextTokens: 100000, maxOutputTokens: 16000, structuredOutputSupport: true, maxConcurrency: 1 })
 
 test('Chinese presentation brackets normalize to exact square-bracket source locators', () => {

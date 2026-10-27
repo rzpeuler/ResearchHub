@@ -2606,6 +2606,9 @@ test('reference retry identifies the exact invalid document locator and forbids 
     if (calls === 1) {
       assert.ok(actual.input.evidence.some((packet: any) => packet.sourceCandidateId === interimId && packet.excerpts.some((row: any) => row.location === 'paragraph:913' && row.text.includes('金融衍生资产'))))
       assert.ok(!actual.input.evidence.some((packet: any) => packet.sourceCandidateId === annualId && packet.excerpts.some((row: any) => row.location === 'paragraph:913')))
+      assert.ok(actual.input.allowedCitationPairs.includes(`${interimId}@paragraph:913`))
+      assert.ok(!actual.input.allowedCitationPairs.includes(`${annualId}@paragraph:913`))
+      assert.match(actual.instruction, /allowedCitationPairs是唯一可使用的来源-定位清单/)
       return invalid
     }
     const reference = actual.input.repairReferenceEvidence[0]
