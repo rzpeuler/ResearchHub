@@ -43,6 +43,7 @@ test('valuation builder keeps reference valuation, blocks unsupported scenario m
   assert.match(result.sections[0]!.markdown, /3\.58 CNY\/share/)
   assert.match(result.sections[0]!.markdown, /PE/)
   assert.match(result.sections[1]!.markdown, /研究缺口：本轮没有来源支持的目标年经营驱动假设/)
+  assert.doesNotMatch(result.sections[1]!.markdown, /共识EPS极值|固定PE替代/)
   assert.doesNotMatch(result.sections[1]!.markdown, /目标价|相对当前收盘价变化/)
   assert.ok(result.sections[0]!.sourceCandidateIds.includes('annual-2025'))
   assert.ok(result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))

@@ -789,7 +789,7 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
     reasoningExecutor: executor(async () => makeDraft(industryClaim, [1, 2, 3, 4, 8, 9, 10])),
   })
   assert.equal(mislabeled.status, 'failed')
-  assert.ok(mislabeled.diagnostics.some(diagnostic => diagnostic.message.includes('conflicting or incomplete table context')))
+  assert.ok(mislabeled.diagnostics.some(diagnostic => diagnostic.message.includes('conflicting or incomplete table context') && diagnostic.message.includes('sourceHash=')), JSON.stringify(mislabeled.diagnostics))
 })
 
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
@@ -1306,6 +1306,35 @@ test('risk numeric retry strips 千元 and supplies the matching goodwill row as
   assert.equal(calls, 2, JSON.stringify({ status: result.status, diagnostics: result.diagnostics }))
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
   assert.ok(result.sections[0]!.markdown.includes('[filing-1@paragraph:7663]'), result.sections[0]!.markdown)
+})
+
+test('risk retry surfaces an exact raw-yuan row for a rounded yi-yuan claim without treating it as proof', async () => {
+  const lines = Array.from({ length: 7672 }, (_, index) => `年报经营情况第${index + 1}段。`)
+  lines[7663] = '单位：元'
+  lines[7666] = '项目 年初余额 本期增加 本期减少 期末余额'
+  lines[7668] = 'MFLEX商誉减值准备 169,931,367.54 107,244,670.48 - 277,176,038.02'
+  lines[7669] = 'Juno Newco商誉减值准备 0.00 0.00 - 0.00'
+  lines[7671] = '合计 169,931,367.54 107,244,670.48 - 268,811,941.95'
+  const annual = { ...source, title: '2025年年度报告', content: lines.join('\n') }
+  const broken = {
+    status: 'complete', answer: '商誉减值仍需跟踪。', markdown: '年报披露商誉减值准备期末合计2.69亿元。[filing-1@paragraph:7670]',
+    sections: [{ id: 'risks', markdown: '| 风险类别 | 触发条件与影响路径 | 可监控指标 | 缓解因素 | 残余风险 |\n|---|---|---|---|---|\n| 商誉减值 | 商誉减值准备期末合计2.69亿元。[filing-1@paragraph:7670] | 资产组预测兑现 | 按年报披露口径持续复核。[filing-1@paragraph:7666] | 未披露具体安全边际。[filing-1@paragraph:7666] |'}],
+    findings: [{ text: '年报披露商誉减值准备期末合计2.69亿元。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:7670' }] }],
+    limitations: [], risks: ['商誉减值会影响资产和利润。'],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002384' }, asOf: '2026-10-26', sources: [annual], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return broken
+    const input = (request as any).input
+    const target = input.repairTargets.find((item: any) => item.id === 'risks')
+    assert.ok(target.issues.some((issue: any) => issue.token === '2.69亿元'))
+    assert.ok(target.candidateExcerpts.some((excerpt: any) => excerpt.sourceCandidateId === 'filing-1' && excerpt.location === 'paragraph:7672' && excerpt.text.includes('268,811,941.95')), JSON.stringify(target.candidateExcerpts))
+    assert.deepEqual(broken.findings[0]!.evidence, [{ sourceCandidateId: 'filing-1', location: 'paragraph:7670' }], 'the discovery row must not be attached as evidence')
+    return broken
+  }) })
+  assert.equal(calls, 2, JSON.stringify(result.diagnostics))
+  assert.equal(result.status, 'failed', 'the discovery candidate alone does not pass numeric grounding')
 })
 
 test('financial-quality findings bind an exact split industry row and remove paragraph locators from prose', async () => {

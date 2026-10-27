@@ -47,7 +47,7 @@ function businessDriverSegmentClassificationIssue(markdown: string, packets: rea
         const marker = markerLocation ? paragraphs[markerParagraph - 1]!.trim() : undefined
         if (marker !== requested || !markerLocation || !citedLocations.has(markerLocation)
           || excerpts.get(markerLocation) !== marker || excerpts.get(location) !== row) {
-          return `NUMERIC: revenue-profit-drivers: ${requested} claim must cite its exact classification marker and matching numeric row; conflicting or incomplete table context at ${packet.sourceCandidateId}@${location}`
+          return `NUMERIC: revenue-profit-drivers: ${requested} claim must cite its exact classification marker and matching numeric row; conflicting or incomplete table context at ${packet.sourceCandidateId}@${location} (sourceHash=${source.contentHash ?? 'unknown'}, marker=${marker ?? 'none'}@${markerLocation ?? 'none'}, markerCited=${Boolean(markerLocation && citedLocations.has(markerLocation))}, markerExcerptMatches=${Boolean(markerLocation && excerpts.get(markerLocation) === marker)}, rowExcerptMatches=${excerpts.get(location) === row})`
         }
       }
     }
@@ -562,6 +562,33 @@ function numericTokenForCandidateSearch(token: string): string {
   return token.trim().replace(/(?:人民币)?(?:万亿元|亿元|百万元|千元|万元|元|个百分点|%|倍|万股|股)$/u, '')
 }
 
+function numericCandidateSearchMatch(text: string, token: string): RegExpExecArray | undefined {
+  const searchToken = numericTokenForCandidateSearch(token)
+  const escaped = searchToken.replaceAll('.', '\\.')
+  const exactPattern = new RegExp(`(?<![\\d.,-])${escaped}(?![\\d.,])`)
+  const exactMatch = exactPattern.exec(text)
+  if (exactMatch) return exactMatch
+
+  // A converted claim such as 2.69亿元 can be grounded only by a raw filing
+  // value such as 268,811,941.95元. Surface that row as a retry hint while
+  // leaving all citation, label, period, unit and rounding checks to the
+  // unchanged numeric validator. A candidate hint is never attached as proof.
+  const scaled = /^([-−]?\d[\d,，]*(?:\.\d+)?)(?:人民币)?(万亿元|亿元|百万元|千元|万元|元)$/u.exec(token.trim())
+  if (!scaled) return undefined
+  const displayValue = Number(scaled[1]!.replace(/[，,]/g, '').replace('−', '-'))
+  const multiplier = ({ 万亿元: 1e12, 亿元: 1e8, 百万元: 1e6, 千元: 1e3, 万元: 1e4, 元: 1 } as const)[scaled[2] as '万亿元' | '亿元' | '百万元' | '千元' | '万元' | '元']
+  if (!Number.isFinite(displayValue) || !multiplier) return undefined
+  const precision = scaled[1]!.split('.')[1]?.length ?? 0
+  const sourceNumbers = /(?<![\d.,-])[-−]?\d[\d,，]*(?:\.\d+)?(?![\d.,])/gu
+  for (const match of text.matchAll(sourceNumbers)) {
+    const sourceValue = Number(match[0]!.replace(/[，,]/g, '').replace('−', '-'))
+    if (!Number.isFinite(sourceValue)) continue
+    const displayed = sourceValue / multiplier
+    if (Math.round(displayed * 10 ** precision) / 10 ** precision === displayValue) return match as RegExpExecArray
+  }
+  return undefined
+}
+
 /**
  * A reference-first failure can hide independently detected numeric failures.
  * Give the bounded retry exact supplied rows containing those tokens, without
@@ -601,14 +628,10 @@ function buildReferenceRetryNumericTargets(
 
     const targetIssues = issues.filter(issue => issue.id === id)
     const candidateExcerpts = [...new Set(targetIssues.map(issue => issue.token))].flatMap(token => {
-      const searchToken = numericTokenForCandidateSearch(token)
-      const escaped = searchToken.replaceAll('.', '\\.')
-      const pattern = new RegExp(`(?<![\\d.,-])${escaped}(?![\\d.,])`)
-      return packets.flatMap(packet => packet.excerpts.filter(excerpt => pattern.test(excerpt.text)).map(excerpt => ({ packet, excerpt, pattern })))
+      return packets.flatMap(packet => packet.excerpts.map(excerpt => ({ packet, excerpt, match: numericCandidateSearchMatch(excerpt.text, token) })).filter(candidate => candidate.match))
         .slice(0, 12)
-        .flatMap(({ packet, excerpt, pattern }) => {
+        .flatMap(({ packet, excerpt, match }) => {
           if (candidateCount >= 24 || candidateBudget < 40) return []
-          const match = pattern.exec(excerpt.text)
           if (!match) return []
           const start = Math.max(0, match.index - 90)
           const excerptText = excerpt.text.slice(start, start + Math.min(240, candidateBudget))

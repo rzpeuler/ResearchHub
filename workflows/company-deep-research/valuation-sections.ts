@@ -247,7 +247,7 @@ export function buildCompanyValuationSections(input: {
   const baseSourceIds = [...new Set([marketSourceId, epsSourceId].filter((value): value is string => value !== undefined))]
 
   let valuationSection = gap('valuation', titles.valuation, '无法同时确认 PIT 收盘价与年度报告基本 EPS')
-  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], '本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；不使用共识EPS极值乘固定PE替代经营情景')
+  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], '本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；因此不建立三情景估值')
   diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
   if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)

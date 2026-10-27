@@ -474,6 +474,15 @@ test('unsupported consensus-extrema fixed-PE scenarios and unverified expectatio
   const quality = evaluateCompanyResearchContent({ sections: value })
   assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
 })
+
+test('scenario quality gate does not mistake an explicit missing-input gap for use of the rejected shortcut', () => {
+  const value = sections()
+  const scenarioIndex = COMPANY_CORE_SECTION_IDS.indexOf('bull-base-bear')
+  value[scenarioIndex] = { ...value[scenarioIndex]!, markdown: '研究缺口：本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；因此不建立三情景估值。' }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'bull-base-bear')?.reasons.includes('RESEARCH_GAP'))
+  assert.ok(!quality.sectionChecks.find(check => check.sectionId === 'bull-base-bear')?.reasons.includes('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT'))
+})
 test('broad executive-division gap is rejected when the report already states executive roles, while a specific new-hire gap is retained', () => {
   const value = sections()
   const management = COMPANY_CORE_SECTION_IDS.indexOf('management-capital-allocation')
