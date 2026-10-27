@@ -20,7 +20,7 @@ const source: NormalizedResearchSource = {
 const output = { status: 'complete', answer: '公司历史有证据支持。', markdown: '公司经历业务转型。[filing-1@paragraph:251]', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。[filing-1@paragraph:251]' }], findings: [{ text: '公司经历业务转型。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:251' }] }], limitations: [], risks: [] }
 const executor = (run: (request: unknown, signal?: AbortSignal) => Promise<unknown>): ReasoningExecutor => ({ capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 4000, structuredOutputSupport: true, maxConcurrency: 2 }), execute: async (request, signal) => ({ operation: request.operation, output: await run(request, signal) }) })
 
-test('repeated-substring source ID repair changes only finding evidence after unique exact-locator proof', () => {
+test('repeated-substring source ID repair canonicalizes prose and finding citations only after unique exact-locator proof', () => {
   const sourceId = 'official-c19c34dd239b2e9c'
   const malformedId = 'official-c19c34dd239b2e9b2e9c'
   const line = '比上年同'
@@ -34,13 +34,16 @@ test('repeated-substring source ID repair changes only finding evidence after un
     findings: [{ text: 'finding claim', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:719' }] }],
   }
   const result = repairCompanyTrailingSourceIdTypo(malformed, [packet], { company: { symbol: '002594' }, asOf: '2026-10-26', sources: [filing] } as any)
+  assert.equal(result.output.markdown, `finding claim [${sourceId}@paragraph:719]`)
+  assert.equal(result.output.sections[0]!.markdown, `section claim [${sourceId}@paragraph:719]`)
   assert.deepEqual(result.output.findings[0]!.evidence, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
-  assert.equal(result.output.markdown, malformed.markdown, 'inline citations are outside this finding-evidence repair')
-  assert.equal(result.output.sections[0]!.markdown, malformed.sections[0]!.markdown)
-  assert.equal(result.repairs.length, 1)
-  assert.equal(result.repairs[0]!.findingIndex, 0)
-  assert.deepEqual(result.repairs[0]!.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
-  assert.deepEqual(result.repairs[0]!.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
+  assert.equal(result.repairs.length, 2)
+  const proseRepair = result.repairs.find(repair => repair.findingIndex === undefined)!
+  assert.deepEqual(proseRepair.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
+  assert.deepEqual(proseRepair.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
+  const findingRepair = result.repairs.find(repair => repair.findingIndex === 0)!
+  assert.deepEqual(findingRepair.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
+  assert.deepEqual(findingRepair.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
 })
 
 test('repeated-substring source ID repair leaves ambiguous sources and missing supplied locators unchanged', () => {
@@ -49,19 +52,29 @@ test('repeated-substring source ID repair leaves ambiguous sources and missing s
   const line = '分行业表的毛利率数据。'
   const filing = { ...source, candidate: { ...source.candidate, candidateId: sourceId }, content: line }
   const packet = { sourceCandidateId: sourceId, title: '2026年半年度报告', publisher: 'CNINFO', excerpts: [{ sourceCandidateId: sourceId, location: 'paragraph:1', text: line }] }
-  const makeOutput = () => ({ markdown: '', sections: [], findings: [{ text: 'finding claim', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:1' }] }] })
+  const makeOutput = () => ({ markdown: `claim [${malformedId}@paragraph:1]`, sections: [{ id: 'company-overview', markdown: `claim [${malformedId}@paragraph:1]` }], findings: [{ text: 'finding claim', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:1' }] }] })
   const input = { company: { symbol: '002594' }, asOf: '2026-10-26', sources: [filing] } as any
 
   const ambiguous = makeOutput()
   const ambiguousResult = repairCompanyTrailingSourceIdTypo(ambiguous, [packet, packet], input)
+  assert.equal(ambiguousResult.output.markdown, ambiguous.markdown)
+  assert.equal(ambiguousResult.output.sections[0]!.markdown, ambiguous.sections[0]!.markdown)
   assert.deepEqual(ambiguousResult.output.findings[0]!.evidence, ambiguous.findings[0]!.evidence)
   assert.equal(ambiguousResult.repairs.length, 0)
 
   const missingLocator = makeOutput()
   const missingPacket = { ...packet, excerpts: [] }
   const missingResult = repairCompanyTrailingSourceIdTypo(missingLocator, [missingPacket], input)
+  assert.equal(missingResult.output.markdown, missingLocator.markdown)
+  assert.equal(missingResult.output.sections[0]!.markdown, missingLocator.sections[0]!.markdown)
   assert.deepEqual(missingResult.output.findings[0]!.evidence, missingLocator.findings[0]!.evidence)
   assert.equal(missingResult.repairs.length, 0)
+
+  const mismatchedExcerpt = { ...makeOutput(), markdown: `claim [${malformedId}@paragraph:1]` }
+  const mismatchedPacket = { ...packet, excerpts: [{ sourceCandidateId: sourceId, location: 'paragraph:1', text: 'different source text' }] }
+  const mismatchedResult = repairCompanyTrailingSourceIdTypo(mismatchedExcerpt, [mismatchedPacket], input)
+  assert.equal(mismatchedResult.output.markdown, mismatchedExcerpt.markdown)
+  assert.equal(mismatchedResult.repairs.length, 0, 'source excerpt must exactly match the canonical source line')
 })
 
 test('citation repair resolves a malformed source id only from a unique same-claim source and exact supplied locator', () => {
@@ -2765,6 +2778,34 @@ test('reference retry extracts a structured finding claim when its invalid locat
   }) })
   assert.equal(calls, 2, JSON.stringify(result))
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+})
+
+test('business-driver method repairs an exact repeated-substring source ID across prose, owned sections, and finding evidence', async () => {
+  const sourceId = 'official-c19c34dd239b2e9c'
+  const malformedId = 'official-c19c34dd239b2e9b2e9c'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: sourceId, metadata: undefined }, title: '2026年半年度报告', content: '分行业；交通运输设备及电气制造业营业收入120元，营业成本80元，毛利率33.3%。' }
+  const claim = '报告列示交通运输设备及电气制造业的营业收入、营业成本和毛利率。'
+  const citation = `[${malformedId}@paragraph:1]`
+  const result = await executeCompanyResearchMethod({
+    skillId: 'business_driver_analysis',
+    company: { symbol: '002594' },
+    asOf: '2026-10-26',
+    sources: [filing],
+    durableSourceCandidateIds: [sourceId],
+    reasoningExecutor: executor(async () => ({
+      status: 'complete', answer: `${claim}${citation}`, markdown: `${claim}${citation}`,
+      sections: ['revenue-profit-drivers', 'growth-drivers', 'catalysts'].map(id => ({ id, markdown: `${claim}${citation}` })),
+      findings: [{ text: claim, kind: 'fact', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:1' }] }],
+      limitations: [], risks: [],
+    })),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.attempts, 1)
+  assert.match(result.markdown, new RegExp(`${sourceId}@paragraph:1`))
+  assert.ok(result.sections.every(section => section.markdown.includes(`[${sourceId}@paragraph:1]`)))
+  assert.deepEqual(result.findings[0]!.evidence, [{ sourceCandidateId: sourceId, location: 'paragraph:1' }])
+  assert.ok(result.citationRepairs?.some(repair => repair.originalReferences.some(ref => ref.sourceCandidateId === malformedId)
+    && repair.addedReferences.some(ref => ref.sourceCandidateId === sourceId && ref.location === 'paragraph:1')))
 })
 
 test('R144 BYD competitive evidence reserves battery, storage, and photovoltaic rows and repairs to the explicit citation inventory', async () => {

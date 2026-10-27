@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "latestRound": "2026-10-27-p0-readonly-repair-33",
+  "latestRound": "2026-10-27-p0-readonly-repair-34",
   "acceptance": "NOT_ACCEPTED",
   "rounds": [
     {
@@ -11674,6 +11674,167 @@
             ],
             "readOnlyKnowledgeUnchanged": true
           }
+        }
+      ]
+    },
+    {
+      "round": "2026-10-27-p0-readonly-repair-34",
+      "generatedAt": "2026-10-27T01:01:08.467Z",
+      "executionClass": "real Runtime/API and configured Pi model; no fixture providers",
+      "modelSelection": {
+        "provider": "openai-codex",
+        "modelId": "gpt-6-luna"
+      },
+      "acceptance": "NOT_ACCEPTED",
+      "note": "Captured before restoring the approved 16-core section gate. These runs are diagnostic only and are not acceptance evidence for the corrected gate; do not infer pass from the BYD 16/19 result. Raw reports, analyses, bundles, and source excerpts remain in ignored runtime-data and are not committed.",
+      "cases": [
+        {
+          "symbol": "002594",
+          "runId": "e299847e-f3cf-4fba-a8ca-5a3a69cfbdad",
+          "reportId": "company-research-002594-e299847e-f3cf-4fba-a8ca-5a3a69cfbdad",
+          "passed": false,
+          "runGate": "captured before 16-core correction; runtime required 19 sections",
+          "reportedCoreCoverage": {
+            "completed": 16,
+            "required": 19
+          },
+          "failedCoreSectionsAtRun": [
+            "valuation",
+            "bull-base-bear",
+            "variant-perception"
+          ],
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "complete",
+              "attempts": 2
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 2
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1
+            }
+          ],
+          "knowledgeIntegrityMode": "readonly",
+          "knowledgeUnchanged": true,
+          "reportSha256": "60288138a32d9c3941ff3e0c685f4f4b48d657a7b3a118a7f5053e887d85bcdc",
+          "analysisSha256": "c43ae36fb732d77c5dbc0b95c1e0563563092f0a066d4476fed10037a3ceac6e"
+        },
+        {
+          "symbol": "002384",
+          "runId": "bb48cf4f-ef8a-4af6-8a0b-ba275ecbd2c3",
+          "reportId": "company-research-002384-bb48cf4f-ef8a-4af6-8a0b-ba275ecbd2c3",
+          "passed": false,
+          "runGate": "captured before 16-core correction; runtime required 19 sections",
+          "reportedCoreCoverage": {
+            "completed": 13,
+            "required": 19
+          },
+          "failedCoreSectionsAtRun": [
+            "revenue-profit-drivers",
+            "growth-drivers",
+            "catalysts",
+            "valuation",
+            "bull-base-bear",
+            "variant-perception"
+          ],
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "complete",
+              "attempts": 1
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 2
+            }
+          ],
+          "knowledgeIntegrityMode": "readonly",
+          "knowledgeUnchanged": true,
+          "reportSha256": "99e0d54fa5b4a6b2f3646cf4dffe65b0114738a78835c6e5b4d8035195b885e3",
+          "analysisSha256": "6a9953f2e2609f2db48ded2af2a192539c3e275d40a858c955c7719666fff49f"
         }
       ]
     }

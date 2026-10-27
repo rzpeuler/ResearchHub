@@ -213,7 +213,12 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
     return candidates.length === 1 ? { sourceCandidateId: candidates[0]!, location } : undefined
   }
   const normalizeLegacyText = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, location: string) => {
-    const corrected = resolve(sourceId, location)
+    // A duplicated adjacent source-ID substring may be repaired in prose as
+    // well as finding objects only when the exact paragraph is present in one
+    // unique source and one unique method packet. This canonicalizes identity;
+    // the normal reference and numeric validators still decide whether the
+    // paragraph supports the claim.
+    const corrected = resolve(sourceId, location, true)
     if (!corrected) return literal
     const key = `${sourceId}@${location}`
     legacyRepairs.set(key, [...(legacyRepairs.get(key) ?? []), corrected])
