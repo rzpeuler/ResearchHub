@@ -221,3 +221,12 @@ P0-19 remains incomplete: both live reports are blocked, and independent semanti
 - The exact section outcomes, actual numeric method attempt counts, quality issues, review counters and hashes are recorded in `tests/validation/evidence/company-research-p0-19-post-eec0e95-live-pair.json`. The earlier post-`502a5c8` record's numeric attempt counts were corrected from the original sidecars. Raw reports, sidecars, provider bodies and temporary Knowledge data remain local.
 
 P0-19 remains incomplete: neither company passed all 19 required chapters or reached independent semantic review; sourced scenario assumptions, verified expectation vintages, the BYD business-model method result and final competition table structure remain unresolved. Hermes side-by-side review is still outstanding.
+
+### Post-`d53f5ec` root-Runtime live pair (2026-10-27)
+
+- BYD run `1bbc130d-cffd-43e5-9d60-b18a76aac5fb` and Dongshan run `04f55919-9f5d-46de-b2ff-b6bedeed7d44` used the root Runtime/API at `d53f5ec2f97cdc75ac7e3b88ee54f5e714301ff2`, saved model configuration, disposable Knowledge Bases, and `writeKnowledge=false`. Both reports were produced and ended `blocked`.
+- BYD passed 17/19 checks. `business_model_map` completed in two attempts; `bull-base-bear` has no attributable scenario evidence and `variant-perception` still lacks a verified expectation value version. Dongshan passed 15/19; `product_technology_analysis` failed after two attempts, leaving `products` and `technologies` blocked, in addition to the same scenario and expectation-vintage gaps.
+- Both final reports have no final-report table diagnostics. BYD's previously malformed competition report table is structurally clean in this run. All three tracked integrity hashes match before and after for both disposable Knowledge Bases. Workflow semantic review did not start for either run (`reviewAttempts=0`, `reviewRounds=0`).
+- Exact 19-section checks, actual per-method attempts and diagnostic codes, review counters, table repairs/diagnostics, report paths and KB hashes are in `tests/validation/evidence/company-research-p0-19-post-d53f5ec-live-pair.json`. Raw reports, sidecars, provider bodies and temporary Knowledge data remain local.
+
+P0-19 remains incomplete: both real reports are blocked; Bull/Base/Bear inputs, verified expectation vintages, Dongshan product/technology method completion, independent semantic review, and the Hermes comparison remain outstanding.

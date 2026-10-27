@@ -1,0 +1,550 @@
+{
+  "date": "2026-10-27",
+  "scope": "Root Runtime/API real read-only paired run against committed source; disposable Knowledge Bases; raw reports and sidecars remain local",
+  "sourceRevision": "d53f5ec2f97cdc75ac7e3b88ee54f5e714301ff2",
+  "persistencePolicy": {
+    "writeKnowledge": false,
+    "knowledgeBaseMode": "disposable",
+    "hashesCompared": [
+      "manifest.yaml",
+      "registry/assets.yaml",
+      "registry/raw.yaml"
+    ]
+  },
+  "runs": [
+    {
+      "company": {
+        "symbol": "002594",
+        "name": "比亚迪",
+        "exchange": "SZ"
+      },
+      "runId": "1bbc130d-cffd-43e5-9d60-b18a76aac5fb",
+      "status": "blocked",
+      "reportAvailable": true,
+      "reportPath": "runtime-data/reports/company-research-002594-1bbc130d-cffd-43e5-9d60-b18a76aac5fb.md",
+      "sourceRevision": "d53f5ec2f97cdc75ac7e3b88ee54f5e714301ff2",
+      "corePassed": 17,
+      "coreTotal": 19,
+      "sectionChecks": [
+        {
+          "id": "company-overview",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "business-model",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "business-segments",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "revenue-profit-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "products",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "technologies",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "industry-exposure",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "supply-chain",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "competition",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "financial-quality",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "growth-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "management-capital-allocation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "catalysts",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "risks",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "valuation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "bull-base-bear",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "id": "variant-perception",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "id": "investment-thesis",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "monitoring-checklist",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "FORMAT_ERROR"
+          ]
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        }
+      ],
+      "reviewAttempts": 0,
+      "reviewRounds": 0,
+      "qualityIssues": [
+        "bull-base-bear:RESEARCH_GAP",
+        "bull-base-bear:NO_ATTRIBUTABLE_EVIDENCE",
+        "bull-base-bear:WORKFLOW_SECTION_NO_LOCATED_EVIDENCE",
+        "variant-perception:RESEARCH_GAP",
+        "variant-perception:VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+      ],
+      "finalReportTableDiagnostics": [],
+      "tableRepairs": [
+        "company-overview: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "business-model: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "business-model: TABLE_TRAILING_CITATIONS_REATTACHED: line 8",
+        "business-model: TABLE_TRAILING_CITATIONS_REATTACHED: line 9",
+        "business-model: TABLE_TRAILING_NARRATIVE_MOVED: line 10",
+        "business-model: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "business-segments: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "business-segments: TABLE_TRAILING_HEADING_PROSE_DETACHED: line 8",
+        "revenue-profit-drivers: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "products: TABLE_PROSE_CELL_TAILS_DETACHED: line 1; width 4; rows 5",
+        "technologies: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "industry-exposure: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "industry-exposure: TABLE_FOLLOWING_TABLE_DETACHED: line 9; 4+8",
+        "industry-exposure: TABLE_TRAILING_NARRATIVE_MOVED: line 18",
+        "industry-exposure: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "supply-chain: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "competition: TABLE_PROSE_CELL_TAILS_DETACHED: line 1; width 4; rows 2",
+        "financial-quality: TABLE_ORPHAN_SEPARATOR_REMOVED: line 5; inconsistent following widths 4,4,4,4,4,4,4,4,5",
+        "growth-drivers: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "management-capital-allocation: TABLE_LEADING_PREFIX_DETACHED: line 3; 4->3",
+        "management-capital-allocation: TABLE_TRAILING_HEADING_PROSE_DETACHED: line 12",
+        "management-capital-allocation: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "catalysts: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "risks: TABLE_LEADING_PREFIX_DETACHED: line 1; 6->5",
+        "risks: TABLE_TRAILING_HEADING_PROSE_DETACHED: line 11",
+        "industry-exposure: TABLE_ADJACENT_MARKET_HEADER_REATTACHED: line 6; rows 2",
+        "financial-quality: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "industry-exposure: TABLE_ADJACENT_MARKET_HEADER_REATTACHED: line 6; rows 2"
+      ],
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "4472c3ed23c773bd89bf9cabb6d19751afdab1d8987984f97fc6b35cd7fa9bd9",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "4472c3ed23c773bd89bf9cabb6d19751afdab1d8987984f97fc6b35cd7fa9bd9",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    },
+    {
+      "company": {
+        "symbol": "002384",
+        "name": "东山精密",
+        "exchange": "SZ"
+      },
+      "runId": "04f55919-9f5d-46de-b2ff-b6bedeed7d44",
+      "status": "blocked",
+      "reportAvailable": true,
+      "reportPath": "runtime-data/reports/company-research-002384-04f55919-9f5d-46de-b2ff-b6bedeed7d44.md",
+      "sourceRevision": "d53f5ec2f97cdc75ac7e3b88ee54f5e714301ff2",
+      "corePassed": 15,
+      "coreTotal": 19,
+      "sectionChecks": [
+        {
+          "id": "company-overview",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "business-model",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "business-segments",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "revenue-profit-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "products",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "OWNER_METHOD_NOT_COMPLETED:product_technology_analysis",
+            "RESEARCH_GAP"
+          ]
+        },
+        {
+          "id": "technologies",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "OWNER_METHOD_NOT_COMPLETED:product_technology_analysis",
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE"
+          ]
+        },
+        {
+          "id": "industry-exposure",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "supply-chain",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "competition",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "financial-quality",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "growth-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "management-capital-allocation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "catalysts",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "risks",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "valuation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "bull-base-bear",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "id": "variant-perception",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "id": "investment-thesis",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "id": "monitoring-checklist",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "failed",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "FORMAT_ERROR",
+            "FORMAT_ERROR"
+          ]
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "FORMAT_ERROR"
+          ]
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attemptCount": 2,
+          "diagnosticCodes": [
+            "REFERENCE_ERROR"
+          ]
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attemptCount": 1,
+          "diagnosticCodes": []
+        }
+      ],
+      "reviewAttempts": 0,
+      "reviewRounds": 0,
+      "qualityIssues": [
+        "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+        "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+        "METHOD_NO_RESEARCH_ANSWER:product_technology_analysis",
+        "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:product_technology_analysis",
+        "products:OWNER_METHOD_NOT_COMPLETED:product_technology_analysis",
+        "products:RESEARCH_GAP",
+        "technologies:OWNER_METHOD_NOT_COMPLETED:product_technology_analysis",
+        "technologies:RESEARCH_GAP",
+        "technologies:NO_ATTRIBUTABLE_EVIDENCE",
+        "bull-base-bear:RESEARCH_GAP",
+        "bull-base-bear:NO_ATTRIBUTABLE_EVIDENCE",
+        "bull-base-bear:WORKFLOW_SECTION_NO_LOCATED_EVIDENCE",
+        "variant-perception:RESEARCH_GAP",
+        "variant-perception:VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+      ],
+      "finalReportTableDiagnostics": [],
+      "tableRepairs": [
+        "company-overview: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "business-model: TABLE_PROSE_CELL_TAILS_DETACHED: line 1; width 3; rows 5",
+        "business-segments: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "business-segments: TABLE_TRAILING_NARRATIVE_MOVED: line 8",
+        "revenue-profit-drivers: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "industry-exposure: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "industry-exposure: TABLE_FOLLOWING_TABLE_DETACHED: line 13; 4+7",
+        "industry-exposure: TABLE_TRAILING_NARRATIVE_MOVED: line 19",
+        "industry-exposure: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "supply-chain: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "competition: TABLE_LEADING_PREFIX_DETACHED: line 1; 5->4",
+        "competition: TABLE_FOLLOWING_TABLE_DETACHED: line 10; 4+3",
+        "competition: TABLE_TRAILING_HEADING_PROSE_DETACHED: line 19",
+        "financial-quality: TABLE_FOLLOWING_TABLE_DETACHED: line 10; 4+3",
+        "financial-quality: TABLE_EMBEDDED_HEADER_MOVED: line 1->5",
+        "financial-quality: TABLE_TRAILING_NARRATIVE_MOVED: line 25",
+        "financial-quality: INLINE_HEADING_BOUNDARIES_NORMALIZED: 2 line(s)",
+        "growth-drivers: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "management-capital-allocation: TABLE_LEADING_PREFIX_DETACHED: line 3; 4->3",
+        "management-capital-allocation: TABLE_TRAILING_HEADING_PROSE_DETACHED: line 11",
+        "management-capital-allocation: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "catalysts: INLINE_HEADING_BOUNDARIES_NORMALIZED: 1 line(s)",
+        "risks: TABLE_PROSE_CELL_TAILS_DETACHED: line 1; width 5; rows 7"
+      ],
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "295ccc5562a03cb7e98918eb5756e1327d81e789f65cc79008185e0d3e153b0d",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "295ccc5562a03cb7e98918eb5756e1327d81e789f65cc79008185e0d3e153b0d",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    }
+  ],
+  "findings": {
+    "tableRepair": "Both final reports have no final-report table diagnostics; BYD competition table is no longer malformed in this run. Method section table repair diagnostics remain distinct from final report diagnostics.",
+    "byd": "17/19. business_model_map completed after two attempts. Bull/Base/Bear lacks attributable scenario evidence; Variant Perception value version remains unverified. Independent semantic review did not start.",
+    "dongshan": "15/19. product_technology_analysis failed after two attempts, blocking products and technologies. Bull/Base/Bear lacks attributable scenario evidence; Variant Perception value version remains unverified. Independent semantic review did not start.",
+    "knowledge": "All three tracked integrity hashes match before and after for both disposable Knowledge Bases."
+  }
+}
