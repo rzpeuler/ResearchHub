@@ -725,6 +725,43 @@ test('business-driver finding with one margin value gets its exact same-source d
   assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'), 'the exact row containing -2.67% is attached to this finding')
 })
 
+test('business-driver finding binds a missing margin row when the same label is already cited in a separate revenue table', async () => {
+  const lines = Array.from({ length: 36 }, (_, index) => `一般披露事项 ${index + 1}。`)
+  const rows = new Map<number, string>([
+    [1, '单位：元'], [2, '营业收入 占营业收入比重'], [3, '分产品'],
+    [4, '精密组件产品 6,580,692,901.95 23.67% 2,361,835,859.44 13.93% 178.63%'],
+    [30, '单位：元'], [31, '营业收入 营业成本 毛利率'], [32, '营业收入比上年同期增减'],
+    [33, '营业成本比上年同期增减'], [34, '毛利率比上年同期增减'], [35, '分产品'],
+    [36, '精密组件产品 6,580,692,901.95 5,782,359,541.79 12.13% 178.63% 166.89% 3.86%'],
+  ])
+  for (const [paragraph, text] of rows) lines[paragraph - 1] = text
+  const id = 'product-revenue-and-margin-tables'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2026年半年度报告', content: lines.join('\n') }
+  const claim = '2026年上半年分产品表披露精密组件产品收入65.81亿元、占营业收入23.67%；该产品毛利率比上年同期增减为3.86%。'
+  const citations = [1, 2, 3, 4, 30, 31, 32, 33, 34, 35]
+    .map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` }))
+  const draft = {
+    status: 'complete', answer: '产品收入与毛利变化均按原表维度列示。', markdown: '产品收入和毛利变化不能替代完整量价归因。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `${claim} [${id}@paragraph:3] [${id}@paragraph:4] [${id}@paragraph:35] [${id}@paragraph:36]` },
+      { id: 'growth-drivers', markdown: `缺少同口径销量和价格桥，不能量化增长贡献。[${id}@paragraph:4]` },
+      { id: 'catalysts', markdown: `后续应跟踪分产品收入及毛利变化。[${id}@paragraph:4]` },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: citations }], limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002384', name: '东山精密', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing],
+    reportSourceCandidateIds: [id], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => draft),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify({ diagnostics: result.diagnostics, findings: result.findings }))
+  const revenueFinding = result.findings.find(finding => finding.text.includes('23.67%'))!
+  const marginFinding = result.findings.find(finding => finding.text.includes('3.86%'))!
+  assert.ok(revenueFinding.evidence.some(ref => ref.location === 'paragraph:4'), 'retains the exact revenue/share row')
+  assert.ok(marginFinding.evidence.some(ref => ref.location === 'paragraph:36'), 'adds the separate exact row containing the stated margin change')
+  assert.ok(marginFinding.evidence.some(ref => ref.location === 'paragraph:35'), 'adds the matching product marker for the margin row')
+})
+
 test('business-driver splits a two-industry margin finding before exact row binding and still rejects mismatched values', async () => {
   const id = 'two-industry-margin-rows'
   const lines = [
@@ -2426,6 +2463,30 @@ test('product method repairs unsupported customer preferences into an explicit u
   assert.equal(result.status,'complete',JSON.stringify(result.diagnostics))
   assert.match(result.sections.find(section=>section.id==='products')!.markdown,/未有客户需求调研或反馈验证/)
   assert.equal(result.findings[0]!.kind,'assumption')
+})
+
+test('product method does not classify customer concentration review as an unsupported customer-preference claim', async () => {
+  const filing = { ...source, content: '公司披露核心产品覆盖多个应用领域，相关产品已进入批量交付阶段。' }
+  const draft = {
+    ...output,
+    status: 'complete' as const,
+    answer: '公司披露核心产品已进入批量交付；客户集中度仍需进一步核验。',
+    markdown: '产品商业化阶段与风险应分别观察。',
+    sections: [
+      { id: 'products', markdown: '公司披露核心产品覆盖多个应用领域，相关产品已进入批量交付阶段；但新业务持续性和客户集中度等需要进一步验证。[filing-1@paragraph:1]' },
+      { id: 'technologies', markdown: '公司披露相关产品已进入批量交付阶段；本次材料未提供独立性能测试。[filing-1@paragraph:1]' },
+    ],
+    findings: [{ text: '客户集中度仍需进一步核验。', kind: 'inference' as const, evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }],
+    limitations: ['客户集中度及新业务持续性仍需后续资料验证。'],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({
+    skillId: 'product_technology_analysis', company: { symbol: '002384' }, asOf: '2026-10-27',
+    sources: [filing], durableSourceCandidateIds: ['filing-1'], maxAttempts: 1,
+    reasoningExecutor: executor(async () => { calls++; return draft }),
+  })
+  assert.equal(calls, 1, JSON.stringify(result.diagnostics))
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
 })
 
 test('product customer-demand repair keeps bounded evidence gaps complete but leaves a missing core technical analysis insufficient', async () => {

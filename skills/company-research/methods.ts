@@ -778,15 +778,16 @@ function splitMultiTableProductDriverFinding<T extends { readonly findings: read
     }
     if (clauses.length !== 2) return [finding]
     const [revenueClause, marginClause] = clauses as [string, string]
-    if (!/分产品/u.test(revenueClause) || !/收入/u.test(revenueClause) || !/占比/u.test(revenueClause)
-      || !/营业成本/u.test(marginClause) || !/毛利率/u.test(marginClause)) return [finding]
+    if (!/分产品/u.test(revenueClause) || !/收入/u.test(revenueClause) || !/占(?:比|(?:集团|营业)?收入)/u.test(revenueClause)
+      || !/毛利率比上年同期增减/u.test(marginClause)) return [finding]
     const year = revenueClause.match(/20\d{2}年/u)?.[0]
-    const label = revenueClause.match(/分产品(?:表)?[“"「]?([^，,。；;“”"」]{2,32}?)收入/u)?.[1]?.trim()
-    if (!year || !label || !/产品/u.test(label)) return [finding]
+    const label = revenueClause.match(/分产品(?:表(?:中|披露|显示)?)?\s*[“"「]?([^，,。；;“”"」]{2,32}?)收入/u)?.[1]?.trim()
+    if (!year || !label || !/(?:产品|组件|模组|模块|电路)/u.test(label)) return [finding]
     changed = true
+    const normalizedMargin = marginClause.replace(/^(?:该|此)产品/u, label)
     return [
       { ...finding, text: revenueClause },
-      { ...finding, text: `${year}分产品${label}：${marginClause}` },
+      { ...finding, text: `${year}上半年分产品表中，${normalizedMargin}` },
     ]
   })
   return changed ? { ...output, findings } : output
@@ -863,13 +864,11 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
         const fullLabel = (splitLabel ? prior + rowLabel : rowLabel).replace(/\s+/g, '')
         if (fullLabel.length < 4 || !text.replace(/\s+/g, '').includes(fullLabel)) continue
         const rowValues = new Set(numberTokens(row))
-        // A complete classification and exact row label make a single
-        // disclosed margin-change value unique. Requiring two numeric tokens
-        // here prevented that safe case from receiving its supplied data-row
-        // citation, even though the same-source table headers were already
-        // cited. Keep the two-value threshold when the claim contains multiple
-        // numbers so a merely adjacent segment row cannot be borrowed.
-        const requiredNumberMatches = Math.min(2, sourceClaimNumbers.size)
+        // A complete classification and exact row label can identify one
+        // disclosed margin-change value even when the finding also contains
+        // values from a separate table. Duplicate same-label candidates remain
+        // fail-closed below unless already-cited rows disambiguate them.
+        const requiredNumberMatches = Math.min(1, sourceClaimNumbers.size)
         if (requiredNumberMatches === 0 || [...sourceClaimNumbers].filter(token => rowValues.has(token)).length < requiredNumberMatches) continue
         let markerIndex = -1
         for (let cursor = index - 1; cursor >= Math.max(0, index - 30); cursor--) {
@@ -893,6 +892,11 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
           paragraphIndex >= Math.max(0, firstHeader - 13) && paragraphIndex < firstHeader - 1 && /^\s*单位\s*[：:]/.test(line) && supplied.has(`paragraph:${paragraphIndex + 1}`)
             ? [`paragraph:${paragraphIndex + 1}`] : []).at(-1)
         const requiredRefs = [...headerRefs, ...(unitRef ? [unitRef] : []), markerLocation, ...(splitLabel && supplied.get(priorLocation)?.trim() === prior ? [priorLocation] : []), rowLocation]
+        // A finding may cite one exact product row for revenue/share while
+        // stating a second value from a separate same-label margin table. Do
+        // not let the already-complete revenue row make that missing margin
+        // row look ambiguous; only unresolved exact-row candidates compete.
+        if (requiredRefs.every(location => refs.has(location))) continue
         candidates.push({ label: fullLabel, refs: [...new Set(requiredRefs)] })
       }
       const labelCounts = new Map<string, number>()
@@ -1273,7 +1277,7 @@ function productCustomerNeedEvidenceIssue(result: Pick<ReturnType<typeof validat
   // Company-reported customer demand growth is an operating fact, not a claim
   // about consumer preference. Gate preference/attention/choice claims and
   // explicit consumer needs; do not mistake every B2B demand reference for one.
-  const customerNeed = /(?:客户|用户|消费者|购车者)[^。；;，,|\n]{0,24}?(?:关注|需要|偏好|重视|看重|倾向|选择)(?!(?:调研|调查|研究|问卷|访谈|反馈|购买行为|偏好数据|证据|数据|理由|依据|原因|验证|缺失|不足|缺口|和|及|与|、|(?:(?:也|亦)?(?:未获|未被|未能|尚未|不能|无法|未有))|有限|仍))[^。；;，,|\n]{1,16}|消费者[^。；;，,|\n]{0,16}需求(?!(?:调研|调查|研究|问卷|访谈|反馈|购买行为|证据|数据|理由|依据|原因|验证|缺失|不足|缺口|和|及|与|、|(?:(?:也|亦)?(?:未获|未被|未能|尚未|不能|无法|未有))|有限|仍))[^。；;，,|\n]{1,16}|(?:竞争优势|护城河)(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:竞争优势|护城河)|(?:竞品|相对竞品)(?:表现|性能)(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:竞品|相对竞品)(?:表现|性能)|(?:相对)?(?:竞品|竞争对手)(?:相对)?(?:性能)?优势(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:相对)?(?:竞品|竞争对手)(?:相对)?(?:性能)?优势/g
+  const customerNeed = /(?:客户(?!集中度|结构|占比)|用户(?!集中度|结构|占比)|消费者|购车者)[^。；;，,|\n]{0,24}?(?:关注|需要|偏好|重视|看重|倾向|选择)(?!(?:调研|调查|研究|问卷|访谈|反馈|购买行为|偏好数据|证据|数据|理由|依据|原因|验证|缺失|不足|缺口|和|及|与|、|(?:(?:也|亦)?(?:未获|未被|未能|尚未|不能|无法|未有))|有限|仍))[^。；;，,|\n]{1,16}|消费者[^。；;，,|\n]{0,16}需求(?!(?:调研|调查|研究|问卷|访谈|反馈|购买行为|证据|数据|理由|依据|原因|验证|缺失|不足|缺口|和|及|与|、|(?:(?:也|亦)?(?:未获|未被|未能|尚未|不能|无法|未有))|有限|仍))[^。；;，,|\n]{1,16}|(?:竞争优势|护城河)(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:竞争优势|护城河)|(?:竞品|相对竞品)(?:表现|性能)(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:竞品|相对竞品)(?:表现|性能)|(?:相对)?(?:竞品|竞争对手)(?:相对)?(?:性能)?优势(?:已|已经|已被)(?:验证|证实)|(?:已|已经|被)(?:验证|证实)的(?:相对)?(?:竞品|竞争对手)(?:相对)?(?:性能)?优势/g
   // Only remove an explicitly scoped denial/evidence-gap clause before
   // re-running the positive-claim detector. This keeps the gate fail-closed:
   // a positive preference assertion elsewhere in the sentence remains.

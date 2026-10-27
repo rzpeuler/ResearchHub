@@ -648,6 +648,34 @@ test('R142 detaches the products income table only when both table widths and ov
   assert.ok(ambiguous.diagnostics.length > 0)
 })
 
+test('R174 separates a fused business-model margin table with a blank leading header and prose tail', () => {
+  const fixture = `| 产品分类 | 2025年营业收入（元） | 占营业收入比重 |
+|---|---:|---:|
+| 手机部件、组装及其他产品 | 155,236,528,000.00 [annual@paragraph:820] | 19.31% [annual@paragraph:820] |
+| 汽车、汽车相关产品及其他产品 | 648,645,636,000.00 [annual@paragraph:822] | 80.68% [annual@paragraph:822] |
+| 其他 | 82,794,000.00 [annual@paragraph:823] | 0.01% [annual@paragraph:823] | | 产品类别 | 2025年毛利率 |
+|---|---:|
+| 手机部件、组装及其他产品 | 6.29% [annual@paragraph:851] |
+| 汽车、汽车相关产品及其他产品 | 20.49% [annual@paragraph:855] | 毛利率表单位为元，数值分别是对应产品分类毛利率，不代表合并毛利率。[annual@paragraph:833] [annual@paragraph:834] |`
+  const locator = /\[[A-Za-z0-9._:-]+@paragraph:\d+\]/gu
+  const before = [...fixture.matchAll(locator)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_FOLLOWING_TABLE_DETACHED')))
+  assert.match(repaired.markdown, /\| 其他 \| 82,794,000\.00 \[annual@paragraph:823\] \| 0\.01% \[annual@paragraph:823\] \|\n\n\| 产品类别 \| 2025年毛利率 \|/u)
+  assert.match(repaired.markdown, /\|---\|---:\|\n\| 手机部件、组装及其他产品 \| 6\.29% \[annual@paragraph:851\] \|\n\| 汽车、汽车相关产品及其他产品 \| 20\.49% \[annual@paragraph:855\] \|\n\n毛利率表单位/u)
+  assert.ok(!repaired.markdown.includes('| | 产品类别 |'), 'removes the empty leading header cell only after width proof')
+  assert.deepEqual([...repaired.markdown.matchAll(locator)].map(match => match[0]), before, 'all citations retain their original order and count')
+
+  const ambiguous = repairCompanyResearchMarkdownTables(fixture
+    .replace('| | 产品类别 | 2025年毛利率 |', '| unclear | 产品类别 | 2025年毛利率 |')
+    .replace('| 其他 | 82,794,000.00 [annual@paragraph:823] | 0.01% [annual@paragraph:823] | | 产品类别 | 2025年毛利率 |',
+      '| 其他 | 82,794,000.00 [annual@paragraph:823] | 0.01% [annual@paragraph:823] | unclear | 产品类别 | 2025年毛利率 |'))
+  assert.ok(!ambiguous.repairs.some(repair => repair.startsWith('TABLE_FOLLOWING_TABLE_DETACHED')))
+  assert.ok(ambiguous.diagnostics.length > 0 || validateCompanyResearchMarkdownTables(ambiguous.markdown).length > 0)
+})
+
 test('R143 repairs heading and displaced-header fusions only when section widths prove them', () => {
   const fallback: Array<{ id: string; markdown: string }> = [
     { id: 'business-model', markdown: `# 商业模式与变现 ## 谁付费、买什么、如何交付 收入由汽车与电子产品贡献。[bm1@paragraph:1] | 产品收入构成 | 本期金额 | 占比 | 依据 |\n|---|---:|---:|---|\n| 汽车相关 | 648 | 80% | 年报 [bm2@paragraph:2] |\n| 手机部件 | 155 | 19% | 年报 [bm3@paragraph:3] | 年报分类说明，金额单位为元。[bm4@paragraph:4] | 期间 | 关系 | 缺口 |\n|---|---|---|\n| 汽车 | 披露事实 | 不推断 |` },

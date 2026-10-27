@@ -574,9 +574,20 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     let detachedProse: string[]
     let nextHeader: string[]
     if (hasSeparatePreamble) {
-      if (!overflow[0] || (!narrativeTail(overflow[0]) && !/#{1,6}\s/u.test(overflow[0]))) continue
-      detachedProse = detachPrefix(overflow[0]!)
-      nextHeader = overflow.slice(1)
+      // A fused following-table header can begin with an empty cell when the
+      // model emits a blank leading column. Treat it as a header defect only
+      // when removing the blank yields exactly the width proven by the next
+      // separator; all other empty overflows remain ambiguous and fail closed.
+      const emptyLeadingHeader = overflow[0] === '' && overflow.length === followingWidth + 1
+        && overflow.slice(1).length === followingWidth && overflow.slice(1).every(Boolean)
+      if (emptyLeadingHeader) {
+        detachedProse = []
+        nextHeader = overflow.slice(1)
+      } else {
+        if (!overflow[0] || (!narrativeTail(overflow[0]) && !/#{1,6}\s/u.test(overflow[0]))) continue
+        detachedProse = detachPrefix(overflow[0]!)
+        nextHeader = overflow.slice(1)
+      }
     } else {
       if (!embeddedHeading?.before || prefix.slice(0, -1).some(cell => /^#{1,6}\s/u.test(cell))) continue
       prefix[baseWidth - 1] = embeddedHeading.before
@@ -596,7 +607,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
       return standaloneLocators || (index === followingRows.length - 1 && finalFollowingTailIsProse)
     })
     if (!followingRowsAreProven) continue
-    const inserted = [...detachedProse, renderRow(nextHeader)]
+    const inserted = [...detachedProse, ...(detachedProse.length ? [] : ['']), renderRow(nextHeader)]
     lines.splice(rowIndex, 1, renderRow(prefix), ...inserted)
     repairs.push(`TABLE_FOLLOWING_TABLE_DETACHED: line ${rowIndex + 1}; ${baseWidth}+${followingWidth}`)
     boundaryIndex += inserted.length
