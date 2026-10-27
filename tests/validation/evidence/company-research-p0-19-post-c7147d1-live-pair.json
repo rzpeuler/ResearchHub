@@ -1,0 +1,512 @@
+{
+  "evidenceType": "sanitized-live-acceptance-summary",
+  "capturedAt": "2026-10-27",
+  "sourceRevision": "c7147d1c65cb2af0ba685f30791fbe7a3ed59107",
+  "runtime": "root Runtime/API",
+  "writeKnowledge": false,
+  "notes": [
+    "Contains run and validation metadata only; raw reports, sidecars, provider payloads and disposable Knowledge data are excluded.",
+    "Both runs are blocked at 17/19 because Bull/Base/Bear lacks attributable scenario evidence and Variant Perception has unverified expectation value versions.",
+    "Workflow semantic review did not run because structural acceptance failed."
+  ],
+  "runs": [
+    {
+      "company": {
+        "symbol": "002594",
+        "name": "比亚迪",
+        "exchange": "SZ"
+      },
+      "runId": "520bf8d7-acae-4421-bebc-2cf6c2b9c631",
+      "sourceRevision": "c7147d1c65cb2af0ba685f30791fbe7a3ed59107",
+      "workflowType": "company_deep_research",
+      "status": "blocked",
+      "asOf": "2026-10-27T12:43:31.399Z",
+      "reportPersisted": true,
+      "reportSha256": "a729d1aad9c488a69604ccfb1a897bb3cecd23d401317825d6468f65399306d2",
+      "reportArtifact": "runtime-data/reports/company-research-002594-520bf8d7-acae-4421-bebc-2cf6c2b9c631.md (local ignored artifact; hash identifies reviewed bytes)",
+      "coreCoverage": {
+        "completed": 17,
+        "required": 19
+      },
+      "sectionChecks": [
+        {
+          "sectionId": "company-overview",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-model",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-segments",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "revenue-profit-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "products",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "technologies",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "industry-exposure",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "supply-chain",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "competition",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "financial-quality",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "growth-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "management-capital-allocation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "catalysts",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "risks",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "valuation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "bull-base-bear",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "sectionId": "investment-thesis",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "monitoring-checklist",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "FORMAT_ERROR"
+          ]
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "REFERENCE_ERROR"
+          ]
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        }
+      ],
+      "synthesis": {
+        "mode": "reasoning_executor",
+        "attempts": 2,
+        "diagnosticCodes": [
+          "REFERENCE_ERROR"
+        ]
+      },
+      "workflowSemanticReview": {
+        "attempts": 0,
+        "rounds": 0
+      },
+      "finalTableDiagnosticCount": 0,
+      "valuationAcquisitionCodes": [
+        "VALUATION_ROUTE_valuation_market_price_akshare-historical-market-data_SOURCE_ERROR:VALUATION_MARKET_PROVIDER_PROXY_ERROR:PROVIDER_ERROR",
+        "VALUATION_ROUTE_valuation_market_price_akshare-tencent-historical-market-data_SUCCESS",
+        "VALUATION_ROUTE_valuation_eps_akshare-valuation-financial-indicators-eps_SUCCESS",
+        "VALUATION_ROUTE_valuation_bvps_akshare-valuation-financial-indicators-bvps_SUCCESS",
+        "VALUATION_ROUTE_valuation_annual_report_publication_cninfo-annual-report-publication_SUCCESS",
+        "VALUATION_ROUTE_valuation_peer_candidate_evidence_eastmoney-peer-comparison_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_eps_ths-institution-forecast_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_eps_eastmoney-individual-research-report_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_net_profit_ths-institution-forecast_SUCCESS",
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+      ],
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "18e4c37a5c5846275e393197ba1fbe20efe3ebda786ae873c7dadfce2aba4795",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "18e4c37a5c5846275e393197ba1fbe20efe3ebda786ae873c7dadfce2aba4795",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    },
+    {
+      "company": {
+        "symbol": "002384",
+        "name": "东山精密",
+        "exchange": "SZ"
+      },
+      "runId": "90a2647b-bec8-4017-bf01-f7bb85b6f72e",
+      "sourceRevision": "c7147d1c65cb2af0ba685f30791fbe7a3ed59107",
+      "workflowType": "company_deep_research",
+      "status": "blocked",
+      "asOf": "2026-10-27T12:55:59.164Z",
+      "reportPersisted": true,
+      "reportSha256": "193abec17034d4e3f94ee70be8341856cc2dee12407b98c8927a9455fd24fd1d",
+      "reportArtifact": "runtime-data/reports/company-research-002384-90a2647b-bec8-4017-bf01-f7bb85b6f72e.md (local ignored artifact; hash identifies reviewed bytes)",
+      "coreCoverage": {
+        "completed": 17,
+        "required": 19
+      },
+      "sectionChecks": [
+        {
+          "sectionId": "company-overview",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-model",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-segments",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "revenue-profit-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "products",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "technologies",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "industry-exposure",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "supply-chain",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "competition",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "financial-quality",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "growth-drivers",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "management-capital-allocation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "catalysts",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "risks",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "valuation",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "bull-base-bear",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "core": true,
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "sectionId": "investment-thesis",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "monitoring-checklist",
+          "core": true,
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methods": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR"
+          ]
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "FORMAT_ERROR"
+          ]
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attempts": 1,
+          "diagnosticCodes": []
+        }
+      ],
+      "synthesis": {
+        "mode": "reasoning_executor",
+        "attempts": 1,
+        "diagnosticCodes": []
+      },
+      "workflowSemanticReview": {
+        "attempts": 0,
+        "rounds": 0
+      },
+      "finalTableDiagnosticCount": 0,
+      "valuationAcquisitionCodes": [
+        "VALUATION_ROUTE_valuation_market_price_akshare-historical-market-data_SOURCE_ERROR:VALUATION_MARKET_PROVIDER_PROXY_ERROR:PROVIDER_ERROR",
+        "VALUATION_ROUTE_valuation_market_price_akshare-tencent-historical-market-data_SUCCESS",
+        "VALUATION_ROUTE_valuation_eps_akshare-valuation-financial-indicators-eps_SUCCESS",
+        "VALUATION_ROUTE_valuation_bvps_akshare-valuation-financial-indicators-bvps_SUCCESS",
+        "VALUATION_ROUTE_valuation_annual_report_publication_cninfo-annual-report-publication_SUCCESS",
+        "VALUATION_ROUTE_valuation_peer_candidate_evidence_eastmoney-peer-comparison_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_eps_ths-institution-forecast_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_eps_eastmoney-individual-research-report_SUCCESS",
+        "EXPECTATION_ROUTE_earnings_expectation_net_profit_ths-institution-forecast_SUCCESS",
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+      ],
+      "knowledgeBase": {
+        "before": {
+          "manifest.yaml": "8ac628d1eb592a446473511a9eb565319e53886be77368ec154e1acba5a168dd",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "8ac628d1eb592a446473511a9eb565319e53886be77368ec154e1acba5a168dd",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "unchanged": true
+      }
+    }
+  ]
+}
