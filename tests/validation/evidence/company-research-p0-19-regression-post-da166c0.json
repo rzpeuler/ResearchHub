@@ -1,0 +1,40 @@
+{
+  "evidenceType": "baseline-compared-regression-summary",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "da166c0c37d5139115c61ce6fa3b096747eeef45",
+  "baselineEvidence": "tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json",
+  "node": {
+    "disappearedFailureIdentities": 0,
+    "total": 3189,
+    "passed": 3168,
+    "addedFailureIdentities": 0,
+    "baselineFailureIdentities": 21,
+    "command": "npm run test:node",
+    "rawLog": "local ignored tmp/p0-19-node-da166c0.log",
+    "failed": 21
+  },
+  "client": {
+    "disappearedFailureIdentities": 0,
+    "total": 223,
+    "passed": 218,
+    "addedFailureIdentities": 0,
+    "baselineFailureIdentities": 5,
+    "command": "npm run client:test",
+    "rawLog": "local ignored tmp/p0-19-client-da166c0.log",
+    "failed": 5
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "passed": true
+  },
+  "clientTypecheck": {
+    "command": "npm run client:typecheck",
+    "passed": true
+  },
+  "clientBuild": {
+    "chunkBytes": 743020,
+    "advisory": "Existing main JavaScript chunk is larger than 500 kB",
+    "command": "npm run client:build",
+    "passed": true
+  }
+}

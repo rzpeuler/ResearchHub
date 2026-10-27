@@ -1,0 +1,134 @@
+{
+  "evidenceType": "sanitized-live-acceptance-summary",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "da166c0c37d5139115c61ce6fa3b096747eeef45",
+  "runtime": "Runtime/API launched from the root checkout code with saved model selection and separate disposable Knowledge Bases",
+  "modelSelection": {
+    "modelId": "gpt-6-luna",
+    "provider": "openai-codex"
+  },
+  "writeKnowledge": false,
+  "acceptance": "NOT_ACCEPTED",
+  "runs": [
+    {
+      "failedSections": [
+        "bull-base-bear",
+        "variant-perception"
+      ],
+      "expectations": {
+        "netProfitStatus": "UNVERIFIED",
+        "epsStatus": "UNVERIFIED",
+        "pitDiagnostic": "NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING"
+      },
+      "reportId": "company-research-002594-1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "blockers": [
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_UNVERIFIED"
+      ],
+      "knowledgeUnchanged": true,
+      "coverage": {
+        "completed": 17,
+        "required": 19
+      },
+      "localReportDirectory": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-byd-da166c0/002594",
+      "knowledgeHashes": {
+        "manifest.yaml": "2a210f0ba41fd23b043eccfbe466a7a58c8994330cf6ae1cde4b18671add5b52",
+        "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+        "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "valuation": {
+        "tencent": "SUCCESS",
+        "passed": true,
+        "eastMoney": "PROXY_ERROR",
+        "eps": "SUCCESS",
+        "bvps": "SUCCESS"
+      },
+      "runId": "1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "semanticReview": {
+        "rounds": 0,
+        "attempts": 0
+      },
+      "asOf": "2026-10-27T19:03:34.731Z",
+      "atomicMethods": {
+        "total": 10,
+        "productTechnologyAttempts": 2,
+        "completed": 10,
+        "productTechnologyStatus": "complete",
+        "productTechnologyDiagnostics": [
+          "FORMAT_ERROR"
+        ]
+      },
+      "company": {
+        "name": "BYD",
+        "symbol": "002594"
+      },
+      "qualityStatus": "incomplete"
+    },
+    {
+      "failedSections": [
+        "bull-base-bear",
+        "variant-perception"
+      ],
+      "expectations": {
+        "netProfitStatus": "UNVERIFIED",
+        "epsStatus": "UNVERIFIED",
+        "pitDiagnostic": "NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING"
+      },
+      "reportId": "company-research-002384-05fe2ed6-8753-4ae0-93c9-508c70eecce5",
+      "blockers": [
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_UNVERIFIED"
+      ],
+      "knowledgeUnchanged": true,
+      "coverage": {
+        "completed": 17,
+        "required": 19
+      },
+      "localReportDirectory": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-dongshan-da166c0/002384",
+      "knowledgeHashes": {
+        "manifest.yaml": "d31181a7cf79f4c4f352782547e9c5327419104a31cee295ef8ad10c73ecf6b2",
+        "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+        "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "valuation": {
+        "tencent": "SUCCESS",
+        "passed": true,
+        "eastMoney": "PROXY_ERROR",
+        "eps": "SUCCESS",
+        "bvps": "SUCCESS"
+      },
+      "runId": "05fe2ed6-8753-4ae0-93c9-508c70eecce5",
+      "semanticReview": {
+        "rounds": 0,
+        "attempts": 0
+      },
+      "asOf": "2026-10-27T19:13:23.701Z",
+      "atomicMethods": {
+        "total": 10,
+        "productTechnologyAttempts": 1,
+        "completed": 10,
+        "productTechnologyStatus": "complete",
+        "productTechnologyDiagnostics": []
+      },
+      "company": {
+        "name": "Dongshan Precision",
+        "symbol": "002384"
+      },
+      "qualityStatus": "incomplete"
+    }
+  ],
+  "validation": {
+    "typecheck": "npm run typecheck",
+    "targetedPassed": 264,
+    "targetedCommand": "node --import tsx --test tests/skills/company-methods.test.ts tests/skills/company-numeric-grounding.test.ts",
+    "targetedFailed": 0,
+    "typecheckPassed": true,
+    "regressionEvidence": "tests/validation/evidence/company-research-p0-19-regression-post-da166c0.json"
+  },
+  "notes": [
+    "Both reports are blocked at 17/19. All ten atomic methods completed and valuation passed; products and technologies passed for both companies.",
+    "Bull/Base/Bear has no source-backed operating-driver assumptions, so no scenario values were invented. Variant Perception remains blocked because forecast value versions/publication evidence are unverified.",
+    "Workflow semantic review did not run because structural sections remain blocked (reviewAttempts=0, reviewRounds=0).",
+    "Disposable Knowledge hashes are unchanged. Full reports, analysis sidecars, provider payloads, and source content remain local under ignored runtime-data/company-quality-acceptance/2026-10-28-p0-19-*-da166c0 directories."
+  ]
+}
