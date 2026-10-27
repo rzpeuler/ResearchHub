@@ -318,3 +318,10 @@ P0-19 remains incomplete pending fresh live BYD and Dongshan acceptance, source-
 - Workflow semantic review did not run for either report (`reviewAttempts=0`, `reviewRounds=0`). The three tracked integrity files in both disposable Knowledge Bases have unchanged before/after SHA-256 values. Sanitized run IDs, all section and method outcomes, attempt diagnostic codes, the Dongshan repaired-row locator set, review counters, and Knowledge hashes are in `tests/validation/evidence/company-research-p0-19-post-2782c0d-live-pair.json`. Raw reports, source content, provider payloads, and temporary Knowledge data remain local.
 
 P0-19 remains incomplete: both reports are blocked, the BYD product-method source references remain invalid, quantitative input gaps remain, independent semantic review was not reached, and Hermes comparison is outstanding.
+
+### Full regression at `4f6d842` (2026-10-28)
+
+- `npm run test:node`: 291 files, 3,188 tests; 3,167 passed and 21 failed. All 21 `(filePath, testTitle)` failures match `tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json`; no failure identities were added or removed.
+- `npm run client:test`: 17 files, 223 tests; 218 passed and five failed. The same five `(filePath, testTitle)` failures are listed in the accepted baseline; no new client failure appeared. Therefore the combined `npm test` command exits 1 at its client-test stage and does not automatically start Node tests; the Node suite was run separately.
+- `npm run typecheck`, `npm run client:typecheck`, and `npm run client:build` passed. The build emitted a large-bundle advisory (>500 kB).
+- Sanitized counts, baseline comparison, and check results are in `tests/validation/evidence/company-research-p0-19-regression-post-4f6d842.json`. P0-19 remains incomplete; no baseline test failure was repaired or reclassified in this update.

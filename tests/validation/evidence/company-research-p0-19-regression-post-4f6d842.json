@@ -1,0 +1,58 @@
+{
+  "evidenceType": "sanitized-regression-summary",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "4f6d84219cfc9ab4fca2bf293dce9c8eea5114f2",
+  "results": [
+    {
+      "suite": "node",
+      "command": "npm run test:node",
+      "testFiles": 291,
+      "total": 3188,
+      "passed": 3167,
+      "failed": 21,
+      "exitCode": 1,
+      "baseline": {
+        "source": "tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json",
+        "failureIdentityCount": 21,
+        "addedFailureIdentities": 0,
+        "disappearedFailureIdentities": 0
+      }
+    },
+    {
+      "suite": "client",
+      "command": "npm run client:test",
+      "testFiles": 17,
+      "total": 223,
+      "passed": 218,
+      "failed": 5,
+      "exitCode": 1,
+      "baseline": {
+        "source": "tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json",
+        "failureIdentityCount": 5,
+        "addedFailureIdentities": 0,
+        "disappearedFailureIdentities": 0
+      }
+    },
+    {
+      "suite": "server-typecheck",
+      "command": "npm run typecheck",
+      "passed": true
+    },
+    {
+      "suite": "client-typecheck",
+      "command": "npm run client:typecheck",
+      "passed": true
+    },
+    {
+      "suite": "client-build",
+      "command": "npm run client:build",
+      "passed": true,
+      "warning": "One client bundle is larger than 500 kB after minification."
+    }
+  ],
+  "overallCommand": {
+    "command": "npm test",
+    "exitCode": 1,
+    "reason": "client:test exits nonzero for the same five baseline failure identities, so the && chain does not start test:node; Node suite was run separately."
+  }
+}
