@@ -144,19 +144,25 @@ function canonicalInstitutionName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/[\s　·.（）()]/gu, '').replace(/(证券|银行|研究所)?(股份有限公司|有限责任公司|有限公司|股份|有限)$/u, '$1')
 }
 
-function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPointProofForSelection[], sourceIds: ReadonlySet<string>): string | undefined {
+function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPointProofForSelection[], sources: ReadonlyMap<string, NormalizedResearchSource>, asOf: string): string | undefined {
   const matches = proofs.filter(proof => proof.estimateId === estimate.estimateId)
   if (matches.length !== 1) return matches.length === 0 ? 'PROOF_MISSING' : 'PROOF_AMBIGUOUS'
   const proof = matches[0]!
+  const source = sources.get(proof.sourceCandidateId)
   if (!proof.pointFingerprint || !proof.observedRowHash
     || !estimate.sourceCandidateIds.includes(proof.sourceCandidateId)
-    || !sourceIds.has(proof.sourceCandidateId)
+    || !source
     || proof.matchedMetric !== estimate.metric
     || proof.matchedValue !== estimate.value
     || proof.matchedUnit !== estimate.unit
     || proof.matchedPeriod !== estimate.fiscalPeriod
     || proof.matchedInstitutionKey !== estimate.institutionKey
-    || proof.matchedPublishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
+    || proof.matchedPublishedAt !== estimate.publishedAt
+    || proof.provider !== source.candidate.provider
+    || source.candidate.publishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
+  const availableAt = Date.parse(source.retrievedAt)
+  if (!Number.isFinite(availableAt) || availableAt > Date.parse(asOf)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
+  if (source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true) return 'SOURCE_RIGHTS_NOT_QUALIFIED'
   if (proof.basisStatus !== 'VERIFIED' || proof.valueVersionStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
     return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
   }
@@ -173,7 +179,8 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
   for (const payload of payloads) {
     if (payload.kind !== 'expectation') continue
     const sources = payload.projection.sources
-    const sourceIds = new Set(sources.map(source => source.candidate.candidateId))
+    const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
+    const sourceIds = new Set(sourceById.keys())
     const candidates = payload.projection.estimates.filter(estimate => estimate.metric === 'eps'
       && estimate.fiscalPeriod === `${targetFiscalYear}-FY`
       && estimate.unit === EPS_PER_SHARE_UNIT
@@ -187,7 +194,7 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
     if (!provider) continue
     const proofs = (payload.projection.pointProofs ?? []) as readonly ExpectationPointProofForSelection[]
     const estimates = candidates.filter(estimate => {
-      const rejection = proofRejection(estimate, proofs, sourceIds)
+      const rejection = proofRejection(estimate, proofs, sourceById, asOf)
       if (rejection) diagnostics.push(`EXPECTATION_POINT_PROOF_REJECTED:${provider}:${estimate.estimateId}:${rejection}`)
       return rejection === undefined
     }).map(estimate => {

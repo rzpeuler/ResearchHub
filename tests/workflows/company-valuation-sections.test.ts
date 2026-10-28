@@ -18,8 +18,8 @@ const expectationSource = (candidateId: string, provider: string, publisher: str
   title: candidateId, content: JSON.stringify({ candidateId }), contentHash: `${candidateId}-hash`, retrievedAt: asOf,
   publisher, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
 } as any)
-const thsSources = [expectationSource('ths-1', 'Tonghuashun', '同花顺', 20), expectationSource('ths-2', 'Tonghuashun', '同花顺', 21), expectationSource('ths-3', 'Tonghuashun', '同花顺', 21), expectationSource('ths-future', 'Tonghuashun', '同花顺', 27)]
-const emSources = [expectationSource('eastmoney-1', 'EastMoney', 'EastMoney', 22), expectationSource('eastmoney-2', 'EastMoney', 'EastMoney', 21), expectationSource('eastmoney-3', 'EastMoney', 'EastMoney', 21)]
+const thsSources = [expectationSource('ths-1', 'akshare-ths-institution-forecast', '同花顺', 20), expectationSource('ths-2', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-3', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-future', 'akshare-ths-institution-forecast', '同花顺', 27)]
+const emSources = [expectationSource('eastmoney-1', 'akshare-eastmoney-research-report', 'EastMoney', 22), expectationSource('eastmoney-2', 'akshare-eastmoney-research-report', 'EastMoney', 21), expectationSource('eastmoney-3', 'akshare-eastmoney-research-report', 'EastMoney', 21)]
 const thsEstimates = [
   { estimateId: 'ths-e1', metric: 'eps', fiscalPeriod: '2026-FY', value: 4, unit: 'CNY_per_share', institutionKey: '东吴证券', publishedAt: '2026-10-20T00:00:00.000Z', sourceCandidateIds: ['ths-1'] },
   { estimateId: 'ths-e2', metric: 'eps', fiscalPeriod: '2026-FY', value: 5, unit: 'CNY_per_share', institutionKey: '华金证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['ths-2'] },
@@ -130,6 +130,24 @@ test('all currently UNVERIFIED provider proofs are excluded and no channel media
   assert.ok(result.diagnostics.includes('VARIANT_PERCEPTION_REQUIRES_TWO_COMPARABLE_UNIQUE_PROVIDER_SURFACES'))
   assert.doesNotMatch(result.sections[2]!.markdown, /中位数|贡献机构|同花顺去重归属样本|EastMoney 去重归属样本/)
   assert.match(result.sections[2]!.markdown, /^研究缺口：/)
+})
+
+test('a current row retrieved after the sealed asOf is excluded even when its point proof is complete', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const delayedProjection = {
+    ...original.projection,
+    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T00:00:01.000Z' } : source),
+  }
+  const delayed = {
+    ...acquisition,
+    earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection: delayedProjection }, acquisition: { observations: [] } }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: delayed, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'))
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
 })
 
 test('filing EPS selects the unique FY row under the main summary heading and matching year header', () => {
