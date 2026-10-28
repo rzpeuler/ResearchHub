@@ -3,6 +3,7 @@ import { ReasoningExecutorError } from '../../plugins/reasoning/errors.ts'
 import type { CompanyResearchInput } from '../../skills/company-research/contracts.ts'
 import { COMPANY_CORE_SECTION_IDS, type CompanyContentSection } from './content-quality.ts'
 import { selectCompanyEvidence } from '../../skills/company-research/evidence.ts'
+import type { CompanyScenarioAssumptionsPlan, CompanyScenarioName } from './scenario-assumptions.ts'
 
 export interface CompanySemanticSectionCheck {
   readonly sectionId: string
@@ -22,12 +23,23 @@ export interface CompanySemanticQuality {
   /** Number of independent review/re-review operations in the Workflow loop. */
   readonly rounds?: number
   readonly attemptOutputs?: readonly { readonly attempt: number; readonly output: unknown }[]
+  readonly scenarioRationaleReviews?: readonly CompanyScenarioRationaleReview[]
+}
+export interface CompanyScenarioRationaleReview {
+  readonly scenario: CompanyScenarioName
+  readonly driverId: 'revenue' | 'parent-net-profit'
+  readonly supported: boolean
+  readonly economicRationale: string
+  readonly supportingEvidenceRefs: readonly { readonly sourceCandidateId: string; readonly location: string }[]
+  readonly counterevidenceRefs: readonly { readonly sourceCandidateId: string; readonly location: string }[]
+  readonly reasons: readonly string[]
 }
 export type CompanySemanticQualityResult = CompanySemanticQuality
 export interface CompanySemanticQualityInput extends CompanyResearchInput {
   readonly sections: readonly CompanyContentSection[]
   readonly reasoningExecutor?: ReasoningExecutor
   readonly maxAttempts?: 1 | 2
+  readonly scenarioAssumptionsPlan?: CompanyScenarioAssumptionsPlan
 }
 
 /** Repair one narrowly verified reviewer self-contradiction for the cited 2025 market forecasts. */
@@ -112,7 +124,7 @@ const rubric: Readonly<Record<string, string>> = {
 const reviewRubric: Readonly<Record<string, string>> = {
   ...rubric,
   valuation: '说明估值日、市场价格日期、币种及复权状态；至少有一条基于可核验同口径输入的可复算路径。逐项核对 EPS/BVPS/EBITDA 的财年、单位、披露日及历史版本资格；公式与操作数应在正文可复核。区分历史与预测倍数、股权价值与企业价值、总值与每股值；解释敏感因素、方法失效和可比性边界。仅有行情、固定研究缺口或无来源目标价均不通过。',
-  'bull-base-bear': '逐一审查 Bear/Base/Bull 是否具名主要经营或财务驱动、同口径关键假设、条件、目标期间、来源及反证；三者使用相同估值方法、基准和目标财年，且经确定性公式计算并满足 Bear≤Base≤Bull。至少提供一项能重算的敏感性结果。没有独立校准证据不得给概率；不得将泛泛情绪描述或未说明依据的数字作为情景输入。检查情景变量是否与增长驱动、风险及监控相连。',
+  'bull-base-bear': '逐一审查 Bear/Base/Bull 是否具名主要经营或财务驱动、同口径关键假设、条件、目标期间、来源及反证；三者使用相同估值方法、基准和目标财年，且经确定性公式计算并满足 Bear≤Base≤Bull。至少提供一项能重算的敏感性结果。没有独立校准证据不得给概率；不得将泛泛情绪描述或未说明依据的数字作为情景输入。检查情景变量是否与增长驱动、风险及监控相连。若输入含scenarioAssumptionsPlan，另须在scenarioRationaleReviews中逐一给出Bear/Base/Bull×收入/归母净利润的6项决定；每项用精确sourceCandidateId+paragraph引用相关已完成方法的经营支持与H1或风险章节反证，给出具体机制和适用条件。历史包络本身不证明合理性；只要一项缺少独立经营支持或存在未处理反证，该项supported=false并阻塞整节。',
   'variant-perception': '至少比较两个截至 asOf 的真实预期面，严格对齐指标、财年/期间、单位、币种和范围；逐一核对贡献机构/发布者、发布日期、样本数、去重及可用版本证据。用可复算差异说明研究观点与市场/机构/公司预期在哪里不同，或有证据地说明没有实质差异，并指出验证条件和失效条件。单一共识不是第二个预期面；没有共识不等于没有预期差；仅写缺口不通过。',
   'industry-exposure': `${rubric['industry-exposure']} 分行业或分产品表的毛利率同比增减必须逐字沿用该来源列名、单位行和单元格所示单位；来源以百分号列示且报告明确照录原表口径时，不得擅自把数值改判为百分点。只有报告自行将原表百分比变动改称百分点，或将其与由两个毛利率水平复算的百分点差混淆时，才判单位错误。具名路线候选已在competition章节或已完成competitive_market_map中引用时，不得将同口径市场份额、成本或性能对照缺失扩大为没有具名候选或路线。`,
   'financial-quality': `${rubric['financial-quality']} 反驳年度分行业收入占比缺口时，必须使用同年度的分行业表；其他年度（例如半年报）的占比或分产品表的占比不能证明该年度分行业占比已披露。若结论明确限定为本年度原表未列占比，不能把另一期间或另一分类的表当作反证。分行业毛利率同比增减必须沿用原表列单位，不得仅凭“同比变化”改称百分点。`,
@@ -120,12 +132,82 @@ const reviewRubric: Readonly<Record<string, string>> = {
   'growth-drivers': `${rubric['growth-drivers']} 核对同比数值时逐字读取对应 citedParagraphs 原文；若单个分产品数据行同时包含本期金额、上年同期金额与同比增减，即该行直接披露同比值，不能说该行只含金额/占比。paragraph编号按来源正文的1起始行号，不可错移一行。若完整年报分行业行已在本报告的行业结构章节逐项列出并引用，不得再称可核验的年度行业行不存在；只在年份、完整标签、期间统计口径或分类边界经核实确实不一致时，才限制跨期趋势比较，并区分“存在年度行”与“能否直接跨期比较”。`,
   'management-capital-allocation': `${rubric['management-capital-allocation']} 对具体人员履历缺口进行反证时，gapCheckEvidence 必须明确对应同一姓名或可唯一确认的同一人；其他董事或高管的履历不能反驳该特定人员缺口。严格区分新任人员与历史任职人员、报告期与最新报告期；仅当证据的人员身份和时间范围均匹配时，才可判定“履历未提供”是虚假缺口。报告若只分析历史报告期，应指出最新期间材料中的具体新增事实及其对管理层分析的影响，不能把较早报告期事实冒充最新情况。` ,
 }
+
+function scenarioRefKey(ref: { readonly sourceCandidateId: string; readonly location: string }): string { return `${ref.sourceCandidateId}@${ref.location}` }
+function methodCitationPairs(markdown: string): string[] { return [...markdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!) }
+
+function validateScenarioRationaleReviews(output: unknown, input: CompanySemanticQualityInput): CompanyScenarioRationaleReview[] {
+  let raw = output
+  if (typeof raw === 'string') { try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { throw new Error('FORMAT: Invalid semantic quality JSON') } }
+  const value = raw as Record<string, unknown>
+  const rows = value.scenarioRationaleReviews
+  const plan = input.scenarioAssumptionsPlan
+  if (!plan) {
+    if (rows !== undefined && (!Array.isArray(rows) || rows.length !== 0)) throw new Error('FORMAT: Scenario rationale reviews must be empty without a candidate')
+    return []
+  }
+  if (!Array.isArray(rows)) throw new Error('FORMAT: scenarioRationaleReviews array required')
+  const allowedSupport = new Set<string>()
+  const allowedCounter = new Set<string>([scenarioRefKey(plan.h1CrossCheck.revenue.evidence), scenarioRefKey(plan.h1CrossCheck.parentNetProfit.evidence)])
+  const relevantSections = new Set(['revenue-profit-drivers', 'growth-drivers', 'financial-quality', 'business-segments', 'products', 'industry-exposure', 'catalysts', 'risks', 'investment-thesis', 'monitoring-checklist'])
+  for (const method of input.methodResults ?? []) {
+    if (method.status !== 'complete' || method.findings.length === 0) continue
+    const findingRefs = new Set(method.findings.flatMap(finding => finding.evidence.map(scenarioRefKey)))
+    for (const section of method.sections) {
+      if (!relevantSections.has(section.id)) continue
+      const refs = methodCitationPairs(section.markdown).filter(ref => findingRefs.has(ref))
+      refs.forEach(ref => allowedSupport.add(ref))
+      if (['risks', 'financial-quality', 'catalysts'].includes(section.id)) refs.forEach(ref => allowedCounter.add(ref))
+    }
+  }
+  const sourceById = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
+  const validateRefs = (refs: unknown, allowed: ReadonlySet<string>, field: string) => {
+    if (!Array.isArray(refs) || refs.length < 1 || refs.length > 8) throw new Error(`FORMAT: ${field} must contain bounded exact references`)
+    const parsed = refs.map(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`FORMAT: ${field} reference object required`)
+      const row = item as Record<string, unknown>
+      if (Object.keys(row).length !== 2 || typeof row.sourceCandidateId !== 'string' || typeof row.location !== 'string' || !/^paragraph:[1-9]\d*$/.test(row.location)) throw new Error(`FORMAT: ${field} exact source/paragraph pair required`)
+      const key = scenarioRefKey({ sourceCandidateId: row.sourceCandidateId, location: row.location })
+      if (!allowed.has(key)) throw new Error(`FORMAT: ${field} reference is not allowed by reviewed evidence`)
+      const source = sourceById.get(row.sourceCandidateId)
+      const paragraph = Number(row.location.slice('paragraph:'.length)) - 1
+      if (!source || source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true
+        || !source.candidate.publishedAt || Date.parse(source.candidate.publishedAt) > Date.parse(input.asOf)
+        || !source.content.split(/\r?\n/u)[paragraph]?.trim()) throw new Error(`FORMAT: ${field} reference does not resolve to eligible as-of source text`)
+      return { sourceCandidateId: row.sourceCandidateId, location: row.location }
+    })
+    if (new Set(parsed.map(scenarioRefKey)).size !== parsed.length) throw new Error(`FORMAT: ${field} references must be unique`)
+    return parsed
+  }
+  const expected = new Set(['bear:revenue', 'bear:parent-net-profit', 'base:revenue', 'base:parent-net-profit', 'bull:revenue', 'bull:parent-net-profit'])
+  if (rows.length !== 6) throw new Error('FORMAT: Exactly six scenario-driver rationale decisions required')
+  const reviews = rows.map((item): CompanyScenarioRationaleReview => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('FORMAT: Scenario rationale decision object required')
+    const row = item as Record<string, unknown>
+    const keys = ['scenario', 'driverId', 'supported', 'economicRationale', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons']
+    if (Object.keys(row).length !== keys.length || keys.some(key => !(key in row))
+      || !['bear', 'base', 'bull'].includes(String(row.scenario)) || !['revenue', 'parent-net-profit'].includes(String(row.driverId))
+      || typeof row.supported !== 'boolean' || typeof row.economicRationale !== 'string' || !row.economicRationale.trim() || row.economicRationale.length > 1200
+      || !Array.isArray(row.reasons) || row.reasons.length > 8 || row.reasons.some(reason => typeof reason !== 'string' || !reason.trim() || reason.length > 600)) throw new Error('FORMAT: Invalid scenario rationale decision fields')
+    const scenario = row.scenario as CompanyScenarioName
+    const driverId = row.driverId as 'revenue' | 'parent-net-profit'
+    if (!expected.delete(`${scenario}:${driverId}`)) throw new Error('FORMAT: Duplicate or unexpected scenario-driver decision')
+    const supportingEvidenceRefs = validateRefs(row.supportingEvidenceRefs, allowedSupport, 'supportingEvidenceRefs')
+    const counterevidenceRefs = validateRefs(row.counterevidenceRefs, allowedCounter, 'counterevidenceRefs')
+    if (row.supported && row.reasons.length > 0) throw new Error('FORMAT: Supported rationale cannot contain unresolved blocking reasons')
+    if (!row.supported && row.reasons.length === 0) throw new Error('FORMAT: Unsupported rationale requires a blocking reason')
+    return { scenario, driverId, supported: row.supported, economicRationale: row.economicRationale.trim(), supportingEvidenceRefs, counterevidenceRefs, reasons: row.reasons as string[] }
+  })
+  if (expected.size) throw new Error('FORMAT: Missing scenario-driver rationale decision')
+  return reviews
+}
 export const COMPANY_SEMANTIC_QUALITY_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['sectionChecks'], properties: {
     sectionChecks: { type: 'array', minItems: 19, maxItems: 19, items: { type: 'object', additionalProperties: false,
       required: ['sectionId', 'questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission', 'reasons'],
       properties: { sectionId: { type: 'string', enum: COMPANY_CORE_SECTION_IDS }, questionAnswered: { type: 'boolean' }, evidenceSupportsConclusion: { type: 'boolean' }, numericReproducible: { type: 'boolean' }, riskTransmission: { type: 'boolean' }, reasons: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 1200 } } },
     } },
+    scenarioRationaleReviews: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['scenario', 'driverId', 'supported', 'economicRationale', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons'], properties: { scenario: { type: 'string', enum: ['bear', 'base', 'bull'] }, driverId: { type: 'string', enum: ['revenue', 'parent-net-profit'] }, supported: { type: 'boolean' }, economicRationale: { type: 'string', minLength: 1, maxLength: 1200 }, supportingEvidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, counterevidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, reasons: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 600 } } } } },
   },
 } as const
 
@@ -133,7 +215,7 @@ export const COMPANY_SEMANTIC_QUALITY_SCHEMA = {
 export async function reviewCompanyResearchSemantics(input: CompanySemanticQualityInput): Promise<CompanySemanticQuality> {
   const diagnostics: { code: string; message: string; attempt: number }[] = []
   const attemptOutputs: {attempt:number;output:unknown}[] = []
-  const fail = (issue: string, attempts = 0, status: CompanySemanticQuality['status'] = 'failed'): CompanySemanticQuality => ({ passed: false, status, sectionChecks: [], issues: [issue], diagnostics, attempts, attemptOutputs })
+  const fail = (issue: string, attempts = 0, status: CompanySemanticQuality['status'] = 'failed'): CompanySemanticQuality => ({ passed: false, status, sectionChecks: [], issues: [issue], diagnostics, attempts, attemptOutputs, ...(input.scenarioAssumptionsPlan ? { scenarioRationaleReviews: [] } : {}) })
   if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', 0, 'cancelled')
   if (!input.reasoningExecutor) return fail('SEMANTIC_QUALITY_EXECUTOR_UNAVAILABLE')
   const sections = COMPANY_CORE_SECTION_IDS.map((id) => input.sections.find((section) => section.id === id))
@@ -142,7 +224,13 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
   const citedParagraphs = new Map<string, { sourceCandidateId: string; location: string; sourceTitle: string; publishedAt?: string; observedPublicationDate?: string; historicalSourceContext?: unknown; text: string }>()
   for (const section of sections) {
     const matches = [...section!.markdown.matchAll(/\[([^\]\s]+)@(paragraph:(\d+))\]/g)]
-    if (!matches.length) return fail(`SEMANTIC_QUALITY_NO_LOCATED_EVIDENCE:${section!.id}`)
+    if (!matches.length) {
+      const explicitWorkflowGap = input.scenarioAssumptionsPlan !== undefined
+        && ['valuation', 'variant-perception'].includes(section!.id)
+        && /^\s*研究缺口[：:]/u.test(section!.markdown)
+      if (explicitWorkflowGap) continue
+      return fail(`SEMANTIC_QUALITY_NO_LOCATED_EVIDENCE:${section!.id}`)
+    }
     for (const match of matches) {
     const source = sourceMap.get(match[1]!)
     const text = source?.content.split(/\r?\n/)[Number(match[3]) - 1]
@@ -151,7 +239,16 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
     citedParagraphs.set(`${match[1]}@${match[2]}`, { sourceCandidateId: match[1]!, location: match[2]!, sourceTitle: source.title, publishedAt: source.candidate.publishedAt, ...(typeof metadata?.observedPublicationDate === 'string' ? {observedPublicationDate:metadata.observedPublicationDate} : {}), ...(metadata?.historicalSourceContext ? {historicalSourceContext:metadata.historicalSourceContext} : {}), text })
     }
   }
-  const outputExample = { sectionChecks: COMPANY_CORE_SECTION_IDS.map((sectionId) => ({ sectionId, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: [] })) }
+  const scenarioReviewExample = input.scenarioAssumptionsPlan
+    ? (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
+      scenario, driverId, supported: false,
+      economicRationale: '独立解释该假设如何由经营证据支持，并说明历史包络只是计算校准。',
+      supportingEvidenceRefs: [{ sourceCandidateId: '<精确复制相关已完成方法的来源ID>', location: 'paragraph:1' }],
+      counterevidenceRefs: [{ sourceCandidateId: '<精确复制反证来源ID>', location: 'paragraph:1' }],
+      reasons: ['逐项说明假设适用条件、反证及跨章节一致性。'],
+    })))
+    : []
+  const outputExample = { sectionChecks: COMPANY_CORE_SECTION_IDS.map((sectionId) => ({ sectionId, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: [] })), scenarioRationaleReviews: scenarioReviewExample }
   const actualSources = new Set(input.sources.map((source) => source.candidate.candidateId))
   const eligibleIds = (input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? []).filter((id) => actualSources.has(id))
   // Independently inspect available but uncited evidence before accepting claims of missing material.
@@ -163,7 +260,7 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
   for (let attempt = 1; attempt <= (input.maxAttempts ?? 2); attempt++) {
     if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt - 1, 'cancelled')
     try {
-    const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。逐条审查全部19个必需章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值、三情景和预期差章节缺口均阻塞完成，必须核验实际输入及计算或可比预期面；不能以缺口说明判通过。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。引用身份由sourceCandidateId与paragraph共同确定，不得只凭相同段落编号把一份年报内容归到另一份报告。并作跨方法一致性核对：同时比较19个已发布章节、全部已完成原子方法及其findings/limitations/risks、preparedAnalysis和已引用原文；若另一已完成方法或报告章节已明确给出该数据，禁止其他章节将其称为“缺失”“仅估算”或“无法核验”。若来源口径冲突，按官方法定披露与结构化口径判定主结论，并指出次级来源的冲突及其来源；不得让媒体数值覆盖官方披露，也不得静默删去冲突。行业预测期必须以被引用段落明确写出的预测年份为准；报告标题中的年报所属年度只是披露文件年度，不自动等于预测期，不能仅凭“2025年年报”将原文明确标为2026年的预测改判为2025年市场规模。财务范围必须逐项辨别合并、分行业、分产品和地区：披露表行若标明“分行业”或具体产品，不得将该行比例表述为公司合并值；与preparedAnalysis中的合并财务指标交叉核对，结论范围或同比基期不一致时指出原句及影响。年报资产构成变动表中的占总资产比例及其变动列要按表头解释；例如短期借款余额从期初到期末上升，同时占总资产比例增加2.84个百分点，这两个指标并不冲突，不能把“占比变动”当成余额同比增长率。业务分部若官方表格披露收入金额/占比，就应核查报告是否给出该规模；报告不能把集中度“无法识别具体客户”扩大为“销售比例未披露”，也不能因所引毛利率表不含收入占比就声称年报未列占比。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却宣称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季口径、公式及代码结果；逐列核对表头与数据，产量不能借用销量、研发费用不能借用研发投入、匿名客户姓名未披露不等于其销售比例未披露。未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；触发条件可为具体质性条件，不强制未披露量化阈值或敏感度；除risks外其余18节riskTransmission固定true。主要问题已回答时，补充比率、完整人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。直接引用来源披露单元格时，只要同一证据包含完整列头、对应指标行、期间和值且报告沿用来源单位，即可复核；不得因preparedAnalysis没有重复计算而判不可复算。只有把披露值改作派生计算、改换单位或据此推导趋势时，才核对公式和操作数。核对全部实际引用及preparedAnalysis；不能只看业务引用而忽略结构化财务引用。每个false理由必须同时给出报告具体被否定句、相反证据和影响；不得凭空引用报告中不存在的措辞。对条件性推断按其证据边界审查。无关键数字时numericReproducible=true；所有true时reasons=[]，有false时具体说明问题及影响。输出前进行旗标与理由一致性检查：若理由明确称引用/来源与原文一致、计算或数值吻合且“未发现实质错误”，不得同时把evidenceSupportsConclusion或numericReproducible置false；将有明确正面依据的对应旗标置true并删除仅与其矛盾的非阻塞理由。若同一理由还指出具体相反证据、错引、错列、公式或范围错误，则保留对应false和该具体阻塞理由。不得让一个真实缺陷被其他正确数字或引用抵消。格式/判定逻辑修复后重新核对全部旗标，保留真实阻塞项。资料不足、冲突未交代或原文不支持关键结论必须false。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric: reviewRubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks })), preparedAnalysis: input.preparedAnalysis ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1), repairPreviousOutput:attemptOutputs.at(-1)?.output ?? null }, outputContract: COMPANY_SEMANTIC_QUALITY_SCHEMA, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
+    const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。逐条审查全部19个必需章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值、三情景和预期差章节缺口均阻塞完成，必须核验实际输入及计算或可比预期面；不能以缺口说明判通过。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。引用身份由sourceCandidateId与paragraph共同确定，不得只凭相同段落编号把一份年报内容归到另一份报告。并作跨方法一致性核对：同时比较19个已发布章节、全部已完成原子方法及其findings/limitations/risks、preparedAnalysis和已引用原文；若另一已完成方法或报告章节已明确给出该数据，禁止其他章节将其称为“缺失”“仅估算”或“无法核验”。若来源口径冲突，按官方法定披露与结构化口径判定主结论，并指出次级来源的冲突及其来源；不得让媒体数值覆盖官方披露，也不得静默删去冲突。行业预测期必须以被引用段落明确写出的预测年份为准；报告标题中的年报所属年度只是披露文件年度，不自动等于预测期，不能仅凭“2025年年报”将原文明确标为2026年的预测改判为2025年市场规模。财务范围必须逐项辨别合并、分行业、分产品和地区：披露表行若标明“分行业”或具体产品，不得将该行比例表述为公司合并值；与preparedAnalysis中的合并财务指标交叉核对，结论范围或同比基期不一致时指出原句及影响。年报资产构成变动表中的占总资产比例及其变动列要按表头解释；例如短期借款余额从期初到期末上升，同时占总资产比例增加2.84个百分点，这两个指标并不冲突，不能把“占比变动”当成余额同比增长率。业务分部若官方表格披露收入金额/占比，就应核查报告是否给出该规模；报告不能把集中度“无法识别具体客户”扩大为“销售比例未披露”，也不能因所引毛利率表不含收入占比就声称年报未列占比。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季口径、公式及代码结果；逐列核对表头与数据，产量不能借用销量、研发费用不能借用研发投入、匿名客户姓名未披露不等于其销售比例未披露。未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；触发条件可为具体质性条件，不强制未披露量化阈值或敏感度；除risks外其余18节riskTransmission固定true。主要问题已回答时，补充比率、完整人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。直接引用来源披露单元格时，只要同一证据包含完整列头、对应指标行、期间和值且报告沿用来源单位，即可复核；不得因preparedAnalysis没有重复计算而判不可复算。只有把披露值改作派生计算、改换单位或据此推导趋势时，才核对公式和操作数。核对全部实际引用及preparedAnalysis；不能只看业务引用而忽略结构化财务引用。每个false理由必须同时给出报告具体被否定句、相反证据和影响；不得凭空引用报告中不存在的措辞。对条件性推断按其证据边界审查。无关键数字时numericReproducible=true；所有true时reasons=[]，有false时具体说明问题及影响。输出前进行旗标与理由一致性检查：若理由明确称引用/来源与原文一致、计算或数值吻合且“未发现实质错误”，不得同时把evidenceSupportsConclusion或numericReproducible置false；将有明确正面依据的对应旗标置true并删除仅与其矛盾的非阻塞理由。若同一理由还指出具体相反证据、错引、错列、公式或范围错误，则保留对应false和该具体阻塞理由。不得让一个真实缺陷被其他正确数字或引用抵消。格式/判定逻辑修复后重新核对全部旗标，保留真实阻塞项。资料不足、冲突未交代或原文不支持关键结论必须false。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric: reviewRubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks, sections: method.sections })), preparedAnalysis: input.preparedAnalysis ?? null, scenarioAssumptionsPlan: input.scenarioAssumptionsPlan ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1), repairPreviousOutput:attemptOutputs.at(-1)?.output ?? null }, outputContract: { ...COMPANY_SEMANTIC_QUALITY_SCHEMA, required: input.scenarioAssumptionsPlan ? ['sectionChecks', 'scenarioRationaleReviews'] : ['sectionChecks'], properties: { ...COMPANY_SEMANTIC_QUALITY_SCHEMA.properties, scenarioRationaleReviews: { ...COMPANY_SEMANTIC_QUALITY_SCHEMA.properties.scenarioRationaleReviews, ...(input.scenarioAssumptionsPlan ? { minItems: 6 } : {}) } } }, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
       attemptOutputs.push({attempt,output:response.output})
       if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt, 'cancelled')
       const industrySelfCorrection = attempt > 1
@@ -174,11 +271,13 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
         : { output: industrySelfCorrection.output, reconciledSectionIds: [] }
       if (industrySelfCorrection.reconciled || explicitSelfCorrection.reconciledSectionIds.length) diagnostics.push({ code: 'REVIEWER_SELF_CORRECTION_RECONCILED', message: [...(industrySelfCorrection.reconciled ? ['industry-exposure market forecast flags matched both exact report citations and source paragraphs'] : []), ...explicitSelfCorrection.reconciledSectionIds].join('; '), attempt })
       const sectionChecks = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput(explicitSelfCorrection.output), input.sections, input.sources)
+      const scenarioRationaleReviews = validateScenarioRationaleReviews(explicitSelfCorrection.output, input)
       const issues = sectionChecks.flatMap((check) => {
         const failed = ['questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission'].filter((key) => !check[key as keyof CompanySemanticSectionCheck])
         return failed.length ? [`${check.sectionId}:${failed.join(',')}:${check.reasons.join('; ')}`] : []
       })
-      return { passed: issues.length === 0, status: issues.length ? 'failed' : 'passed', sectionChecks, issues, diagnostics, attempts: attempt, attemptOutputs }
+      const scenarioIssues = scenarioRationaleReviews.filter(review => !review.supported).map(review => `scenario:${review.scenario}:${review.driverId}:ECONOMIC_RATIONALE_UNSUPPORTED:${review.reasons.join(';')}`)
+      return { passed: issues.length === 0 && scenarioIssues.length === 0, status: issues.length || scenarioIssues.length ? 'failed' : 'passed', sectionChecks, issues: [...issues, ...scenarioIssues], diagnostics, attempts: attempt, attemptOutputs, ...(input.scenarioAssumptionsPlan ? { scenarioRationaleReviews } : {}) }
     } catch (error) {
       if (input.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) return fail('SEMANTIC_QUALITY_CANCELLED', attempt, 'cancelled')
       const message = error instanceof Error ? error.message : String(error)
@@ -197,7 +296,8 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
   if (typeof raw === 'string') { try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { throw new Error('FORMAT: Invalid semantic quality JSON') } }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('FORMAT: Semantic quality object required')
   const value = raw as Record<string, unknown>
-  if (Object.keys(value).length !== 1 || !Array.isArray(value.sectionChecks) || value.sectionChecks.length !== COMPANY_CORE_SECTION_IDS.length) throw new Error('FORMAT: Exact core check array required')
+  if (!Object.keys(value).every(key => ['sectionChecks', 'scenarioRationaleReviews'].includes(key)) || !Array.isArray(value.sectionChecks) || value.sectionChecks.length !== COMPANY_CORE_SECTION_IDS.length
+    || (value.scenarioRationaleReviews !== undefined && !Array.isArray(value.scenarioRationaleReviews))) throw new Error('FORMAT: Exact core check array required')
   const keys = ['sectionId', 'questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission', 'reasons']
   const checks = value.sectionChecks.map((item): CompanySemanticSectionCheck => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('FORMAT: Check object required')

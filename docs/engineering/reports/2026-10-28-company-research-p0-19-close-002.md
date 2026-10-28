@@ -2,7 +2,7 @@
 
 **Task:** `RHL-CQR-P0-19-CLOSE-002`
 **Status:** `IN_PROGRESS`; Gate 4 has not passed and P0-19 remains `NOT_ACCEPTED`.
-**Scope of this record:** Gate 0 baseline, private Gate 1 point binding and eligibility, and the initial Gate 2 scenario-plan validator.
+**Scope of this record:** Gate 0 baseline, Gate 1 point binding and eligibility audit, and Gate 2 scenario candidate integration with independent economic review.
 
 ## Gate 0 baseline
 
@@ -28,15 +28,23 @@ This establishes current-row binding only. It does **not** establish immutable h
 
 The Gate 1 audit found that the saved sidecars omit projected estimate rows/proofs and exact candidate counts, and that both pairs of forecast acquisitions finished after the run's sealed `asOf`. THS does not provide an immutable original report, exact document locator, correction history, or EPS basis. EastMoney may expose report identifiers/URLs, but current code does not bind each value to a verified immutable document/version or EPS basis. No authorized current route can pass Gate 1 for these saved reports. See `2026-10-28-company-research-p0-19-close-002-gate1-audit.md`. No report PDF was fetched or redistributed.
 
-The private `scenario-assumptions.ts` now has a source-exact FY2026 candidate builder and validator. It binds FY2023–FY2025 revenue and parent-attributable net-profit values to the matching year columns in annual report rows, cross-checks FY2026 H1 current/prior values separately, and recomputes the historical min/mid/max operating assumptions and independent 3×3 revenue-growth × parent-profit-growth sensitivity grid. The plan is deliberately returned as `candidate_requires_semantic_review`: the validator may report structural integrity, but `valid` and `reportEligible` remain false because historical calibration alone does not prove economic reasonableness. This remains **unintegrated**: no Workflow call path, renderer, section evidence wiring, or report use is present. FY2026 H1 is counterevidence, not blended into the annual calibration.
+The private `scenario-assumptions.ts` builder and validator now have a Workflow path. They bind FY2023–FY2025 revenue and parent-attributable net-profit values to matching annual-report rows, cross-check FY2026 H1 separately, and recompute the historical min/mid/max operating candidate plus 3×3 revenue-growth × parent-profit-growth sensitivity. The candidate is rendered as an explicitly unapproved research assumption, with formula/source references and H1 counterevidence. It is held out of the first synthesis evidence ledger. A six-decision independent review must ground each Bear/Base/Bull × revenue/parent-profit rationale in completed method evidence, cite counterevidence, and pass the candidate section checks before a second synthesis may use it. The final report promotes the section only if that section also passes the complete-report semantic review; otherwise the scenario and dependent thesis/checklist are emitted as gaps. Structural validity and historical calibration alone still do not establish economic reasonableness or make the scenario automatically report-eligible. FY2026 H1 remains separate counterevidence.
 
 ## Validation for this slice
 
-- `node --import tsx --test tests/workflows/earnings-expectation-source-eastmoney.test.ts tests/workflows/earnings-expectations-acquisition-d1.test.ts` — 24 passed, 0 failed. These are deterministic fixture tests, not live-provider or Company Research acceptance.
-- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts tests/workflows/company-scenario-assumptions.test.ts` — 17 passed, 0 failed on the current working tree (7 selector/eligibility tests and 10 scenario-builder/validator tests; fixture-only, not live acceptance).
+- `node --import tsx --test tests/workflows/earnings-expectation-source-eastmoney.test.ts tests/workflows/earnings-expectations-acquisition-d1.test.ts` — 24 passed, 0 failed in the earlier Gate 1 slice. These are deterministic fixture tests, not live-provider or Company Research acceptance.
+- Earlier Gate 1 validation: `node --import tsx --test tests/workflows/company-valuation-sections.test.ts tests/workflows/company-scenario-assumptions.test.ts` — 17 passed, 0 failed; and `npm run typecheck` passed.
+- Current Gate 2 integration validation is recorded after execution below; tests use deterministic synthetic fixtures, not live-provider or Company Research acceptance.
+- Full Node/client regressions and paired live Company Research acceptance have not passed for this delivery.
+
+## Gate 2 Workflow integration update (2026-10-28)
+
+- Added a source-exact scenario candidate renderer to the existing valuation section path. It exposes six FY2026 operating formulas, all nine sensitivity cells, annual source locators, and separate H1 counterevidence; it does not create probabilities or a target price.
+- The first synthesis cannot consume the candidate as verified evidence. The existing independent semantic reviewer now has a bounded six-item scenario contract requiring rationale, completed-method support references, counterevidence references, and per-decision reasons for Bear/Base/Bull × revenue/parent-attributable net profit.
+- Only after all six decisions and scenario section checks pass does the workflow promote the candidate into a second synthesis, within the existing two synthesis and two review budgets. Final report eligibility requires another complete-report review; otherwise the scenario and dependent thesis/checklist remain gaps.
+- `node --import tsx --test tests/workflows/company-deep-research.test.ts tests/workflows/company-scenario-assumptions.test.ts tests/workflows/company-semantic-quality.test.ts tests/workflows/company-valuation-sections.test.ts` — 110 passed, 0 failed. Includes synthetic fixture coverage for first-ledger exclusion, six-decision approval, second-synthesis promotion, missing decisions, and final-risk failure; it is not live Company Research acceptance.
 - `npm run typecheck` — passed.
-- `git diff --check` — passed; Git emitted line-ending notices for modified files.
-- Full Node/client regressions and the paired live Company Research acceptance were not rerun for this slice.
+- `git diff --check` — passed; Git reported line-ending normalization notices only.
 
 ## Remaining gates
 

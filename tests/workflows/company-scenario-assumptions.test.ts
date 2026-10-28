@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { CompanyFinancialObservation } from '../../data/company-research-contracts.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
 import { buildCompanyScenarioAssumptionPlan, validateCompanyScenarioAssumptions } from '../../workflows/company-deep-research/scenario-assumptions.ts'
+import { renderCompanyScenarioCandidate } from '../../workflows/company-deep-research/valuation-sections.ts'
 
 const asOf = '2026-10-28T00:00:00Z'
 const reportRows = (input: { companyName: string; years: number[]; revenue: number[]; profit: number[]; publishedAt: string; titleYear: number; candidateId: string }): NormalizedResearchSource => {
@@ -130,6 +131,21 @@ test('3x3 sensitivity independently recomputes every revenue and parent-profit r
   }
   const validation = validate(dongshan)
   assert.equal(validation.structurallyValid, true, validation.diagnostics.join(', '))
+})
+
+test('candidate renderer binds each scenario formula, annual history, H1 counterevidence and all nine cells', () => {
+  const plan = build(dongshan).plan!
+  const section = renderCompanyScenarioCandidate(plan)
+  assert.equal(section.id, 'bull-base-bear')
+  for (const scenario of ['Bear / 悲观', 'Base / 基准', 'Bull / 乐观']) assert.ok(section.markdown.includes(scenario))
+  assert.equal((section.markdown.match(/FY2026 = FY2025/g) ?? []).length, 6)
+  assert.ok(section.markdown.includes('FY2026 H1 独立交叉核对'))
+  assert.ok(section.markdown.includes('3×3 敏感性'))
+  assert.equal((section.markdown.match(/^\| [^\n]+$/gm) ?? []).length, 10)
+  assert.ok(section.markdown.includes('[002384-fy2025@paragraph:9]'))
+  assert.ok(section.markdown.includes('[002384-h1-2026@paragraph:8]'))
+  assert.deepEqual(new Set(section.sourceCandidateIds), new Set(['002384-fy2024', '002384-fy2025', '002384-h1-2026']))
+  assert.match(section.markdown, /不是概率加权结果，也未给出目标价/)
 })
 
 test('blocks target years outside FY2026, missing company identity, and history-only claims of economic validity', () => {

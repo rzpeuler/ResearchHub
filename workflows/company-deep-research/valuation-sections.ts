@@ -6,6 +6,7 @@ import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/co
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
+import type { CompanyScenarioAssumptionsPlan } from './scenario-assumptions.ts'
 
 export interface CompanyValuationSection {
   readonly id: 'valuation' | 'bull-base-bear' | 'variant-perception'
@@ -132,6 +133,34 @@ function acquisitionAttemptSummary(items: readonly { readonly metricId?: string;
   }).join('；')
 }
 
+function formatScenarioRate(value: number): string { return `${(value * 100).toFixed(2)}%` }
+function formatScenarioAmount(value: number): string { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value) }
+function scenarioCitation(ref: { readonly sourceCandidateId: string; readonly location: string }): string { return `[${ref.sourceCandidateId}@${ref.location}]` }
+
+/** Render only a structurally validated candidate; economic eligibility remains with the independent reviewer. */
+export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsPlan): CompanyValuationSection {
+  const scenarioNames = { bear: 'Bear / 悲观', base: 'Base / 基准', bull: 'Bull / 乐观' } as const
+  const blocks = plan.scenarios.map(scenario => {
+    const drivers = scenario.drivers.map(driver => {
+      const history = driver.historical.map(point => `${point.periodEnd.slice(0, 4)} ${formatScenarioAmount(point.value)} CNY ${scenarioCitation(point.evidence)}`).join('；')
+      const historyGrowth = driver.historical.slice(1).map((point, index) => `${point.periodEnd.slice(0, 4)}同比=${formatScenarioRate(point.value / driver.historical[index]!.value - 1)}`).join('，')
+      const supportRefs = driver.dependencies.map(scenarioCitation).join(' ')
+      const counterRefs = driver.counterevidence.map(scenarioCitation).join(' ')
+      return `- ${driver.metricLabel}：研究假设增速 ${formatScenarioRate(driver.proposal.rate)}；${historyGrowth}。FY2026 = FY2025 ${formatScenarioAmount(driver.historical[2]!.value)} CNY × (1 + ${formatScenarioRate(driver.proposal.rate)}) = ${formatScenarioAmount(driver.proposal.targetValue)} CNY。历史行：${history}。支持/校准证据：${supportRefs}。反证与中期交叉核对（不混入年度校准）：${counterRefs}。${driver.limitations}`
+    }).join('\n')
+    return `### ${scenarioNames[scenario.name]}\n${drivers}\n- 推导归母净利率 = FY2026 归母净利润 ÷ FY2026 营业收入 = ${formatScenarioRate(scenario.impliedParentNetMargin.value)}（DERIVED）。`
+  })
+  const rows = plan.sensitivityGrid.cells.flatMap(row => row.map(cell => `| ${formatScenarioRate(cell.revenueRate)} | ${formatScenarioRate(cell.parentNetProfitRate)} | ${formatScenarioAmount(cell.revenue)} | ${formatScenarioAmount(cell.parentNetProfit)} | ${formatScenarioRate(cell.impliedParentNetMargin)} |`))
+  const h1 = plan.h1CrossCheck
+  const h1Text = `FY2026 H1 独立交叉核对（YTD，不并入年度情景校准）：营业收入 ${formatScenarioAmount(h1.revenue.current)} CNY 对比上年同期 ${formatScenarioAmount(h1.revenue.prior)} CNY，同比 ${formatScenarioRate(h1.revenue.yoy)} ${scenarioCitation(h1.revenue.evidence)}；归母净利润 ${formatScenarioAmount(h1.parentNetProfit.current)} CNY 对比上年同期 ${formatScenarioAmount(h1.parentNetProfit.prior)} CNY，同比 ${formatScenarioRate(h1.parentNetProfit.yoy)} ${scenarioCitation(h1.parentNetProfit.evidence)}。`
+  const allRefs = [...new Set(plan.scenarios.flatMap(scenario => scenario.drivers.flatMap(driver => [...driver.dependencies, ...driver.counterevidence])).concat([h1.revenue.evidence, h1.parentNetProfit.evidence]).map(ref => ref.sourceCandidateId))]
+  return {
+    id: 'bull-base-bear', title: titles['bull-base-bear'],
+    markdown: `独立经济理由审查状态：待审；以下为 FY2026 研究假设候选，不是概率加权结果，也未给出目标价。校准约定：Bear/Base/Bull 分别取 FY2023–FY2025 两段同比增速包络的低值、上下界算术中点和高值；历史范围本身不能证明经济合理性。\n\n${blocks.join('\n\n')}\n\n### 3×3 敏感性（行=营业收入同比假设，列=归母净利润同比假设）\nFY2026 值分别按 FY2025 基数 × (1 + 对应增速) 复算；利润率=归母净利润÷营业收入。\n| 收入增速 | 净利润增速 | FY2026 收入 (CNY) | FY2026 归母净利润 (CNY) | 归母净利率 |\n|---:|---:|---:|---:|---:|\n${rows.join('\n')}\n\n${h1Text}`,
+    sourceCandidateIds: allRefs,
+  }
+}
+
 type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
 type ExpectationSurfaceSelection = { readonly surfaces: readonly ExpectationSurface[]; readonly diagnostics: readonly string[] }
 type ExpectationPointProofForSelection = Omit<EarningsEstimatePointProof, 'basisStatus' | 'valueVersionStatus' | 'correctionStatus'> & {
@@ -254,6 +283,7 @@ export function buildCompanyValuationSections(input: {
   readonly asOf: string
   readonly acquisition?: CompanyReadOnlyAcquisition
   readonly sources: readonly NormalizedResearchSource[]
+  readonly scenarioCandidate?: CompanyScenarioAssumptionsPlan
 }): CompanyValuationSectionsResult {
   const diagnostics: string[] = []
   const variantGap = gap('variant-perception', titles['variant-perception'], '未取得与 FY2026 EPS 共识同指标、同期间、同单位的公司指引或独立本方预测')
@@ -303,6 +333,11 @@ export function buildCompanyValuationSections(input: {
   let valuationSection = gap('valuation', titles.valuation, '无法同时确认 PIT 收盘价与年度报告基本 EPS')
   let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], `本轮没有来源支持的目标年经营驱动假设（销量/产品收入、经营利润率、现金流驱动及其 Bear/Base/Bull 区间），无法构成同财年、同方法的可复算敏感性。已尝试的估值/预期采集路线及资格状态：${acquisitionAttempts}。在获得合格经营假设前不建立三情景估值`)
   diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
+  if (input.scenarioCandidate) {
+    scenarioSection = renderCompanyScenarioCandidate(input.scenarioCandidate)
+    diagnostics.splice(diagnostics.indexOf('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE'), 1)
+    diagnostics.push('SCENARIO_CANDIDATE_REQUIRES_INDEPENDENT_ECONOMIC_REVIEW')
+  }
   if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)
     const market = { priceDate: quote.observation.priceDate, close: quote.observation.close }

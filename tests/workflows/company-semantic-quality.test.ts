@@ -5,7 +5,7 @@ import { COMPANY_CORE_SECTION_IDS } from '../../workflows/company-deep-research/
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
 
-const source = { candidate: { candidateId: 'filing', publishedAt: '2026-03-28' }, title: '2025年年度报告', content: '实际经营正文，产品销售给客户，现金回流；订单下降会导致收入减少。\n未引用的正文不应进入审查。' } as NormalizedResearchSource
+const source = { candidate: { candidateId: 'filing', publishedAt: '2026-03-28' }, title: '2025年年度报告', content: '实际经营正文，产品销售给客户，现金回流；订单下降会导致收入减少。\n未引用的正文不应进入审查。', rights: { accessScope: 'public', aiProcessingAllowed: true, retentionAllowed: true } } as NormalizedResearchSource
 const sections = COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: `${id} 实质分析与反证。[filing@paragraph:1]` }))
 const output = { sectionChecks: COMPANY_CORE_SECTION_IDS.map((sectionId) => ({ sectionId, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: [] as string[] })) }
 const executor = (run: (request: any) => Promise<unknown>): ReasoningExecutor => ({ capabilities: () => ({ maxContextTokens: 100000, maxOutputTokens: 4000, maxConcurrency: 1, structuredOutputSupport: true }), execute: async (request) => ({ operation: request.operation, output: await run(request) }) })
@@ -41,6 +41,32 @@ test('independent semantic review sends actual cited paragraphs and evaluates al
   }) })
   assert.equal(result.passed, true)
   assert.equal(result.sectionChecks.length, 19)
+})
+
+test('scenario eligibility requires six exact per-driver economic decisions with method support and counterevidence refs', async () => {
+  const ref = { sourceCandidateId: 'filing', location: 'paragraph:1' }
+  const plan = { h1CrossCheck: { revenue: { evidence: ref }, parentNetProfit: { evidence: ref } } } as any
+  const methodResults = [{ skillId: 'business_driver_analysis', status: 'complete', answer: 'Revenue drivers', findings: [{ text: 'Product demand supports revenue', kind: 'fact', evidence: [ref] }], limitations: [], risks: [], sections: [{ id: 'growth-drivers', markdown: 'Product demand supports revenue.[filing@paragraph:1]' }, { id: 'risks', markdown: 'Cash conversion is counterevidence.[filing@paragraph:1]' }] }] as any
+  const decisions = (supported = true) => (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
+    scenario, driverId, supported, economicRationale: 'Demand and product mix support this rate under the stated operating conditions.',
+    supportingEvidenceRefs: [ref], counterevidenceRefs: [ref], reasons: supported ? [] : ['No independent driver evidence supports this scenario.'],
+  })))
+  const accepted = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async request => {
+    assert.ok(request.outputContract.required.includes('scenarioRationaleReviews'))
+    assert.equal(request.outputContract.properties.scenarioRationaleReviews.minItems, 6)
+    assert.equal(request.outputContract.properties.scenarioRationaleReviews.maxItems, 6)
+    assert.equal(request.input.scenarioAssumptionsPlan, plan)
+    return { ...output, scenarioRationaleReviews: decisions() }
+  }) })
+  assert.equal(accepted.passed, true)
+  assert.equal(accepted.scenarioRationaleReviews?.length, 6)
+  const rejected = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async () => ({ ...output, scenarioRationaleReviews: decisions(false) })) })
+  assert.equal(rejected.passed, false)
+  assert.ok(rejected.issues.some(issue => issue.includes('ECONOMIC_RATIONALE_UNSUPPORTED')))
+  const badPair = decisions()
+  badPair[0] = { ...badPair[0]!, supportingEvidenceRefs: [{ sourceCandidateId: 'filing', location: 'paragraph:2' }] }
+  const malformed = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async () => ({ ...output, scenarioRationaleReviews: badPair })) })
+  assert.equal(malformed.passed, false)
 })
 
 test('semantic review ignores a false 2025-to-2025 period objection only when the report and cited financial source prove 2024-to-2025', () => {

@@ -3641,6 +3641,15 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
           if (!/(?:Bear|悲观)/i.test(analysisBody) || !/(?:Base|基准)/i.test(analysisBody) || !/(?:Bull|乐观)/i.test(analysisBody)) reasons.push('SCENARIO_SET_INCOMPLETE')
           if (!/(?:敏感|Sensitivity|公式|计算|×|÷|=|＝)/i.test(analysisBody)) reasons.push('SCENARIO_CALCULATION_OR_SENSITIVITY_MISSING')
           if (/(?:共识(?:EPS|每股收益).{0,80}(?:低值|极值|区间)|(?:低值|高值|中位数).{0,80}固定.{0,20}PE|EPS.{0,30}(?:固定|当前).{0,20}PE)/is.test(analysisBody)) reasons.push('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT')
+          if (/历史范围本身不能证明经济合理性/u.test(analysisBody)) {
+            for (const label of ['Bear', 'Base', 'Bull']) {
+              const start = analysisBody.indexOf(`### ${label} /`)
+              const next = ['Bear', 'Base', 'Bull'].map(name => analysisBody.indexOf(`### ${name} /`, start + label.length)).filter(index => index >= 0)
+              const block = analysisBody.slice(start, next.length ? Math.min(...next) : undefined)
+              if (!block.includes('营业收入') || !block.includes('归属于上市公司股东的净利润') || !/FY2026.{0,80}(?:×|\*)/u.test(block) || !/\[[^\]\s]+@paragraph:\d+\]/u.test(block)) reasons.push(`SCENARIO_DRIVER_FORMULA_OR_CITATION_MISSING:${label}`)
+            }
+            if (!/FY2026 H1 独立交叉核对/u.test(analysisBody) || !/3×3 敏感性/u.test(analysisBody)) reasons.push('SCENARIO_H1_OR_FULL_SENSITIVITY_MISSING')
+          }
         }
         if (id === 'variant-perception') {
           if (new Set(locatedCitations.map((citation) => citation.slice(0, citation.indexOf('@')))).size < 2) reasons.push('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES')

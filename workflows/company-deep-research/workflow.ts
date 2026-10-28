@@ -25,10 +25,24 @@ import { assembleCompanyResearch, buildSynthesisEvidenceLedger, repairCompanyRes
 import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, repairCompanyIndustryExposureRowsFromMethod, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductCategoryEconomics, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
-import { reviewCompanyResearchSemantics, type CompanySemanticQuality } from './semantic-quality.ts'
-import { buildCompanyValuationSections } from './valuation-sections.ts'
+import { reviewCompanyResearchSemantics, type CompanySemanticQuality, type CompanyScenarioRationaleReview } from './semantic-quality.ts'
+import { buildCompanyValuationSections, renderCompanyScenarioCandidate } from './valuation-sections.ts'
+import { buildCompanyScenarioAssumptionPlan, validateCompanyScenarioAssumptions } from './scenario-assumptions.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+function attachScenarioRationaleReviews<T extends { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }>(section: T, reviews: readonly CompanyScenarioRationaleReview[]): T {
+  if (section.id !== 'bull-base-bear' || reviews.length !== 6) return section
+  const scenarioLabels = { bear: 'Bear / 悲观', base: 'Base / 基准', bull: 'Bull / 乐观' } as const
+  const driverLabels = { revenue: '营业收入', 'parent-net-profit': '归母净利润' } as const
+  const blocks = reviews.map(review => {
+    const rationale = review.economicRationale.replace(/\[[^\]\n]*@paragraph:\d+\]/gu, '（未将模型文本内引用作为证据）').replace(/[\r\n]+/gu, ' ').trim()
+    const refs = (items: readonly { readonly sourceCandidateId: string; readonly location: string }[]) => items.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')
+    return `- ${scenarioLabels[review.scenario]} / ${driverLabels[review.driverId]}：${rationale} 支持依据：${refs(review.supportingEvidenceRefs)}。反证：${refs(review.counterevidenceRefs)}。`
+  }).join('\n')
+  const sourceCandidateIds = [...new Set([...section.sourceCandidateIds, ...reviews.flatMap(review => [...review.supportingEvidenceRefs, ...review.counterevidenceRefs].map(ref => ref.sourceCandidateId))])]
+  const baseMarkdown = section.markdown.split(/\n\n### 独立经济理由审查\n/u)[0]!
+  return { ...section, sourceCandidateIds, markdown: `${baseMarkdown}\n\n### 独立经济理由审查\n${blocks}` }
+}
 interface ReadOnlyResolverAttempt<T> {
   readonly bundle?: ResolvedDataBundle<T>
   readonly error?: string
@@ -660,6 +674,16 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       valuationAcquisitionDiagnostics.push(...[...valuationSourceConflicts].map(id => `VALUATION_SOURCE_CONTENT_CONFLICT:${id}`))
     }
     acquired = { ...acquired, sources: [...knownSources.values()] }
+    const scenarioConflictedIds = new Set([...sourceConflicts.map(conflict => conflict.candidateId), ...valuationSourceConflicts])
+    const scenarioSources = acquired.sources.filter(source => !scenarioConflictedIds.has(source.candidate.candidateId))
+    const scenarioBuild = buildCompanyScenarioAssumptionPlan({ runId: input.workflowRunId, company, asOf, targetFiscalYear: 2026, observations: acquired.financialData ?? [], sources: scenarioSources })
+    const scenarioStructuralValidation = scenarioBuild.plan ? validateCompanyScenarioAssumptions({ plan: scenarioBuild.plan, currentRunId: input.workflowRunId, company, asOf, targetFiscalYear: 2026, observations: acquired.financialData ?? [], sources: scenarioSources }) : undefined
+    if (scenarioBuild.status === 'blocked') valuationAcquisitionDiagnostics.push(...scenarioBuild.diagnostics.map(code => `SCENARIO_CANDIDATE_${code}`))
+    if (scenarioStructuralValidation && !scenarioStructuralValidation.structurallyValid) valuationAcquisitionDiagnostics.push(...scenarioStructuralValidation.diagnostics.map(code => `SCENARIO_STRUCTURE_${code}`))
+    const scenarioCandidateSection = scenarioBuild.plan && scenarioStructuralValidation?.structurallyValid
+      ? renderCompanyScenarioCandidate(scenarioBuild.plan)
+      : undefined
+    let scenarioPromotedAfterIndependentReview = false
     await input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源；只读估值诊断 ${valuationAcquisitionDiagnostics.length} 项` })
     const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry())
     const existingKnowledgeProjection = input.useStructuredKnowledge === false ? [] : await gateway.projectExistingKnowledge(input.handle, company)
@@ -780,7 +804,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       // The approval is two calls for content review across the entire Workflow,
       // including format repair and any later review round.
       const modelResult: CompanySemanticQuality = remainingAttempts > 0
-        ? await reviewCompanyResearchSemantics({...researchInput,sections:research.sections,methodResults,reasoningExecutor:input.reasoningExecutor,maxAttempts:remainingAttempts as 1 | 2})
+        ? await reviewCompanyResearchSemantics({...researchInput,sections:research.sections,methodResults,reasoningExecutor:input.reasoningExecutor,maxAttempts:remainingAttempts as 1 | 2,...(scenarioBuild.plan && scenarioStructuralValidation?.structurallyValid ? { scenarioAssumptionsPlan: scenarioBuild.plan } : {})})
         : {passed:false,status:'failed',sectionChecks:[],issues:['SEMANTIC_REVIEW_BUDGET_EXHAUSTED'],diagnostics:[{code:'SEMANTIC_REVIEW_BUDGET_EXHAUSTED',message:'The shared two-call content-review budget was exhausted; no further reviewer call was made.',attempt:0}],attempts:0,attemptOutputs:[]}
       const crossMethodDenials = findKnownCompetitorDenials({sections:research.sections,methodResults})
       const crossMethodReasons = crossMethodDenials.map(issue => `${issue.sectionId}: CROSS_METHOD_COMPETITOR_DENIAL: competitive_market_map identified ${issue.candidate} as a named candidate, but this section denies named competitors without preserving that candidate or a scoped comparison gap.`)
@@ -813,7 +837,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     }
     for (let round = 0; round <= 2; round++) {
       abortIfNeeded(input.signal)
-      const reportSourceCandidateIds = [...new Set([...acquired.durableSourceCandidateIds, ...valuationBuild.reportSourceCandidateIds.filter(id => !valuationSourceConflicts.has(id)), ...(input.asOf === undefined ? acquired.sources.filter(source => source.candidate.provider === 'public-web' && source.content.trim().length >= 120).map(source => source.candidate.candidateId) : [])])]
+      const reportSourceCandidateIds = [...new Set([...acquired.durableSourceCandidateIds, ...valuationSections.flatMap(section => section.sourceCandidateIds).filter(id => !valuationSourceConflicts.has(id)), ...(input.asOf === undefined ? acquired.sources.filter(source => source.candidate.provider === 'public-web' && source.content.trim().length >= 120).map(source => source.candidate.candidateId) : [])])]
       researchInput = { ...researchInput, sources: acquired.sources, durableSourceCandidateIds: acquired.durableSourceCandidateIds, reportSourceCandidateIds }
       researchInput = { ...researchInput, preparedAnalysis: {financial:prepareCompanyFinancialAnalysis(researchInput),...(marketSizing ? {marketSizing} : {})} }
       if (round === 0 && input.reasoningExecutor) {
@@ -854,28 +878,50 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const incomplete = methodResults.filter(method => method.status !== 'complete')
       revisionTargets = []
       if (!incomplete.length && input.reasoningExecutor && reviewRounds < 2) {
-        reviewedResearch = await assemble()
-        const structural = evaluateCompanyResearchContent({sections:reviewedResearch.sections,synthesisMode,methodResults,methodExecutions:methodResults})
-        if (!structural.passed) break
-        if (synthesisMode === 'reasoning_executor') {
-          lastStructurallyAcceptedResearch = reviewedResearch
-          lastStructurallyAcceptedEvidenceFingerprint = companySynthesisEvidenceFingerprint({ sections: reviewedResearch.sections, methodResults, sourceHashes: synthesisSourceHashes() })
+        const synthesizedResearch = await assemble()
+        const candidateReviewResearch: CompanyResearchResult = scenarioCandidateSection
+          ? { ...synthesizedResearch, sections: synthesizedResearch.sections.map(section => section.id === 'bull-base-bear' ? { ...scenarioCandidateSection, proposalIds: section.proposalIds, markdown: `独立经济理由审查状态：待审；${scenarioCandidateSection.markdown}` } : section) }
+          : synthesizedResearch
+        reviewedResearch = candidateReviewResearch
+        const structural = evaluateCompanyResearchContent({sections:candidateReviewResearch.sections,synthesisMode,methodResults,methodExecutions:methodResults})
+        const transientScenarioStructural = structural.sectionChecks.find(check => check.sectionId === 'bull-base-bear')
+        const scenarioOnlyGateAllowsReview = !!scenarioCandidateSection && scenarioStructuralValidation?.structurallyValid === true && transientScenarioStructural?.passed === true
+        if (scenarioCandidateSection && !scenarioOnlyGateAllowsReview) synthesisDiagnostics = [...synthesisDiagnostics, `SCENARIO_CANDIDATE_REVIEW_BLOCKED:${transientScenarioStructural?.reasons.join(',') ?? 'SCENARIO_SECTION_CHECK_MISSING'}`]
+        if (!structural.passed && !scenarioOnlyGateAllowsReview) break
+        if (structural.passed && synthesisMode === 'reasoning_executor') {
+          lastStructurallyAcceptedResearch = candidateReviewResearch
+          lastStructurallyAcceptedEvidenceFingerprint = companySynthesisEvidenceFingerprint({ sections: candidateReviewResearch.sections, methodResults, sourceHashes: synthesisSourceHashes() })
           synthesisSnapshotEvidenceFingerprint = lastStructurallyAcceptedEvidenceFingerprint ? sha256(lastStructurallyAcceptedEvidenceFingerprint) : undefined
           lastStructurallyAcceptedSynthesisMode = synthesisMode
           synthesisSnapshotStatus = 'captured'
         }
-        semanticReview = await review(reviewedResearch)
-        if (lastStructurallyAcceptedResearch === reviewedResearch) lastStructurallyAcceptedReview = semanticReview
-        if (semanticReview.passed) break
-        const failedIds = semanticReview.sectionChecks.filter(check => !check.questionAnswered || !check.evidenceSupportsConclusion || !check.numericReproducible || !check.riskTransmission).map(check => check.sectionId)
+        const reviewResult = await review(candidateReviewResearch)
+        semanticReview = reviewResult
+        if (lastStructurallyAcceptedResearch === candidateReviewResearch) lastStructurallyAcceptedReview = reviewResult
+        const initialScenarioCheck = reviewResult.sectionChecks.find(check => check.sectionId === 'bull-base-bear')
+        const initialScenarioGatePassed = reviewResult.scenarioRationaleReviews?.length === 6
+          && reviewResult.scenarioRationaleReviews.every(review => review.supported)
+          && initialScenarioCheck?.questionAnswered === true && initialScenarioCheck.evidenceSupportsConclusion === true
+          && initialScenarioCheck.numericReproducible === true && initialScenarioCheck.riskTransmission === true
+        if (scenarioCandidateSection && !scenarioPromotedAfterIndependentReview && initialScenarioGatePassed
+          && reviewAttempts < 2 && round < 2 && synthesisAttempts < 2 && reviewRounds < 2) {
+          scenarioPromotedAfterIndependentReview = true
+          valuationSections = valuationSections.map(section => section.id === 'bull-base-bear'
+            ? attachScenarioRationaleReviews({ ...scenarioCandidateSection, markdown: `独立经济理由审查状态：通过初审；最终整报告仍需独立复核。${scenarioCandidateSection.markdown.replace(/^独立经济理由审查状态：待审；/u, '')}` }, reviewResult.scenarioRationaleReviews!)
+            : section)
+          reviewedResearch = undefined
+          continue
+        }
+        if (reviewResult.passed) break
+        const failedIds = reviewResult.sectionChecks.filter(check => !check.questionAnswered || !check.evidenceSupportsConclusion || !check.numericReproducible || !check.riskTransmission).map(check => check.sectionId)
         revisionTargets = COMPANY_RESEARCH_METHOD_IDS.filter(id => COMPANY_METHOD_SECTION_IDS[id].some(sectionId => failedIds.includes(sectionId)))
-        if (semanticReview.diagnostics.some(diagnostic => diagnostic.code === 'RATE_LIMIT_OR_QUOTA' || diagnostic.code === 'AUTHENTICATION_OR_ACCOUNT')) break
+        if (reviewResult.diagnostics.some(diagnostic => diagnostic.code === 'RATE_LIMIT_OR_QUOTA' || diagnostic.code === 'AUTHENTICATION_OR_ACCOUNT')) break
         // An exhausted atomic method cannot be called again, but its remaining
         // valid evidence can still be synthesized against the review feedback.
         // Do not let one exhausted section owner suppress repair of sibling
         // owners or the final synthesis; the per-operation attempt filter below
         // enforces each method's own budget.
-        if (reviewRounds >= 2 || semanticReview.sectionChecks.length !== COMPANY_CORE_SECTION_IDS.length) break
+        if (reviewRounds >= 2 || reviewResult.sectionChecks.length !== COMPANY_CORE_SECTION_IDS.length) break
       }
       const needsSupplement = incomplete.some(method => method.attempts < 2) || !!semanticReview && !semanticReview.passed && semanticReview.sectionChecks.length === COMPANY_CORE_SECTION_IDS.length && reviewRounds < 2
       if (!needsSupplement || round === 2 || !input.reasoningExecutor || acquisitionRemainingMs <= 0) break
@@ -1006,6 +1052,19 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     const boundedSections = reconcileCompanyRAndDCapitalizationRatioSpread({sections:reconcileCompanyInterimIndustryProductComparison({sections:reconcileCompanyNumericMovementVerbs(reconcileCompanyIndustryGrowthSpread({sections:reconcileCompanyAnnualGrossMargin({sections:finalLeverage,methodResults}),methodResults})),methodResults}),methodResults})
     const finalFinancialSummary = renderCompanyFinancialTable(researchInput)?.openingSummary ?? ''
     let reportResearch = { ...withIndustryExposure, sections: boundedSections.map(section => section.id === 'financial-quality' ? { ...section, markdown: insertCompanyFinancialOpeningSummary(section.markdown, finalFinancialSummary) } : section) }
+    const scenarioReviews = semanticReview?.scenarioRationaleReviews ?? []
+    const scenarioSectionCheck = semanticReview?.sectionChecks.find(check => check.sectionId === 'bull-base-bear')
+    const scenarioReportEligible = scenarioPromotedAfterIndependentReview && scenarioStructuralValidation?.structurallyValid === true
+      && scenarioReviews.length === 6 && scenarioReviews.every(review => review.supported)
+      && scenarioSectionCheck?.questionAnswered === true && scenarioSectionCheck.evidenceSupportsConclusion === true && scenarioSectionCheck.numericReproducible === true
+      && scenarioSectionCheck.riskTransmission === true
+    reportResearch = { ...reportResearch, sections: reportResearch.sections.map(section => {
+      if (!scenarioReportEligible && scenarioPromotedAfterIndependentReview && ['investment-thesis', 'monitoring-checklist'].includes(section.id)) return { ...section, markdown: '研究缺口：FY2026情景候选曾进入综合草稿，但未通过最终独立审查；本节依赖的情景结论不予保留。影响：须在合格情景证据通过后重新综合投资论点与监控项。', sourceCandidateIds: [] }
+      if (section.id !== 'bull-base-bear' || !scenarioBuild.plan) return section
+      if (!scenarioReportEligible) return { ...section, markdown: '研究缺口：FY2026情景候选未同时通过结构校验、六项独立经济理由审查及最终情景章节质量检查。影响：本报告不把历史增速包络候选作为合格情景结论。', sourceCandidateIds: [] }
+      const passed = { ...section, markdown: section.markdown.replace(/独立经济理由审查状态：(?:待审；|通过初审；最终整报告仍需独立复核。)/u, '独立经济理由审查状态：通过；') }
+      return attachScenarioRationaleReviews(passed, scenarioReviews)
+    }) }
     const tableRepairRecords: string[] = [...preReconciliationTableRepairs]
     const tableRepairDiagnostics: string[] = []
     reportResearch = { ...reportResearch, sections: reportResearch.sections.map(section => {

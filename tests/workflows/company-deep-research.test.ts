@@ -257,6 +257,116 @@ function resolverFactory(plugins: readonly ResearchAcquisitionPlugin[], akshare?
   })
 }
 
+test('FY2026 scenario enters only the post-six-decision synthesis; missing and final-risk-failed decisions stay blocked', async () => {
+  const runCase = async (mode: 'scenario-gate-pass' | 'missing-decisions' | 'final-risk-fail') => {
+    const root = await mkdtemp(join(tmpdir(), `researchhub-${mode}-`))
+    const reports = await mkdtemp(join(tmpdir(), `researchhub-${mode}-reports-`))
+    const asOf = '2026-10-28T00:00:00.000Z'
+    try {
+      await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `kb-${mode}`, now: asOf })
+      await seedCanonicalCompany(root, '600519', 'Fixture Company', asOf)
+      const docs = new Map<string, { title: string; publishedAt: string; content: string }>([
+        ['scenario-fy2024', { title: '2024年年度报告', publishedAt: '2025-03-28T00:00:00.000Z', content: ['Fixture Company 2024 年年度报告全文', 'Fixture Company', '2024 年年度报告', '主要会计数据和财务指标', '2024 年 2023 年 2022 年', '营业收入（元） 120 100 80', '归属于上市公司股东的净利润（元） 15 10 8'].join('\n') }],
+        ['scenario-fy2025', { title: '2025年年度报告', publishedAt: '2026-03-28T00:00:00.000Z', content: ['Fixture Company 2025 年年度报告全文', 'Fixture Company', '2025 年年度报告', '主要会计数据和财务指标', '2025 年 2024 年 2023 年', '营业收入（元） 150 120 100', '归属于上市公司股东的净利润（元） 21 15 10'].join('\n') }],
+        ['scenario-h1-2026', { title: '2026年半年度报告', publishedAt: '2026-08-28T00:00:00.000Z', content: ['Fixture Company 2026 年半年度报告全文', 'Fixture Company', '2026 年半年度报告', '主要会计数据和财务指标', '本报告期 上年同期', '营业收入（元） 80 70', '归属于上市公司股东的净利润（元） 8 7'].join('\n') }],
+      ])
+      const candidates = [...docs].map(([candidateId, value]) => ({ candidateId, kind: 'official_disclosure' as const, tier: 1 as const, title: value.title, provider: 'cninfo', publishedAt: value.publishedAt, url: `https://fixture.invalid/${candidateId}`, metadata: { companySymbol: '600519' } }))
+      const official: ResearchAcquisitionPlugin = {
+        name: 'fixture-cninfo-scenario',
+        discover: async () => candidates,
+        fetch: async candidate => ({ candidate, retrievedAt: asOf, content: docs.get(candidate.candidateId)!.content, contentHash: createHash('sha256').update(docs.get(candidate.candidateId)!.content).digest('hex') }),
+        normalize: async fetched => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: docs.get(fetched.candidate.candidateId)!.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'Fixture Exchange', rights: { accessScope: 'public', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: false, redistributionAllowed: false } }),
+      }
+      const akshare: AkshareDataClient = {
+        companyBasic: async () => [], historicalMarketData: async () => [],
+        financialData: async () => [
+          { report_date: '2023-12-31', publication_date: '2024-03-28', operating_revenue: 100, net_profit: 10 },
+          { report_date: '2024-12-31', publication_date: '2025-03-28', operating_revenue: 120, net_profit: 15 },
+          { report_date: '2025-12-31', publication_date: '2026-03-28', operating_revenue: 150, net_profit: 21 },
+          { report_date: '2025-06-30', publication_date: '2025-08-28', operating_revenue: 70, net_profit: 7 },
+          { report_date: '2026-06-30', publication_date: '2026-08-28', operating_revenue: 80, net_profit: 8 },
+        ],
+      }
+      const ledgers: any[][] = []
+      let synthesisCalls = 0
+      let reviewCalls = 0
+      const delegate = completeResearchExecutor()
+      const reasoningExecutor: ReasoningExecutor = { ...delegate, execute: async (request, signal) => {
+        if (request.metadata?.stage === 'content_quality_review') {
+          reviewCalls++
+          const reviewInput = request.input as any
+          const plan = reviewInput.scenarioAssumptionsPlan
+          const checks = COMPANY_CORE_SECTION_IDS.map(sectionId => ({
+            sectionId, questionAnswered: true, evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true,
+            reasons: mode !== 'missing-decisions' && reviewCalls === 1 && sectionId === 'investment-thesis' ? ['Initial synthesis still used the qualified gap.']
+              : mode === 'final-risk-fail' && reviewCalls === 2 && sectionId === 'bull-base-bear' ? ['Scenario risk transmission was not confirmed.'] : [],
+          })).map(check => mode !== 'missing-decisions' && reviewCalls === 1 && check.sectionId === 'investment-thesis'
+            ? { ...check, questionAnswered: false }
+            : mode === 'final-risk-fail' && reviewCalls === 2 && check.sectionId === 'bull-base-bear' ? { ...check, riskTransmission: false } : check)
+          const output: Record<string, unknown> = { sectionChecks: checks }
+          if (plan && mode !== 'missing-decisions') {
+            const driverMethod = reviewInput.methods.find((method: any) => method.skillId === 'business_driver_analysis')
+            const supportingRef = driverMethod.findings[0].evidence[0]
+            output.scenarioRationaleReviews = (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
+              scenario, driverId, supported: true, economicRationale: `${scenario} ${driverId} 假设在产品需求和经营现金回收条件成立时可支持，若需求转弱则该假设失效。`,
+              supportingEvidenceRefs: [supportingRef],
+              counterevidenceRefs: [driverId === 'revenue' ? plan.h1CrossCheck.revenue.evidence : plan.h1CrossCheck.parentNetProfit.evidence],
+              reasons: [],
+            })))
+          }
+          return { operation: request.operation, output }
+        }
+        if (request.operation === 'company_research_synthesis') {
+          synthesisCalls++
+          const ledger = (request.input as any).preparedAnalysis.synthesisEvidenceLedger as any[]
+          ledgers.push(ledger)
+        }
+        if (request.operation === 'company_research_method' && request.input && typeof request.input === 'object') {
+          const methodInput = request.input as any
+          const evidence = [...(methodInput.evidence ?? [])].sort((left, right) => Number(!String(left.sourceCandidateId).startsWith('scenario-fy')) - Number(!String(right.sourceCandidateId).startsWith('scenario-fy')))
+          return delegate.execute({ ...request, input: { ...methodInput, evidence } }, signal)
+        }
+        return delegate.execute(request, signal)
+      } }
+      const result = await runCompanyDeepResearch({
+        workflowRunId: `scenario-${mode}`, handle: await new KnowledgeBaseRegistry().mount(root),
+        company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' },
+        dataResolverFactory: options => createCompanyResearchDataResolver({ ...options, officialDisclosure: official, akshare }),
+        reportRoot: reports, now: () => asOf, writeKnowledge: false, reasoningExecutor,
+      })
+      const publishedReport = result.report?.reportId
+        ? JSON.parse(await readFile(join(reports, `${result.report.reportId}.md.json`), 'utf8')) as { sections: { title: string; markdown: string }[] }
+        : undefined
+      const analysis = JSON.parse(await readFile(join(reports, `company-research-600519-scenario-${mode}.analysis.json`), 'utf8')) as { synthesisAttempts: number; reviewAttempts: number; valuationAcquisition?: { diagnostics?: string[] }; synthesisDiagnostics?: string[]; qualityReviewHistory?: { review: { issues: string[]; diagnostics: { code: string }[]; scenarioRationaleReviews?: unknown[] } }[] }
+      const scenarioEntries = ledgers.map(ledger => ledger.find(entry => entry.ownerWorkflow === 'bull-base-bear'))
+      if (mode !== 'missing-decisions') {
+        assert.equal(reviewCalls, 2, `one independent candidate review and one complete-report review: ${JSON.stringify({ status: result.status, errors: result.errors, synthesisCalls, valuation: analysis.valuationAcquisition?.diagnostics, synthesis: analysis.synthesisDiagnostics })}`)
+        assert.equal(synthesisCalls, 2, `the second synthesis runs only after scenario approval: ${JSON.stringify({ reviewCalls, synthesisAttempts: analysis.synthesisAttempts, reviewAttempts: analysis.reviewAttempts, issues: analysis.qualityReviewHistory?.map(item => item.review.issues), diagnostics: analysis.qualityReviewHistory?.map(item => item.review.diagnostics), entries: scenarioEntries.map(entry => entry?.eligibility) })}`)
+        assert.ok(scenarioEntries[0]?.eligibility === 'blocked')
+        assert.ok(scenarioEntries[1]?.eligibility === 'verified')
+        assert.ok(analysis.synthesisAttempts <= 2 && analysis.reviewAttempts <= 2)
+        if (mode === 'scenario-gate-pass') assert.ok(publishedReport?.sections.find(section => section.title === 'Bull / Base / Bear')?.markdown.includes('### 独立经济理由审查'))
+        else {
+          assert.ok(publishedReport?.sections.find(section => section.title === 'Bull / Base / Bear')?.markdown.startsWith('研究缺口：'))
+          assert.ok(publishedReport?.sections.find(section => section.title === 'Investment Thesis')?.markdown.startsWith('研究缺口：'))
+          assert.ok(publishedReport?.sections.find(section => section.title === 'Monitoring Checklist')?.markdown.startsWith('研究缺口：'))
+        }
+      } else {
+        assert.ok(reviewCalls <= 2 && analysis.reviewAttempts <= 2)
+        assert.ok(synthesisCalls <= 2 && analysis.synthesisAttempts <= 2)
+        assert.ok(scenarioEntries.every(entry => entry?.eligibility === 'blocked'), 'missing six-decision contract must never promote into a synthesis ledger')
+        assert.ok(publishedReport?.sections.find(section => section.title === 'Bull / Base / Bear')?.markdown.startsWith('研究缺口：'))
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(reports, { recursive: true, force: true })
+    }
+  }
+  await runCase('scenario-gate-pass')
+  await runCase('missing-decisions')
+  await runCase('final-risk-fail')
+})
+
 async function snapshotKnowledgeTree(root: string): Promise<readonly string[]> {
   const entries: string[] = []
   const visit = async (directory: string): Promise<void> => {
