@@ -148,6 +148,21 @@ function rowBindingPayload(evidence: NonNullable<Extract<EconomicDriverObservati
   }
 }
 
+function verifySourceExcerptLocation(evidence: NonNullable<Extract<EconomicDriverObservation, { kind: 'FACT' }>['evidence']>): { readonly verified: boolean; readonly reason: string } {
+  const match = /^(paragraph|line):([1-9]\d*)$/u.exec(evidence.sourceLocation)
+  if (!match) return { verified: false, reason: 'Only canonical paragraph:N and line:N locators can be checked against the supplied plain-text payload; page/table/cell locators need an absent structured coordinate map.' }
+  const kind = match[1]
+  const ordinal = Number(match[2])
+  const normalizedLines = evidence.immutableSourceContent.replace(/\r\n?/gu, '\n')
+  const segments = kind === 'line'
+    ? normalizedLines.split('\n')
+    : normalizedLines.split(/\n(?:[ \t]*\n)+/u).filter((segment) => segment.trim().length > 0)
+  const segment = segments[ordinal - 1]
+  if (segment === undefined) return { verified: false, reason: `${evidence.sourceLocation} is outside the deterministic ${kind} index for the supplied source content.` }
+  if (!segment.includes(evidence.sourceExcerptText) || !evidence.sourceExcerptText.includes(evidence.rawValueToken)) return { verified: false, reason: `The exact sourceExcerptText and raw token do not occur inside the segment addressed by ${evidence.sourceLocation}.` }
+  return { verified: true, reason: '' }
+}
+
 function structuralProofAssessment(proof: ValueVersionProof | null, observation: Extract<EconomicDriverObservation, { kind: 'FACT' }>, horizon: ScenarioHorizon, expectedEvidenceManifestHash: Sha256): ProofAssessment {
   const failures: ScenarioMethodDiagnostic[] = []
   const evidence = observation.evidence
@@ -184,6 +199,8 @@ function structuralProofAssessment(proof: ValueVersionProof | null, observation:
   }
   if (typeof evidence.immutableSourceContent !== 'string' || sha256(evidence.immutableSourceContent) !== evidence.immutableSourceContentHash) fail('SOURCE_BINDING_MISMATCH', 'The supplied original source content does not match its immutable content hash.')
   if (typeof evidence.sourceExcerptText !== 'string' || !evidence.sourceExcerptText.trim() || !evidence.immutableSourceContent.includes(evidence.sourceExcerptText) || !evidence.sourceExcerptText.includes(evidence.rawValueToken)) fail('SOURCE_BINDING_MISMATCH', 'The located excerpt is not present in the supplied source content or does not contain the exact raw token.')
+  const location = verifySourceExcerptLocation(evidence)
+  if (!location.verified) failures.push(diagnostic('SOURCE_LOCATION_UNVERIFIED', observation.observationId, location.reason, [observation.consumer]))
 
   const asOfTime = instant(horizon.analysisAsOf)
   const availableAt = instant(proof.valueVersionAvailableAt)
@@ -304,6 +321,7 @@ function validateObservation(observation: EconomicDriverObservation, horizon: Sc
     else eligibility = 'UNVERIFIED'
     if (observation.rights.decision === 'DENIED') { add('SOURCE_RIGHTS_UNVERIFIED', 'Source rights explicitly deny this intended use.'); eligibility = 'UNAVAILABLE' }
     else if (observation.rights.decision !== 'ALLOWED' || observation.rights.intendedUse !== observation.consumer) add('SOURCE_RIGHTS_UNVERIFIED', 'Source rights are unknown or not bound to the requested consumer.')
+    if (failures.some((item) => item.code === 'SOURCE_LOCATION_UNVERIFIED')) eligibility = 'UNAVAILABLE'
   } else if (observation.kind === 'INFERENCE') {
     valueVersionStatus = observation.claimedValueVersionStatus === 'CONFLICTED' ? 'CONFLICTED' : 'UNVERIFIED'
     if (!observation.inferenceInputRefs.length || observation.inferenceInputRefs.some((ref) => !byId.has(ref)) || !nonEmpty(observation.inferenceRule)) add('STRUCTURAL_INVALID', 'Inference requires a named rule and existing input observation refs.')
@@ -403,7 +421,9 @@ function validateScenarioSet(set: BearBaseBullSet, horizon: ScenarioHorizon, obs
 function normalizeObservationForHash(observation: EconomicDriverObservation): EconomicDriverObservation {
   const sourceConflicts = [...observation.sourceConflicts].sort(compareText)
   if (observation.kind === 'INFERENCE') return { ...observation, sourceConflicts, inferenceInputRefs: [...observation.inferenceInputRefs].sort(compareText) }
-  if (observation.kind === 'DERIVED') return { ...observation, sourceConflicts, derivation: { ...observation.derivation, inputObservationIds: [...observation.derivation.inputObservationIds].sort(compareText) } }
+  // Operand refs preserve their original sequence for every operation. Even ADD/MULTIPLY
+  // arithmetic commutes, but source identity/order is part of the reviewed evidence packet.
+  if (observation.kind === 'DERIVED') return { ...observation, sourceConflicts, derivation: { ...observation.derivation, inputObservationIds: [...observation.derivation.inputObservationIds] } }
   if (observation.kind === 'MISSING') return { ...observation, sourceConflicts, missingFields: [...observation.missingFields].sort(compareText), rejectionReasons: [...observation.rejectionReasons].sort(compareText) }
   return { ...observation, sourceConflicts }
 }
@@ -469,7 +489,7 @@ function validateScenarioMethodContractUnsafe(input: ScenarioMethodContractInput
   diagnostics.push(...assessments.flatMap((assessment) => assessment.diagnostics))
   diagnostics.push(...validateScenarioSet(input.scenarioSet, input.horizon, byId))
   const structuralInvalid = diagnostics.some((item) => item.code === 'STRUCTURAL_INVALID' || item.code === 'SOURCE_BINDING_MISMATCH' || item.code === 'DERIVATION_MISMATCH' || item.code === 'SCOPE_MISMATCH' || item.code === 'PERIOD_MISMATCH' || item.code === 'UNIT_MISMATCH')
-  const hasUnavailable = diagnostics.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' || item.code === 'HISTORICAL_CUTOFF_VIOLATION' || item.code === 'SOURCE_RIGHTS_UNVERIFIED' || item.code === 'CONFLICTED_EVIDENCE' || item.code === 'CLASS_PRICE_MISSING') || assessments.some((item) => item.eligibility === 'UNAVAILABLE' || item.valueVersionStatus === 'UNAVAILABLE' || item.valueVersionStatus === 'CONFLICTED')
+  const hasUnavailable = diagnostics.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' || item.code === 'HISTORICAL_CUTOFF_VIOLATION' || item.code === 'SOURCE_RIGHTS_UNVERIFIED' || item.code === 'SOURCE_LOCATION_UNVERIFIED' || item.code === 'CONFLICTED_EVIDENCE' || item.code === 'CLASS_PRICE_MISSING') || assessments.some((item) => item.eligibility === 'UNAVAILABLE' || item.valueVersionStatus === 'UNAVAILABLE' || item.valueVersionStatus === 'CONFLICTED')
   return {
     contractVersion: SCENARIO_METHOD_CONTRACT_VERSION,
     structuralStatus: structuralInvalid ? 'STRUCTURAL_INVALID' : 'STRUCTURALLY_VALID',
@@ -579,6 +599,14 @@ function validateEnterpriseValueBridgeConsistencyUnsafe(input: EnterpriseValueBr
   if (input.mode !== 'FIXTURE_ONLY') add('STRUCTURAL_INVALID', 'evBridge', 'EV consistency validation is fixture-only in this private phase.')
   const components = [input.grossDebt, input.netDebt, input.separatelySubtractedCash, input.leaseAmount, input.preferredAndConvertibleClaims, input.nonControllingClaims, input.otherSeniorClaims, input.totalEquityValue]
   if (components.some((item) => !amountValid(item))) add('MISSING_REQUIRED_DRIVER', 'evBridge', 'Every debt, cash and senior-claim component must be explicitly known, evidenced, not applicable, or unavailable; null is not zero.')
+  const namedComponents = [
+    ['grossDebt', input.grossDebt], ['netDebt', input.netDebt], ['separatelySubtractedCash', input.separatelySubtractedCash],
+    ['leaseAmount', input.leaseAmount], ['preferredAndConvertibleClaims', input.preferredAndConvertibleClaims],
+    ['nonControllingClaims', input.nonControllingClaims], ['otherSeniorClaims', input.otherSeniorClaims], ['totalEquityValue', input.totalEquityValue],
+  ] as const
+  for (const [name, value] of namedComponents) {
+    if (value.status === 'UNAVAILABLE') add('MISSING_REQUIRED_DRIVER', name, `Required EV component ${name} is unavailable: ${value.reason}`)
+  }
   if (input.debtBasis === 'GROSS_DEBT' && (amount(input.grossDebt) === undefined || input.netDebt.status !== 'NOT_APPLICABLE')) add('STRUCTURAL_INVALID', 'evBridge', 'Gross-debt EV basis requires known grossDebt and explicit netDebt NOT_APPLICABLE.')
   if (input.debtBasis === 'NET_DEBT' && (amount(input.netDebt) === undefined || input.grossDebt.status !== 'NOT_APPLICABLE' || input.separatelySubtractedCash.status !== 'NOT_APPLICABLE')) add('STRUCTURAL_INVALID', 'evBridge', 'Net-debt basis forbids adding gross debt or separately subtracting cash a second time.')
   if (input.leaseClaimsIncluded && (amount(input.leaseAmount) === undefined || input.leaseInEarningsBasis !== true)) add('STRUCTURAL_INVALID', 'evBridge', 'Lease claims require a matching lease-inclusive earnings basis and explicit amount.')
