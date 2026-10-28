@@ -1,9 +1,9 @@
 # S4-007A Private Scenario Contract Validator
 
-**Task:** `RHL-CQR-P0-19-S4-007A-PRIVATE-CONTRACT-VALIDATOR`  
-**Branch:** `codex/company-research-p0-01-06`  
-**Frozen starting commit:** `79ed57d35216777b823823d1b7797181d73ce04b`  
-**Implementation commit:** `b7ff3ba1e5dcf5f6f5b23160f7052976e6a58b5b`  
+**Task:** `RHL-CQR-P0-19-S4-007A-PRIVATE-CONTRACT-VALIDATOR`\
+**Branch:** `codex/company-research-p0-01-06`\
+**Frozen starting commit:** `79ed57d35216777b823823d1b7797181d73ce04b`\
+**Implementation commit:** `b7ff3ba1e5dcf5f6f5b23160f7052976e6a58b5b`\
 **Scope:** private Workflow-domain contract and deterministic validation only.
 
 ## Result
