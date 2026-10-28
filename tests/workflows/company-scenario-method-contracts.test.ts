@@ -299,6 +299,46 @@ test('T9 EV bridge rejects net debt plus separately subtracted cash', () => {
   assert.ok(diagnostics.some((item) => item.code === 'STRUCTURAL_INVALID'))
 })
 
+test('FIX-002 gross-debt basis requires evidenced cash and accepts a genuine evidenced zero', () => {
+  assert.deepEqual(validateEnterpriseValueBridgeConsistency(enterpriseValueInput()), [])
+
+  const cashNotApplicable = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ separatelySubtractedCash: notApplicable }))
+  assert.ok(cashNotApplicable.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' && item.subjectId === 'separatelySubtractedCash' && item.reason.includes('requires an evidenced cash amount')))
+
+  const cashUnavailable = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ separatelySubtractedCash: { status: 'UNAVAILABLE', reason: 'fixture: cash amount absent' } }))
+  assert.ok(cashUnavailable.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' && item.subjectId === 'separatelySubtractedCash'))
+
+  assert.deepEqual(validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ separatelySubtractedCash: knownZero })), [])
+})
+
+test('FIX-002 net-debt basis accepts cash NOT_APPLICABLE while retaining the double-subtraction rejection', () => {
+  const diagnostics = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({
+    debtBasis: 'NET_DEBT', grossDebt: notApplicable, netDebt: knownAmount(50), separatelySubtractedCash: notApplicable,
+  }))
+  assert.deepEqual(diagnostics, [])
+})
+
+test('FIX-002 malformed KNOWN_ZERO runtime values block cash and senior-claim components', () => {
+  const malformedValues: readonly { readonly label: string; readonly value: unknown }[] = [
+    { label: 'nonzero', value: { status: 'KNOWN_ZERO', amount: 5, evidenceRefs: ['fixture-zero-proof'] } },
+    { label: 'missing amount', value: { status: 'KNOWN_ZERO', evidenceRefs: ['fixture-zero-proof'] } },
+    { label: 'null amount', value: { status: 'KNOWN_ZERO', amount: null, evidenceRefs: ['fixture-zero-proof'] } },
+    { label: 'string zero', value: { status: 'KNOWN_ZERO', amount: '0', evidenceRefs: ['fixture-zero-proof'] } },
+    { label: 'NaN amount', value: { status: 'KNOWN_ZERO', amount: Number.NaN, evidenceRefs: ['fixture-zero-proof'] } },
+    { label: 'infinite amount', value: { status: 'KNOWN_ZERO', amount: Number.POSITIVE_INFINITY, evidenceRefs: ['fixture-zero-proof'] } },
+  ]
+
+  for (const { label, value } of malformedValues) {
+    const malformedCash = value as unknown as EnterpriseValueBridgeConsistencyInput['separatelySubtractedCash']
+    const cashDiagnostics = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ separatelySubtractedCash: malformedCash }))
+    assert.ok(cashDiagnostics.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' && item.subjectId === 'separatelySubtractedCash' && item.reason.includes('KNOWN_ZERO must be exactly numeric 0')), 'cash: ' + label)
+
+    const malformedClaim = value as unknown as EnterpriseValueBridgeConsistencyInput['preferredAndConvertibleClaims']
+    const claimDiagnostics = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ preferredAndConvertibleClaims: malformedClaim }))
+    assert.ok(claimDiagnostics.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' && item.subjectId === 'preferredAndConvertibleClaims' && item.reason.includes('KNOWN_ZERO must be exactly numeric 0')), 'claim: ' + label)
+  }
+})
+
 test('FIX-001 every unavailable required EV component blocks the fixture input', () => {
   const cases = [
     ['preferredAndConvertibleClaims', { preferredAndConvertibleClaims: { status: 'UNAVAILABLE' as const, reason: 'fixture: disclosure absent' } }],

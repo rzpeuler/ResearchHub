@@ -588,18 +588,17 @@ function validateEnterpriseValueBridgeConsistencyUnsafe(input: EnterpriseValueBr
   const add = (code: ScenarioMethodDiagnosticCode, subject: string, reason: string): void => { errors.push(diagnostic(code, subject, reason, ['VALUATION'])) }
   const amount = (value: EnterpriseValueBridgeConsistencyInput['grossDebt']): number | undefined => {
     if (value.status === 'KNOWN' && finiteNumber(value.amount)) return value.amount
-    if (value.status === 'KNOWN_ZERO') return 0
+    if (value.status === 'KNOWN_ZERO' && value.amount === 0 && Array.isArray(value.evidenceRefs) && value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)) return 0
     return undefined
   }
   const amountValid = (value: EnterpriseValueBridgeConsistencyInput['grossDebt'], allowNegative = false): boolean => {
+    const refsValid = (refs: unknown): refs is readonly [string, ...string[]] => Array.isArray(refs) && refs.length > 0 && refs.every(nonEmpty)
     if (value.status === 'KNOWN') return finiteNumber(value.amount) && (allowNegative || value.amount >= 0) && value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
-    if (value.status === 'KNOWN_ZERO') return value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
-    if (value.status === 'NOT_APPLICABLE') return nonEmpty(value.reason) && value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
+    if (value.status === 'KNOWN_ZERO') return value.amount === 0 && refsValid(value.evidenceRefs)
+    if (value.status === 'NOT_APPLICABLE') return nonEmpty(value.reason) && refsValid(value.evidenceRefs)
     return value.status === 'UNAVAILABLE' && nonEmpty(value.reason)
   }
   if (input.mode !== 'FIXTURE_ONLY') add('STRUCTURAL_INVALID', 'evBridge', 'EV consistency validation is fixture-only in this private phase.')
-  const components = [input.grossDebt, input.netDebt, input.separatelySubtractedCash, input.leaseAmount, input.preferredAndConvertibleClaims, input.nonControllingClaims, input.otherSeniorClaims, input.totalEquityValue]
-  if (components.some((item) => !amountValid(item))) add('MISSING_REQUIRED_DRIVER', 'evBridge', 'Every debt, cash and senior-claim component must be explicitly known, evidenced, not applicable, or unavailable; null is not zero.')
   const namedComponents = [
     ['grossDebt', input.grossDebt], ['netDebt', input.netDebt], ['separatelySubtractedCash', input.separatelySubtractedCash],
     ['leaseAmount', input.leaseAmount], ['preferredAndConvertibleClaims', input.preferredAndConvertibleClaims],
@@ -607,8 +606,12 @@ function validateEnterpriseValueBridgeConsistencyUnsafe(input: EnterpriseValueBr
   ] as const
   for (const [name, value] of namedComponents) {
     if (value.status === 'UNAVAILABLE') add('MISSING_REQUIRED_DRIVER', name, `Required EV component ${name} is unavailable: ${value.reason}`)
+    else if (!amountValid(value)) add('MISSING_REQUIRED_DRIVER', name, `EV component ${name} has an invalid status/value/evidence combination; KNOWN_ZERO must be exactly numeric 0 with evidence refs, and KNOWN values must be finite, sign-valid, and evidenced.`)
   }
-  if (input.debtBasis === 'GROSS_DEBT' && (amount(input.grossDebt) === undefined || input.netDebt.status !== 'NOT_APPLICABLE')) add('STRUCTURAL_INVALID', 'evBridge', 'Gross-debt EV basis requires known grossDebt and explicit netDebt NOT_APPLICABLE.')
+  if (input.debtBasis === 'GROSS_DEBT') {
+    if (amount(input.grossDebt) === undefined || input.netDebt.status !== 'NOT_APPLICABLE') add('STRUCTURAL_INVALID', 'evBridge', 'Gross-debt EV basis requires evidenced grossDebt and evidence-backed netDebt NOT_APPLICABLE.')
+    if ((input.separatelySubtractedCash.status !== 'KNOWN' && input.separatelySubtractedCash.status !== 'KNOWN_ZERO') || amount(input.separatelySubtractedCash) === undefined) add('MISSING_REQUIRED_DRIVER', 'separatelySubtractedCash', 'Gross-debt EV basis requires an evidenced cash amount; NOT_APPLICABLE and UNAVAILABLE cannot stand in for cash or zero.')
+  }
   if (input.debtBasis === 'NET_DEBT' && (amount(input.netDebt) === undefined || input.grossDebt.status !== 'NOT_APPLICABLE' || input.separatelySubtractedCash.status !== 'NOT_APPLICABLE')) add('STRUCTURAL_INVALID', 'evBridge', 'Net-debt basis forbids adding gross debt or separately subtracting cash a second time.')
   if (input.leaseClaimsIncluded && (amount(input.leaseAmount) === undefined || input.leaseInEarningsBasis !== true)) add('STRUCTURAL_INVALID', 'evBridge', 'Lease claims require a matching lease-inclusive earnings basis and explicit amount.')
   if (input.leaseClaimsIncluded && input.grossDebtIncludesLeases !== false) add('STRUCTURAL_INVALID', 'evBridge', 'Lease liabilities already inside gross debt must not be counted as a separate lease claim.')
