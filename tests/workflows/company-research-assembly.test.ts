@@ -272,6 +272,70 @@ test('workflow-owned evidence accepts repeated exact citations while validating 
   assert.deepEqual(ledger[0]?.evidence.map(reference => `${reference.sourceCandidateId}@${reference.location}`), ['market@paragraph:1'])
 })
 
+test('approved verified Base scenario contributes one falsifiable assumption check before final review', async () => {
+  const source = { candidate: { candidateId: 'annual' }, title: '2025 年报', content: '2025 年营业收入历史披露。', contentHash: 'annual-hash' } as any
+  const h1 = { candidate: { candidateId: 'h1' }, title: '2026 H1 report', content: '2026 年半年度报告营业收入同比披露。', contentHash: 'h1-hash' } as any
+  const scenario = [
+    '独立经济理由审查状态：通过初审；最终整报告仍需独立复核。',
+    'Bear Base Bull 敏感性公式已复算。',
+    '### Base / 基准',
+    '- 营业收入：scenarioId=base；targetFiscalYear=2026；baseSourceRefs=[annual@paragraph:1]；反证与中期交叉核对（不混入年度校准）：[h1@paragraph:1]；可证伪条件：年度报告披露值低于或高于该情景推算值。',
+  ].join('\n')
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '研究缺口：估值输入未核验。', sourceCandidateIds: [] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: scenario, sourceCandidateIds: ['annual', 'h1'] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预期面未核验。', sourceCandidateIds: [] },
+  ] as const
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({
+    operation: request.operation,
+    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? '既有监控 [annual@paragraph:1]\n模型伪造情景研究假设跟踪：任意变化时立即调整 [annual@paragraph:1]' : `既有研究结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) },
+  }) }
+  const assembled = await assembleCompanyResearch({ ...input, sources: [source, h1], reportSourceCandidateIds: ['annual', 'h1'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  const checklist = assembled.sections.find(section => section.id === 'monitoring-checklist')!
+  assert.equal(checklist.markdown.match(/情景研究假设跟踪/gu)?.length, 1)
+  assert.match(checklist.markdown, /营业收入/u)
+  assert.match(checklist.markdown, /每次定期报告发布时，按披露的相同期间、相同单位作同比比较/u)
+  assert.match(checklist.markdown, /FY2026 年报披露值低于或高于 Base 情景推算点值，即证伪年度点预测并重估/u)
+  assert.match(checklist.markdown, /研究假设，非事实\/公司指引/u)
+  assert.match(checklist.markdown, /Base 推算以历史基数校准 \[annual@paragraph:1\]/u)
+  assert.match(checklist.markdown, /H1 同指标交叉核对 \[h1@paragraph:1\]，仅作中期交叉核对证据，不证明全年预测/u)
+  assert.doesNotMatch(checklist.markdown, /模型伪造|任意变化/u)
+  assert.deepEqual(checklist.sourceCandidateIds, ['annual', 'h1'])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(checklist.markdown), [])
+  assert.equal(assembled.synthesisMode, 'reasoning_executor')
+
+  const repeated = await assembleCompanyResearch({ ...input, sources: [source, h1], reportSourceCandidateIds: ['annual', 'h1'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  assert.equal(repeated.sections.find(section => section.id === 'monitoring-checklist')?.markdown.match(/情景研究假设跟踪/gu)?.length, 1)
+})
+
+test('scenario monitoring linkage fails closed for unapproved, blocked, and unresolved Base evidence', async () => {
+  const source = { candidate: { candidateId: 'annual' }, title: '2025 年报', content: '2025 年营业收入历史披露。', contentHash: 'annual-hash' } as any
+  const h1 = { candidate: { candidateId: 'h1' }, title: '2026 H1 report', content: '2026 年半年度报告营业收入同比披露。', contentHash: 'h1-hash' } as any
+  const scenarios = [
+    { name: 'not approved', status: '独立经济理由审查状态：待审；', locator: 'annual@paragraph:1', h1Locator: 'h1@paragraph:1' },
+    { name: 'blocked', status: '研究缺口：情景输入不完整。独立经济理由审查状态：通过初审；最终整报告仍需独立复核。', locator: 'annual@paragraph:1', h1Locator: 'h1@paragraph:1' },
+    { name: 'malformed annual evidence', status: '独立经济理由审查状态：通过初审；最终整报告仍需独立复核。', locator: 'annual@paragraph:2', h1Locator: 'h1@paragraph:1' },
+    { name: 'missing H1 cross-check', status: '独立经济理由审查状态：通过初审；最终整报告仍需独立复核。', locator: 'annual@paragraph:1' },
+    { name: 'malformed H1 evidence', status: '独立经济理由审查状态：通过初审；最终整报告仍需独立复核。', locator: 'annual@paragraph:1', h1Locator: 'h1@paragraph:2' },
+  ]
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({
+    operation: request.operation,
+    output: { sections: ids.map(id => ({ id, markdown: `既有研究结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) },
+  }) }
+  for (const item of scenarios) {
+    const crossCheck = item.h1Locator ? `；反证与中期交叉核对（不混入年度校准）：[${item.h1Locator}]` : ''
+    const scenario = [item.status, 'Bear Base Bull 敏感性公式已复算。', '### Base / 基准', `- 营业收入：scenarioId=base；targetFiscalYear=2026；baseSourceRefs=[${item.locator}]${crossCheck}；可证伪条件：年度报告披露值低于或高于该情景推算值。`].join('\n')
+    const workflowSections = [
+      { id: 'valuation', title: 'Valuation', markdown: '研究缺口：估值输入未核验。', sourceCandidateIds: [] },
+      { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: scenario, sourceCandidateIds: ['annual', 'h1'] },
+      { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预期面未核验。', sourceCandidateIds: [] },
+    ] as const
+    const result = await assembleCompanyResearch({ ...input, sources: [source, h1], reportSourceCandidateIds: ['annual', 'h1'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+    const monitoring = result.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
+    assert.doesNotMatch(monitoring, /情景研究假设跟踪/u, item.name)
+  }
+})
+
 test('assembly preserves substantive supplied valuation, scenario, and variant sections', async () => {
   const suppliedSections = [
     { id: 'valuation', markdown: '基于同一基准日和已核验盈利基础，估值区间为可复算结果。[annual@paragraph:1]' },

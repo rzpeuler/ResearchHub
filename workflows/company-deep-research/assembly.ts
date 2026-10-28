@@ -217,6 +217,44 @@ function appendQualifiedReferencePeMonitoring(markdown: string, entry: Synthesis
   return `${markdown.trimEnd()}\n- 估值口径跟踪：定期报告披露与估值更新时，分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；任一输入无法核实或已变化时重算参考 PE，并暂停沿用旧倍数。${refs}`
 }
 
+/** Link an approved, verified Base operating assumption to one falsifiable report check. */
+function appendVerifiedScenarioMonitoring(markdown: string, entry: SynthesisEvidenceLedgerEntry | undefined): string {
+  const marker = '情景研究假设跟踪'
+  const withoutModelAuthoredItem = markdown.split(/\r?\n/u).filter(line => !line.includes(marker)).join('\n').trimEnd()
+  if (!entry || entry.ownerWorkflow !== 'bull-base-bear' || entry.eligibility !== 'verified') return withoutModelAuthoredItem
+  if (!entry.text.includes('独立经济理由审查状态：通过初审；最终整报告仍需独立复核。')) return withoutModelAuthoredItem
+  const base = entry.text.match(/### Base\s*\/\s*基准\s*([\s\S]*?)(?=\n### |$)/u)?.[1]
+  if (!base) return withoutModelAuthoredItem
+  const evidence = new Map(entry.evidence.map(reference => [`${reference.sourceCandidateId}@${reference.location}`, reference]))
+  for (const line of base.split(/\r?\n/u)) {
+    const driver = /^-\s*(.{1,80}?)：scenarioId=base；([^\n]*)$/u.exec(line)
+    if (!driver) continue
+    const metric = driver[1]!.trim()
+    const baseRefsField = /(?:^|；)baseSourceRefs=([^。]*)/u.exec(driver[2]!)?.[1]
+    const references = [...(baseRefsField ?? '').matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    const baseReference = references.find(candidate => evidence.has(candidate))
+    const counterevidenceField = /反证与中期交叉核对（不混入年度校准）：([^。]*)/u.exec(driver[2]!)?.[1]
+    const counterevidenceRefs = [...(counterevidenceField ?? '').matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    const h1Reference = counterevidenceRefs.find(candidate => evidence.has(candidate))
+    if (!metric || !baseReference || !h1Reference) continue
+    const h1Excerpt = evidence.get(h1Reference)?.excerpt ?? ''
+    if (!h1Excerpt.includes(metric)) continue
+    const row = `| ${marker}：${metric}（研究假设，非事实/公司指引） | 每次定期报告发布时，按披露的相同期间、相同单位作同比比较 | FY2026 年报披露值低于或高于 Base 情景推算点值，即证伪年度点预测并重估；其他定期报告仅作同期间同比跟踪，不证明全年预测 | Base 推算以历史基数校准 [${baseReference}]；H1 同指标交叉核对 [${h1Reference}]，仅作中期交叉核对证据，不证明全年预测。 |`
+    const lines = withoutModelAuthoredItem.split(/\r?\n/u)
+    const expectedHeader = '| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |'
+    let headerIndex = -1
+    for (let index = 0; index < lines.length; index++) if (lines[index]!.trim() === expectedHeader) headerIndex = index
+    if (headerIndex >= 0 && /^\s*\|.*\|\s*$/u.test(lines[headerIndex + 1] ?? '')) {
+      let insertionIndex = headerIndex + 2
+      while (insertionIndex < lines.length && /^\s*\|.*\|\s*$/u.test(lines[insertionIndex]!)) insertionIndex++
+      lines.splice(insertionIndex, 0, row)
+      return lines.join('\n')
+    }
+    return `${withoutModelAuthoredItem}\n\n${expectedHeader}\n|---|---|---|---|\n${row}`
+  }
+  return withoutModelAuthoredItem
+}
+
 function invalidFinalSynthesisLocator(diagnostic: string | undefined): string | undefined {
   return diagnostic?.match(/REFERENCE_ERROR: final synthesis locator unavailable: ([^;\s]+)/)?.[1]
 }
@@ -2678,6 +2716,16 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       for(const section of validated) Object.assign(sections.find(s=>s.id===section.id)!,section)
       synthesisMode='reasoning_executor';break
     } catch(error) {if(input.signal?.aborted) throw new Error('WORKFLOW_CANCELLED');const message=error instanceof Error?error.message:String(error);const repairEvidence=message.includes('NUMERIC_GROUNDING_ERROR:')?synthesisNumericRepairEvidence(numericRepairIssues,available,input.sources,locations):[];diagnostics.push(`${attempt}:${message}${numericRepairIssues.length?`; 失败语句: ${numericRepairIssues.map(issue=>`${issue.token}：${issue.context}`).join(' | ')}`:''}${repairEvidence.length?`; 同数字的已供给原文候选（只用于精确修正引用）: ${repairEvidence.join(' | ')}`:''}`)}
+  }
+  const monitoring = sections.find(section => section.id === 'monitoring-checklist')
+  if (monitoring) {
+    monitoring.markdown = appendVerifiedScenarioMonitoring(
+      monitoring.markdown,
+      workflowLedger.find(entry => entry.ownerWorkflow === 'bull-base-bear' && entry.eligibility === 'verified'),
+    )
+    const citations = [...monitoring.markdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    if (citations.some(reference => !locations.has(reference))) throw new Error('REFERENCE_ERROR: qualified scenario monitoring locator unavailable')
+    monitoring.sourceCandidateIds = [...new Set([...monitoring.sourceCandidateIds, ...citations.map(reference => reference.slice(0, reference.lastIndexOf('@')))])]
   }
   const durable=new Set(input.durableSourceCandidateIds ?? [])
   const proposals:SemanticKnowledgeProposal[]=[{proposalId:'proposal-company',kind:'entity',subjectKey:'company',entityType:'company',entityName:input.company.name ?? input.company.symbol}]
