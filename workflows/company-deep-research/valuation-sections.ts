@@ -5,6 +5,7 @@ import { buildValuationBasis, methodEligibility } from '../../skills/valuation/f
 import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
+import type { EarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
 
 export interface CompanyValuationSection {
   readonly id: 'valuation' | 'bull-base-bear' | 'variant-perception'
@@ -132,46 +133,79 @@ function acquisitionAttemptSummary(items: readonly { readonly metricId?: string;
 }
 
 type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
+type ExpectationSurfaceSelection = { readonly surfaces: readonly ExpectationSurface[]; readonly diagnostics: readonly string[] }
+type ExpectationPointProofForSelection = Omit<EarningsEstimatePointProof, 'basisStatus' | 'valueVersionStatus' | 'correctionStatus'> & {
+  readonly basisStatus: string
+  readonly valueVersionStatus: string
+  readonly correctionStatus: string
+}
 
 function canonicalInstitutionName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/[\s　·.（）()]/gu, '').replace(/(证券|银行|研究所)?(股份有限公司|有限责任公司|有限公司|股份|有限)$/u, '$1')
 }
 
-function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFiscalYear: number, asOf: string): readonly ExpectationSurface[] {
+function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPointProofForSelection[], sourceIds: ReadonlySet<string>): string | undefined {
+  const matches = proofs.filter(proof => proof.estimateId === estimate.estimateId)
+  if (matches.length !== 1) return matches.length === 0 ? 'PROOF_MISSING' : 'PROOF_AMBIGUOUS'
+  const proof = matches[0]!
+  if (!proof.pointFingerprint || !proof.observedRowHash
+    || !estimate.sourceCandidateIds.includes(proof.sourceCandidateId)
+    || !sourceIds.has(proof.sourceCandidateId)
+    || proof.matchedMetric !== estimate.metric
+    || proof.matchedValue !== estimate.value
+    || proof.matchedUnit !== estimate.unit
+    || proof.matchedPeriod !== estimate.fiscalPeriod
+    || proof.matchedInstitutionKey !== estimate.institutionKey
+    || proof.matchedPublishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
+  if (proof.basisStatus !== 'VERIFIED' || proof.valueVersionStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
+    return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
+  }
+  return undefined
+}
+
+function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFiscalYear: number, asOf: string): ExpectationSurfaceSelection {
   const item = acquisition.earningsExpectationItems.find(candidate => candidate.metricId === 'earnings_expectation_eps')
-  if (!item) return []
+  if (!item) return { surfaces: [], diagnostics: [] }
   const payloads = [item.value, ...(item.acquisition.observations ?? []).map(observation => observation.data)]
     .filter((value): value is NonNullable<typeof item.value> => value?.kind === 'expectation')
   const grouped = new Map<ExpectationSurface['provider'], { estimates: EstimatePoint[]; sources: NormalizedResearchSource[] }>()
+  const diagnostics: string[] = []
   for (const payload of payloads) {
     if (payload.kind !== 'expectation') continue
     const sources = payload.projection.sources
     const sourceIds = new Set(sources.map(source => source.candidate.candidateId))
-    const estimates = payload.projection.estimates.filter(estimate => estimate.metric === 'eps'
+    const candidates = payload.projection.estimates.filter(estimate => estimate.metric === 'eps'
       && estimate.fiscalPeriod === `${targetFiscalYear}-FY`
       && estimate.unit === EPS_PER_SHARE_UNIT
       && Number.isFinite(estimate.value)
       && Number.isFinite(Date.parse(estimate.publishedAt))
       && Date.parse(estimate.publishedAt) <= Date.parse(asOf)
       && estimate.sourceCandidateIds.every(id => sourceIds.has(id)))
-      .map(estimate => {
-        const institution = payload.projection.institutions.find(item => item.institutionKey === estimate.institutionKey)?.name
-        return institution ? { ...estimate, institutionKey: institution } : estimate
-      })
     const provider = sources.some(source => /eastmoney/i.test(`${source.candidate.provider} ${source.publisher}`)) ? 'EastMoney'
       : sources.some(source => /tonghuashun|同花顺|ths/i.test(`${source.candidate.provider} ${source.publisher}`)) ? 'Tonghuashun / 同花顺'
         : undefined
-    if (!provider || estimates.length === 0) continue
+    if (!provider) continue
+    const proofs = (payload.projection.pointProofs ?? []) as readonly ExpectationPointProofForSelection[]
+    const estimates = candidates.filter(estimate => {
+      const rejection = proofRejection(estimate, proofs, sourceIds)
+      if (rejection) diagnostics.push(`EXPECTATION_POINT_PROOF_REJECTED:${provider}:${estimate.estimateId}:${rejection}`)
+      return rejection === undefined
+    }).map(estimate => {
+        const institution = payload.projection.institutions.find(item => item.institutionKey === estimate.institutionKey)?.name
+        return institution ? { ...estimate, institutionKey: institution } : estimate
+      })
+    diagnostics.push(`EXPECTATION_POINT_PROOF_COVERAGE:${provider}:eligible=${estimates.length}/${candidates.length}`)
+    if (estimates.length === 0) continue
     const current = grouped.get(provider) ?? { estimates: [], sources: [] }
     current.estimates.push(...estimates)
     current.sources.push(...sources)
     grouped.set(provider, current)
   }
-  return [...grouped.entries()].map(([provider, value]) => ({
+  return { surfaces: [...grouped.entries()].map(([provider, value]) => ({
     provider,
     estimates: value.estimates,
     sources: [...new Map(value.sources.map(source => [source.candidate.candidateId, source])).values()],
-  }))
+  })), diagnostics }
 }
 
 function dedupeContributors(surfaces: readonly ExpectationSurface[]): { readonly all: readonly EstimatePoint[]; readonly uniqueByProvider: ReadonlyMap<ExpectationSurface['provider'], readonly EstimatePoint[]>; readonly overlaps: readonly string[] } {
@@ -235,8 +269,9 @@ export function buildCompanyValuationSections(input: {
   const filingEps = extractFilingBasicEps(input.sources, basisYear, input.asOf)
   if (!filingEps) diagnostics.push('VALUATION_FILING_BASIC_EPS_UNAVAILABLE_OR_AMBIGUOUS')
 
-  const surfaces = expectationSurfaces(input.acquisition, input.acquisition.expectationTargetFiscalYear, input.asOf)
-  const expectationItem = input.acquisition.earningsExpectationItems.find(item => item.metricId === 'earnings_expectation_eps')
+  const expectationSelection = expectationSurfaces(input.acquisition, input.acquisition.expectationTargetFiscalYear, input.asOf)
+  const surfaces = expectationSelection.surfaces
+  diagnostics.push(...expectationSelection.diagnostics)
   const dedupedExpectations = dedupeContributors(surfaces)
   const estimates = dedupedExpectations.all
 
@@ -306,8 +341,11 @@ export function buildCompanyValuationSections(input: {
         return `| ${provider} | ${estimate.institutionKey} | ${estimate.fiscalPeriod} | ${String(estimate.value)} ${estimate.unit} | ${estimate.publishedAt} | ${estimateCitations} |`
       }))
     const contributorTable = `\n\n| 预期面 | 机构 | 财年 | EPS / 单位 | 发布日期 | 原始样本来源 |\n|---|---|---|---:|---|---|\n${contributorRows.join('\n')}`
-    const versionEvidence = (expectationItem?.acquisition.observations ?? []).map(observation => observation.source.valueVersion)
-    const versionStatus = versionEvidence.length > 0 && versionEvidence.every(evidence => evidence?.status === 'VERIFIED') ? 'VERIFIED' : 'UNVERIFIED'
+    // The selected set contains only points whose run-scoped point proof
+    // independently verifies basis, revision history, and corrections.
+    // Acquisition-level source status may describe a different payload and
+    // must not override the evidence actually used in these surfaces.
+    const versionStatus = estimates.length > 0 ? 'VERIFIED' : 'UNVERIFIED'
     if (versionStatus !== 'VERIFIED') diagnostics.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
     const versionGap = versionStatus === 'VERIFIED'
       ? ''
@@ -317,7 +355,7 @@ export function buildCompanyValuationSections(input: {
       : '两个渠道没有识别到重叠机构。'
     variantSection = {
       id: 'variant-perception', title: titles['variant-perception'],
-      markdown: `${versionGap}FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median.toFixed(2)}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median.toFixed(2)} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
+      markdown: `${versionGap}FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median.toFixed(2)}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median.toFixed(2)} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。该渠道差仅作来源渠道对照，不构成已通过的独立预期面。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
       sourceCandidateIds: citedSources.map(source => source.candidate.candidateId),
     }
   } else {
