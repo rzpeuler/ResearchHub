@@ -593,7 +593,8 @@ function validateEnterpriseValueBridgeConsistencyUnsafe(input: EnterpriseValueBr
   }
   const amountValid = (value: EnterpriseValueBridgeConsistencyInput['grossDebt'], allowNegative = false): boolean => {
     if (value.status === 'KNOWN') return finiteNumber(value.amount) && (allowNegative || value.amount >= 0) && value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
-    if (value.status === 'KNOWN_ZERO' || value.status === 'NOT_APPLICABLE') return value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
+    if (value.status === 'KNOWN_ZERO') return value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
+    if (value.status === 'NOT_APPLICABLE') return nonEmpty(value.reason) && value.evidenceRefs.length > 0 && value.evidenceRefs.every(nonEmpty)
     return value.status === 'UNAVAILABLE' && nonEmpty(value.reason)
   }
   if (input.mode !== 'FIXTURE_ONLY') add('STRUCTURAL_INVALID', 'evBridge', 'EV consistency validation is fixture-only in this private phase.')

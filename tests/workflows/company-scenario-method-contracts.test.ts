@@ -318,6 +318,9 @@ test('FIX-001 evidenced zero and basis-supported not-applicable claims differ fr
   const unsupportedZeroValue = { status: 'KNOWN_ZERO', amount: 0, evidenceRefs: [] } as unknown as EnterpriseValueBridgeConsistencyInput['preferredAndConvertibleClaims']
   const unsupportedZero = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ preferredAndConvertibleClaims: unsupportedZeroValue }))
   assert.ok(unsupportedZero.some((item) => item.code === 'MISSING_REQUIRED_DRIVER'))
+  const unsupportedNotApplicable = { status: 'NOT_APPLICABLE', reason: '', evidenceRefs: ['fixture-basis-proof'] } as EnterpriseValueBridgeConsistencyInput['preferredAndConvertibleClaims']
+  const unsupportedBasis = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ preferredAndConvertibleClaims: unsupportedNotApplicable }))
+  assert.ok(unsupportedBasis.some((item) => item.code === 'MISSING_REQUIRED_DRIVER'))
   const unavailable = validateEnterpriseValueBridgeConsistency(enterpriseValueInput({ otherSeniorClaims: { status: 'UNAVAILABLE', reason: 'fixture: unknown' } }))
   assert.ok(unavailable.some((item) => item.code === 'MISSING_REQUIRED_DRIVER' && item.subjectId === 'otherSeniorClaims'))
 })
