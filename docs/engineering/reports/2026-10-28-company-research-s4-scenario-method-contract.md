@@ -89,7 +89,11 @@ THS/EastMoney 的候选记录分别为 BYD 9 / 19、东山 3 / 10 条机构/研�
 
 矩阵所称 H1 FY2026 是 `periodStart=2026-01-01`, `periodEnd=2026-06-30`, `fiscalYear=2026`, `periodBasis=YTD`; H1 FY2025 比较行同为 `2025-01-01` 至 `2025-06-30`, YTD。FY2023/24/25 分别为同年 1 月 1 日至 12 月 31 日、`periodBasis=FY`。存量字段只有 `periodEnd`（例如 2026-06-30），不能伪造 flow period start。官方资料的 `sourcePublishedAt` 以 source inventory 日期为准；逐数值 `observedAt` 不是已知字段则保持 `MISSING`。
 
-每个未来 `EconomicDriverObservation` 至少应有：`companySymbol`, `driverId`, `researchQuestion`, `metricId`, `economicScope`, `atomicSkillOwner`; `periodStart/periodEnd`, `fiscalYear`, `observedAt`, `sourcePublishedAt`, `analysisAsOf`, `asOfMode`, `valueVersionStatus`; `originKind`, `unit`, `currency`, `financialScope`, `flowOrStock`, `periodBasis`, `shareBasis`; `sourceCandidateId`, 精确 `location`, `sourceContentHash`, `sourceRights`, `originalValue`, `normalizedValue`, `conversionFormula`; `sourceConflict`, `missingFields`, `applicability`; 以及 economic mechanism 所需 input refs 与 residual policy。没有证据支持的字段明确置空并列为 missing；`AVAILABLE_FACT` 不自动意味着可预测、PIT 合格或因果关系成立。
+每个未来 `EconomicDriverObservation` 保留共同元数据：`companySymbol`, `driverId`, `researchQuestion`, `metricId`, `economicScope`, `atomicSkillOwner`; `periodStart/periodEnd`, `fiscalYear`, `observedAt`, `sourcePublishedAt`, `analysisAsOf`, `asOfMode`, `valueVersionStatus`; `originKind`, `unit`, `currency`, `financialScope`, `flowOrStock`, `periodBasis`, `shareBasis`; conflicts、`missingFields`、`rejectionReasons`、适用性及经济机制 input refs。真实缺失时间/来源/权利/数值可用 `null` 或字段 absence 表达；必须写入字段名和逐项原因。禁止空字符串、Unix epoch、0、猜测的时间或虚构 ID。
+
+三个维度不得混称：`originKind` = 事实/推论/研究假设/派生的**语义身份**；`valueVersionStatus` = 对该值的版本时间证明**证据状态**；`eligibility` = 这个观察对当前 Consumer 的**结果资格**。例如某已发布 EML 阶段文字可保留为 `originKind=FACT`，即便 revenue driver 仍 `UNAVAILABLE`；同一个有效 source ID 不会把阶段文字变成订单、收入或毛利。`RESEARCH_ASSUMPTION` 由 Proposal 表达，不能冒充有 source-backed value 的 Observation。`DERIVED` 必须回指已 qualified 输入和显式公式；其自身没有原始 source token，使用独立 derivation proof，不伪造 source candidate。
+
+时间字段语义和必要性：`sourcePublishedAt` 是载体发布日期；`valueVersionAvailableAt` 是该精确数值版本最早可证明的对外可用时间；`observedAt` 是具体观察行被识别的时间，未知可空；`retrievedAt` 是取得数据的时间；`snapshotCapturedAt` 是 payload 被捕获的时间；`snapshotSealedAt` 是可信签名/时间戳封存时间；`analysisAsOf` 是研究截点。准入核心条件是可信 proof 能把精确值绑定到特定 source version，且 `valueVersionAvailableAt <= analysisAsOf`。官方公告只有在可信官方公告身份/版本时间与完整文档 hash、精确行定位和逐行 binding 一并成立时，才可据该文档发布时间证明其中数值；aggregator 报告日期、source publishedAt、事后 retrieval 或本地重新计算的 hash 均不足以单独证明预测值历史存在。可信 pre-cutoff snapshot 还须 `snapshotCapturedAt <= snapshotSealedAt <= analysisAsOf` 并有可核签名/采集链。未知或任一条件不满足即 `UNVERIFIED` / `UNAVAILABLE`；冲突为 `CONFLICTED`。
 
 分类规则：
 
@@ -191,62 +195,251 @@ Skill 架构规定 Skill 拥有专业语义方法，Workflow 拥有编排、路�
 ```ts
 type ScenarioName = 'BEAR' | 'BASE' | 'BULL'
 type OriginKind = 'FACT' | 'INFERENCE' | 'RESEARCH_ASSUMPTION' | 'DERIVED'
-type EvidenceStatus = 'QUALIFIED' | 'UNVERIFIED' | 'CONFLICTED' | 'UNAVAILABLE'
+type Eligibility = 'QUALIFIED' | 'UNVERIFIED' | 'CONFLICTED' | 'UNAVAILABLE'
+type ValueVersionStatus = 'VERIFIED' | 'UNVERIFIED' | 'CONFLICTED' | 'UNAVAILABLE' | 'NOT_APPLICABLE'
 type ReviewDecision = 'QUALIFIED' | 'REJECTED' | 'REVISION_REQUIRED'
+declare const nonEmptyStringBrand: unique symbol
+declare const isoInstantBrand: unique symbol
+declare const isoDateBrand: unique symbol
+declare const sha256Brand: unique symbol
+type NonEmptyString = string & { readonly [nonEmptyStringBrand]: true }
+type IsoInstant = string & { readonly [isoInstantBrand]: true }
+type IsoDate = string & { readonly [isoDateBrand]: true }
+type Sha256 = string & { readonly [sha256Brand]: true }
+
+// These brands are produced only by deterministic validators that reject whitespace-only values.
+// A caller cannot qualify a value by writing an arbitrary string into one of these fields.
 
 interface ScenarioHorizon {
-  readonly analysisAsOf: string               // UTC instant; never inferred from target year
+  readonly analysisAsOf: IsoInstant               // UTC instant; never inferred from target year
   readonly asOfMode: 'FROZEN_T0' | 'NEW_T1'
   readonly targetFiscalYear: number            // explicit, validated against published base
-  readonly targetPeriodStart: string
-  readonly targetPeriodEnd: string
-  readonly historyBaseStart: string
-  readonly historyBaseEnd: string
+  readonly targetPeriodStart: IsoDate
+  readonly targetPeriodEnd: IsoDate
+  readonly historyBaseStart: IsoDate
+  readonly historyBaseEnd: IsoDate
   readonly historyPeriodBasis: 'FY' | 'H1_YTD' | 'QUARTER' | 'OTHER'
   readonly targetPeriodBasis: 'FY' | 'H1_YTD' | 'QUARTER' | 'OTHER'
   readonly forecastYears: readonly number[]
   readonly financialScope: 'CONSOLIDATED' | 'PARENT_ATTRIBUTABLE' | 'CLASS_SPECIFIC'
-  readonly currency: string
-  readonly comparableScopeId: string             // versioned consolidation/segment definition
-  readonly latestFinancialAvailableAt: string
-  readonly latestMarketAvailableAt?: string
-  readonly cutoffManifestHash: string
+  readonly currency: NonEmptyString
+  readonly comparableScopeId: NonEmptyString     // versioned consolidation/segment definition
+  readonly latestFinancialAvailableAt: IsoInstant
+  readonly latestMarketAvailableAt: IsoInstant | null
+  readonly cutoffManifestHash: Sha256
 }
 
-interface EconomicDriverObservation {
+interface EconomicDriverObservationBase {
+  // Shared metadata; nullable only when the field is inapplicable or its absence is recorded below.
   readonly companySymbol: string
   readonly driverId: string
   readonly researchQuestion: string
   readonly metricId: string                      // existing metric only; no catalog expansion here
   readonly economicScope: string
   readonly atomicSkillOwner: string               // reference to existing peer Skill output
-  readonly periodStart: string
-  readonly periodEnd: string
-  readonly fiscalYear: number
-  readonly observedAt: string
-  readonly sourcePublishedAt: string
-  readonly analysisAsOf: string
+  readonly periodStart: IsoDate | null
+  readonly periodEnd: IsoDate | null
+  readonly fiscalYear: number | null
+  readonly observedAt: IsoInstant | null           // observation time; null is legal when not retained
+  readonly sourcePublishedAt: IsoInstant | null    // carrier publication, not numeric-value proof
+  readonly analysisAsOf: IsoInstant
   readonly asOfMode: 'FROZEN_T0' | 'NEW_T1'
-  readonly valueVersionStatus: EvidenceStatus
-  readonly originKind: 'FACT' | 'DERIVED' | 'INFERENCE'
-  readonly unit: string
-  readonly currency?: string
+  readonly originKind: OriginKind                  // identity; not a verification or eligibility state
+  readonly unit: NonEmptyString | null
+  readonly currency: NonEmptyString | null
   readonly financialScope: string                 // consolidated / parent / product / class
   readonly flowOrStock: 'FLOW' | 'STOCK' | 'RATE' | 'COUNT' | 'TEXT'
   readonly periodBasis: string                    // FY / YTD / point-in-time / weighted-average
-  readonly shareBasis?: 'BASIC' | 'DILUTED' | 'ADJUSTED' | 'NOT_APPLICABLE' | 'UNSPECIFIED'
-  readonly sourceCandidateId: string
-  readonly sourceLocation: string                 // page/table/paragraph/cell/line
-  readonly sourceContentHash: string
-  readonly sourceRights: string                   // existing rights record id, not a free-text grant
-  readonly originalValue?: string                 // literal only when retained and locatable
-  readonly normalizedValue?: number | string
-  readonly conversionFormula?: string
+  readonly shareBasis: 'BASIC' | 'DILUTED' | 'ADJUSTED' | 'NOT_APPLICABLE' | 'UNSPECIFIED' | null
+  readonly sourceCandidateId: NonEmptyString | null
+  readonly sourceLocation: NonEmptyString | null  // page/table/paragraph/cell/line
+  readonly sourceContentHash: Sha256 | null
+  readonly sourceRightsRecordId: NonEmptyString | null
   readonly sourceConflictIds: readonly string[]
-  readonly missingFields: readonly string[]
+  readonly missingFields: readonly NonEmptyString[]
+  readonly rejectionReasons: readonly NonEmptyString[]
   readonly applicability: 'APPLICABLE' | 'LIMITED' | 'NOT_APPLICABLE'
-  readonly residualNote?: string
+  readonly evidenceManifestHash: Sha256
+  readonly valueVersionProofHash: Sha256 | null
 }
+
+interface QualifiedSourceBinding {
+  readonly sourceCandidateId: NonEmptyString
+  readonly sourceLocation: NonEmptyString
+  readonly immutableSourceContentHash: Sha256
+  readonly valueBindingHash: Sha256                 // canonical binding of source/version/location/raw token/basis/unit
+  readonly originalValueToken: NonEmptyString       // exact token; never reconstructed from normalized value
+  readonly normalizedValue: number | string
+  readonly conversionFormula: NonEmptyString | null
+  readonly unit: NonEmptyString
+  readonly currency: NonEmptyString | null
+  readonly shareBasis: 'BASIC' | 'DILUTED' | 'ADJUSTED' | 'NOT_APPLICABLE' | 'UNSPECIFIED' | null
+  readonly sourceRightsRecordId: NonEmptyString
+  readonly rightsEvidenceHash: Sha256
+  readonly rightsDecision: 'ALLOWED_FOR_THIS_USE'
+}
+
+interface ValueVersionProofFields {
+  readonly proofId: NonEmptyString
+  readonly sourceCandidateId: NonEmptyString | null
+  readonly sourceLocation: NonEmptyString | null
+  readonly immutableSourceContentHash: Sha256 | null
+  readonly valueBindingHash: Sha256 | null
+  readonly originalValueToken: NonEmptyString | null
+  readonly normalizedValue: number | string | null
+  readonly unit: NonEmptyString | null
+  readonly epsBasis: 'BASIC' | 'DILUTED' | 'ADJUSTED' | 'UNSPECIFIED' | null
+  readonly valueBindingMode: 'EXACT_DOCUMENT_TOKEN' | 'PROVIDER_NUMERIC_POINT' | 'SIGNED_SNAPSHOT_FIELD' | null
+  readonly valueVersionId: NonEmptyString | null
+  readonly valueVersionAvailableAt: IsoInstant | null
+  readonly sourcePublishedAt: IsoInstant | null
+  readonly observedAt: IsoInstant | null
+  readonly retrievedAt: IsoInstant | null
+  readonly snapshotCapturedAt: IsoInstant | null
+  readonly snapshotSealedAt: IsoInstant | null
+  readonly analysisAsOf: IsoInstant
+  readonly trustRoot: NonEmptyString | null
+  readonly revisionStatus: 'COMPLETE' | 'UNKNOWN' | 'CONFLICTED'
+  readonly revisionChainHash: Sha256 | null
+  readonly sourceRightsRecordId: NonEmptyString | null
+  readonly rightsEvidenceHash: Sha256 | null
+  readonly proofReference: NonEmptyString | null
+  readonly signatureVerificationRef: NonEmptyString | null
+}
+
+type VerifiedValueVersionProof = ValueVersionProofFields & (
+  | {
+      readonly proofStatus: 'VERIFIED'
+      readonly evidenceClass: 'OFFICIAL_PUBLISHED_DOCUMENT'
+      readonly trustRoot: NonEmptyString
+      readonly sourceCandidateId: NonEmptyString
+      readonly sourceLocation: NonEmptyString
+      readonly immutableSourceContentHash: Sha256
+      readonly valueBindingHash: Sha256
+      readonly originalValueToken: NonEmptyString
+      readonly normalizedValue: number | string
+      readonly unit: NonEmptyString
+      readonly valueBindingMode: 'EXACT_DOCUMENT_TOKEN'
+      readonly valueVersionId: NonEmptyString
+      readonly valueVersionAvailableAt: IsoInstant
+      readonly sourcePublishedAt: IsoInstant
+      readonly revisionStatus: 'COMPLETE'
+      readonly revisionChainHash: Sha256
+      readonly sourceRightsRecordId: NonEmptyString
+      readonly rightsEvidenceHash: Sha256
+      readonly proofReference: NonEmptyString
+      readonly signatureVerificationRef: NonEmptyString | null
+      readonly snapshotCapturedAt: null
+      readonly snapshotSealedAt: null
+    }
+  | {
+      readonly proofStatus: 'VERIFIED'
+      readonly evidenceClass: 'IMMUTABLE_PROVIDER_VINTAGE'
+      readonly trustRoot: NonEmptyString
+      readonly sourceCandidateId: NonEmptyString
+      readonly sourceLocation: NonEmptyString
+      readonly immutableSourceContentHash: Sha256
+      readonly valueBindingHash: Sha256
+      readonly originalValueToken: NonEmptyString
+      readonly normalizedValue: number | string
+      readonly unit: NonEmptyString
+      readonly valueBindingMode: 'PROVIDER_NUMERIC_POINT'
+      readonly valueVersionId: NonEmptyString
+      readonly valueVersionAvailableAt: IsoInstant
+      readonly revisionStatus: 'COMPLETE'
+      readonly revisionChainHash: Sha256
+      readonly sourceRightsRecordId: NonEmptyString
+      readonly rightsEvidenceHash: Sha256
+      readonly proofReference: NonEmptyString
+      readonly snapshotCapturedAt: IsoInstant | null
+      readonly snapshotSealedAt: IsoInstant | null
+    }
+  | {
+      readonly proofStatus: 'VERIFIED'
+      readonly evidenceClass: 'TRUSTED_SEALED_SNAPSHOT'
+      readonly trustRoot: NonEmptyString
+      readonly sourceCandidateId: NonEmptyString
+      readonly sourceLocation: NonEmptyString
+      readonly immutableSourceContentHash: Sha256
+      readonly valueBindingHash: Sha256
+      readonly originalValueToken: NonEmptyString
+      readonly normalizedValue: number | string
+      readonly unit: NonEmptyString
+      readonly valueBindingMode: 'SIGNED_SNAPSHOT_FIELD'
+      readonly valueVersionId: NonEmptyString
+      readonly valueVersionAvailableAt: IsoInstant
+      readonly snapshotCapturedAt: IsoInstant
+      readonly snapshotSealedAt: IsoInstant
+      readonly signatureVerificationRef: NonEmptyString
+      readonly revisionStatus: 'COMPLETE'
+      readonly sourceRightsRecordId: NonEmptyString
+      readonly rightsEvidenceHash: Sha256
+      readonly proofReference: NonEmptyString
+    }
+)
+
+type IncompleteValueVersionProof = ValueVersionProofFields & {
+  readonly proofStatus: 'UNVERIFIED' | 'UNAVAILABLE' | 'CONFLICTED'
+  readonly evidenceClass: 'OFFICIAL_PUBLISHED_DOCUMENT' | 'IMMUTABLE_PROVIDER_VINTAGE' | 'TRUSTED_SEALED_SNAPSHOT' | 'NONE'
+  readonly missingFields: readonly [NonEmptyString, ...NonEmptyString[]]
+  readonly failureReasons: readonly [NonEmptyString, ...NonEmptyString[]]
+}
+type ValueVersionProof = VerifiedValueVersionProof | IncompleteValueVersionProof
+
+interface QualifiedObservationBase extends EconomicDriverObservationBase {
+  readonly eligibility: 'QUALIFIED'
+  readonly missingFields: readonly []
+  readonly rejectionReasons: readonly []
+}
+
+interface QualifiedFactObservation extends QualifiedObservationBase {
+  readonly originKind: 'FACT' | 'INFERENCE'
+  readonly valueVersionStatus: 'VERIFIED'
+  readonly sourceCandidateId: NonEmptyString
+  readonly sourceLocation: NonEmptyString
+  readonly sourceContentHash: Sha256
+  readonly sourceRightsRecordId: NonEmptyString
+  readonly sourcePublishedAt: IsoInstant
+  readonly sourceBinding: QualifiedSourceBinding
+  readonly valueVersionProof: VerifiedValueVersionProof
+  readonly valueVersionProofHash: Sha256
+  readonly normalizedValue: number | string
+  readonly inferenceInputRefs: readonly NonEmptyString[] // required/non-empty for INFERENCE; empty for direct FACT
+}
+
+interface QualifiedDerivedObservation extends QualifiedObservationBase {
+  readonly originKind: 'DERIVED'
+  readonly eligibility: 'QUALIFIED'
+  readonly valueVersionStatus: 'NOT_APPLICABLE' // derived output inherits proof through all locked inputs
+  readonly valueVersionProofHash: null
+  readonly normalizedValue: number
+  readonly derivation: {
+    readonly qualifiedInputRefs: readonly [NonEmptyString, ...NonEmptyString[]]
+    readonly formula: NonEmptyString
+    readonly formulaVersion: NonEmptyString
+    readonly inputManifestHash: Sha256
+    readonly resultHash: Sha256
+  }
+}
+
+interface MissingObservation extends EconomicDriverObservationBase {
+  readonly eligibility: Exclude<Eligibility, 'QUALIFIED'>
+  readonly valueVersionStatus: Exclude<ValueVersionStatus, 'VERIFIED'>
+  readonly sourceCandidateId: NonEmptyString | null
+  readonly sourceLocation: NonEmptyString | null
+  readonly sourceContentHash: Sha256 | null
+  readonly sourceRightsRecordId: NonEmptyString | null
+  readonly valueVersionProof: IncompleteValueVersionProof | null
+  readonly originalValueToken: NonEmptyString | null
+  readonly normalizedValue: number | string | null
+  readonly missingFields: readonly [NonEmptyString, ...NonEmptyString[]]
+  readonly rejectionReasons: readonly [NonEmptyString, ...NonEmptyString[]]
+}
+
+type EconomicDriverObservation = QualifiedFactObservation | QualifiedDerivedObservation | MissingObservation
+
+// QualifiedSourceBinding is valid only alongside an exact matching VERIFIED proof.
+// Runtime validation checks every duplicated identity/value/basis field for equality.
 
 interface ResearchAssumptionProposal {
   readonly proposalId: string
@@ -262,7 +455,7 @@ interface ResearchAssumptionProposal {
   readonly currency?: string
   readonly financialScope: string
   readonly assumptionOrigin: string              // researcher + method/source of proposal
-  readonly observationRefs: readonly string[]
+  readonly observationRefs: readonly [NonEmptyString, ...NonEmptyString[]] // Qualified facts/derivations only
   readonly rationale: string
   readonly economicMechanism: string
   readonly calibrationBasis: string
@@ -290,7 +483,8 @@ interface ScenarioBridgeLine {
 interface ScenarioForecastBridge {
   readonly scenario: ScenarioName
   readonly horizonRef: string
-  readonly proposalRefs: readonly string[]
+  readonly proposalRefs: readonly [NonEmptyString, ...NonEmptyString[]]
+  readonly requiredDriverRefs: readonly [NonEmptyString, ...NonEmptyString[]]
   readonly lines: readonly ScenarioBridgeLine[]
   readonly revenueLines: readonly string[]
   readonly costLines: readonly string[]
@@ -328,14 +522,16 @@ interface AssumptionReviewRecord {
   readonly reviewerRole: 'INDEPENDENT_ECONOMIC_REVIEWER'
   readonly authorId: string
   readonly independentOfAuthor: boolean
-  readonly proposalSetHash: string
-  readonly bridgeHash: string
-  readonly evidenceManifestHash: string
-  readonly reviewContractVersion: string
+  readonly proposalSetHash: Sha256
+  readonly bridgeHash: Sha256
+  readonly evidenceManifestHash: Sha256
+  readonly valueVersionProofSetHash: Sha256
+  readonly reviewPacketHash: Sha256
+  readonly reviewContractVersion: NonEmptyString
   readonly decision: ReviewDecision
   readonly fieldFindings: readonly { readonly proposalId: string; readonly finding: ReviewDecision; readonly reason: string }[]
   readonly crossCaseFindings: readonly string[]
-  readonly reviewedAt: string
+  readonly reviewedAt: IsoInstant
   readonly supersedesReviewId?: string
 }
 
@@ -350,7 +546,19 @@ interface ScenarioMethodResult {
 }
 ```
 
-`EconomicDriverObservation` 不从文本中的一个名称推断 metric 语义；`sourceCandidateId` 必须同时和精确定位、内容 hash、原值、时间窗及 rights 记录配对。Review record 锁定 proposal、bridge 与证据清单三个独立 hash；任何编辑生成新版本并使旧 review 失效。
+Qualified `FACT`/`INFERENCE` requires branded non-empty source ID/location/content hash/row-binding hash/raw value token/units, a permitted use-specific rights record, and a matching `VERIFIED ValueVersionProof`; deterministic runtime validation checks these fields are identical across `sourceBinding` and proof. An `observedAt=null` can qualify an official historical document fact only when an authoritative publication/version record itself binds that exact immutable document and row before T0; it cannot be backfilled from `sourcePublishedAt` when the value/version proof is otherwise absent. Qualified `DERIVED` values need non-empty qualified input refs, explicit formula, formulaVersion and an input-manifest hash; they do not fabricate a source candidate or raw token. `RESEARCH_ASSUMPTION` is represented in Proposal and gains no fact qualification from its referenced observations.
+
+The missing-state union permits genuinely absent evidence: `UNAVAILABLE`, `UNVERIFIED` and `CONFLICTED` may have null/absent source candidate, location, hash, raw token, observed/retrieved time and rights proof; each must include a non-empty `missingFields` and `rejectionReasons` list. Example: the existing EML certification/status line remains a separate `originKind=FACT` text observation tied to its official document paragraph/hash and publication proof. It can support only “stage/certification disclosed.” The requested future EML recognized-revenue observation is a distinct `eligibility=UNAVAILABLE` object with no source candidate/raw value/observedAt and exact missing order, acceptance, recognized revenue, period and rights/version fields; the stage line cannot be reused as its revenue source. A capacity-utilization request with no candidate is likewise `UNAVAILABLE` with null source fields and explicit `capacityDenominator`, `actualOutput`, `period`, `sourceRights` missing reasons. No empty-string, epoch, zero-value, guessed timestamp or invented source ID is needed.
+
+The observation embeds its proof and binds its canonical proof hash into `evidenceManifestHash`; `AssumptionReviewRecord` stores that manifest hash, `valueVersionProofSetHash` and `reviewPacketHash`. The review packet therefore identifies the exact numeric version, source/rights and `analysisAsOf` that were reviewed. Local hashes bind bytes for integrity but are not trusted timestamps or proof of historical availability.
+
+**逐值版本 proof 的准入规则：**
+
+1. `valueBindingHash` canonicalizes source ID + exact page/paragraph/table/cell + immutable document/version hash + literal raw value token + normalized value + unit/currency/EPS basis + metric/period/scope. It proves which row the value refers to, not when it existed. The `trustRoot` and `proofReference` must point to an independently verifiable official publication/version record, immutable provider vintage with complete correction chain, or an approved signed capture/seal chain.
+2. For an official historical fact, a verified official announcement/document identity, reliable external publication timestamp, exact preserved document bytes/hash, exact field locator and checked correction state may establish `valueVersionAvailableAt` for that row. Merely recomputing a local SHA after download is insufficient to establish the document’s old publication time or that a particular row was present then. If either the publication record or row binding is missing, status remains `UNVERIFIED`.
+3. For THS/EastMoney/other mutable aggregator estimates, a report cover date or `sourcePublishedAt` does not prove that the returned numeric row was available on that date. Qualification needs an immutable point/version ID and provider vintage timestamp plus complete revision/correction lineage, or a trusted pre-cutoff capture and seal with verifiable signature/acquisition chain. A current response downloaded after T0, even with a non-empty locally computed hash, is not a T0 snapshot.
+4. `valueVersionAvailableAt <= analysisAsOf` is mandatory. For a sealed-snapshot proof, `snapshotCapturedAt <= snapshotSealedAt <= analysisAsOf`; proof verification must validate signer, timestamp chain, hash, row binding, rights and correction state. `retrievedAt` is always separately recorded and cannot replace any earlier availability time. External immutable official/provider-version proof may allow later retrieval, but only if it independently proves the exact old version and value.
+5. Missing publisher/version root, unsigned or post-cutoff seal, unknown revision history, missing row binding/raw token, denied/unknown processing rights, wrong EPS basis/scope, or conflicting versions sets exact failure reasons and yields `UNVERIFIED`, `UNAVAILABLE` or `CONFLICTED`. No proof is synthesized in this report; both companies’ unproven aggregator estimates remain unqualified.
 
 ### 2.4 Scenario 方法不变量
 
@@ -362,7 +570,7 @@ interface ScenarioMethodResult {
 6. Sensitivity 是条件计算，不说明不同格现实概率。除非另获批准并有独立校准，`probability`/weighted value 禁止生成。业务变量本身不必各维度单调（例如售价与销量可能反向）；Bear/Base/Bull 名称也不得按计算值自动重排。现有 scenario_valuation API 对增长率/倍数及 target price 有单调要求；若真实、已审查的 driver economics 不能满足，不可为通过旧 shape gate 而扭曲假设。应将其留作 `REVIEW_REQUIRED/UNAVAILABLE`，并把对 validator/order rule 的任何修改作为独立代码/测试审批点。
 7. 若只完成假设语义和没有可算估值输入，结果不能把 `bull-base-bear` 标成 qualified。只输出 blocked research gap 和精确缺项。
 
-确定性 bridge 至少应能表达如下量纲一致等式，实际实现按公司披露范围选用，不填本轮公司未来值：
+确定性 operating bridge 至少应能表达如下量纲一致等式，实际实现按公司披露范围选用，不填本轮公司未来值：
 
 ```text
 segmentRevenue_s = volume_s × realizedASP_s        # 只有同范围数量和售价可定位时才可使用
@@ -372,18 +580,63 @@ operatingProfit_s = grossProfit_s - operatingExpenses_s
 consolidatedNetIncome_s = operatingProfit_s + financeAndNonOperatingItems_s - taxExpense_s ± separatelyLocatedAdjustments_s
 parentNetIncome_s = consolidatedNetIncome_s - nonControllingInterest_s ± parentAttributableAdjustments_s
 FCFF_s = EBIT_s × (1 - cashTaxRate_s) + D&A_s - netCapex_s - ΔOperatingNWC_s
-EV = classSpecificEquityValue_s + grossDebt_s + leaseClaims_s + otherSeniorClaims_s - eligibleUnrestrictedCash_s
-equityValue = EV - debtAndSeniorClaims + eligibleCashAdjustments - nonControllingClaims
-perShareValue = classSpecificEquityValue / matchingDilutedClassShares
 ```
 
-每个等式须写明 units（例如 CNY bn、units、CNY/unit、%）、scope、期间、正负号、消除/少数股东/租赁定义和 `formulaVersion`。EV桥要求同一资本结构口径；上面简式不可把同一笔 debt/cash 调整两次。没有完整输入的 line 就是 `UNAVAILABLE`，不得自动补 0。当前 ScenarioPlan 的 revenue 与 parent-net-profit 两个独立 rate 形成 3×3 cross product；其中每格可能隐含不同归母净利率，这只是条件算术，不自动代表经济上协调的情景。新合同应从业务驱动桥复算一致性，并只在可解释时把敏感格描述为 coherent economic scenario。
+每个 operating 等式须写明 units（例如 CNY bn、units、CNY/unit、%）、scope、期间、正负号、消除/少数股东/租赁定义和 `formulaVersion`。没有完整输入的 line 就是 `UNAVAILABLE`，不得自动补 0。当前 ScenarioPlan 的 revenue 与 parent-net-profit 两个独立 rate 形成 3×3 cross product；其中每格可能隐含不同归母净利率，这只是条件算术，不自动代表经济上协调的情景。
+
+**公司级 market cap / EV / equity value 与股份类别 per-share 必须分层。** 所有市场数据必须是同一 `analysisAsOf` 可用的交易 close、同一交易日/适用时区、同一个 share-status cutoff 和对应 FX close/fix；每项价格、股数与 FX 都有自己的 point-in-time proof。对每个交易类别 `c`，先以发行股数减去截至 asOf 已回购持有/库存股及已注销股份，得到当时实际流通类别股数；根据挂牌证券单位/换算比例换成股数后求类别市场价值：
+
+```text
+classEquityMarketValue_c[reportingCurrency, asOf]
+  = closePrice_c[quoteCurrency / listedShare, asOf]
+  × qualifyingOutstandingShares_c[listedShares, asOf]
+  × FX_c[reportingCurrency / quoteCurrency, asOf]
+
+totalEquityMarketValue[reportingCurrency, asOf]
+  = Σ_c classEquityMarketValue_c[reportingCurrency, asOf]
+
+enterpriseValue[reportingCurrency, asOf]
+  = totalEquityMarketValue
+  + grossInterestBearingDebt
+  + leaseClaims                 # only if the chosen EV/EBITDA or FCFF convention includes leases
+  + preferredAndConvertibleClaims
+  + nonControllingClaims
+  + otherApplicableSeniorClaims
+  - eligibleUnrestrictedCash
+  ± separatelyDocumentedAdjustments
+
+totalEquityValue[reportingCurrency, asOf]
+  = enterpriseValue
+  - grossInterestBearingDebt
+  - leaseClaims
+  - preferredAndConvertibleClaims
+  - nonControllingClaims
+  - otherApplicableSeniorClaims
+  + eligibleUnrestrictedCash
+  - signedAdjustmentsIncludedInEV
+
+classEquityValue_c[reportingCurrency, targetDate]
+  = verifiedClassAllocationRule_c(totalEquityValue, classRights, conversionAndDilutionTerms)
+
+perShareValue_c[quoteCurrency / share, targetDate]
+  = classEquityValue_c[reportingCurrency, targetDate]
+  ÷ FX_c[reportingCurrency / quoteCurrency, targetDate]
+  ÷ dilutedClassShares_c[shares, targetDate]
+```
+
+`grossInterestBearingDebt` 只能使用总债务法一次；若输入已是净债务，就不得再加总债务或重复减现金。挂牌单位/存托凭证和 underlying share 的换算比例用于精确构造 `qualifyingOutstandingShares_c` 或匹配的分母，不能作为额外乘数重复计算 market cap。租赁在 EV 和 earnings denominator/WACC basis 中必须一致；可转债、优先股/优先权、非控股权益和其他 claims 按已核验会计与经济权利分别处理；未披露不等于 0。`eligibleUnrestrictedCash` 仅可纳入可自由支配且不与定期存款、交易性资产、受限现金或境外受限资金重复的余额。
+
+现值 `totalEquityMarketValue` 使用各类别**当日流通股数**（issued shares 减 treasury/repurchased-held/cancelled）；不得用 weighted-average EPS denominator 或预测期 fully diluted shares 替代。反向估值的 `dilutedClassShares_c` 是估值目标日、类别匹配的稀释后股数，要单独证明股权激励、可转债转换、存托/换股比率与公司行动；不与当日 market-cap share count 混用。
+
+公司级 `EV→totalEquityValue` 不能直接除以某一类别 shares。只有在 A/H 等类别的经济权利、普通/优先转换、清算/分派顺序、投票/存托比例和币种映射均可审计时，才可按明确 allocation rule 将 equity value 分配至 `classEquityValue_c`，并证明各类别分配之和与总 equity value reconciliation。缺类别权利、当日价格/FX、股份状态、债务/现金桥或摊薄分配规则中的任一必要字段，都返回 `UNAVAILABLE`；不得以单一类别价格推出公司全部权益市值或以总权益价值除以单一类别股数生成该类别每股价值。
+
+对冻结 T0 的结论不变：BYD 有可用 A 股 close，但缺同截止 H 股价、HKD/CNY FX、完整股数/公司行动及一致 EV 桥，不能生成总市值/EV/per-share 或 Reverse DCF 输入；东山 `analysisAsOf=2026-10-27T20:26:46.347Z` 位于 H 股挂牌交易前，IPO发行价不是成交价，挂牌后报价不能回填。此处只是公式/契约一致性设计，不是实际 EV、目标价或 Reverse DCF 授权；两公司仍为 17/19 blocked。
 
 ## 3. Gate 3 — 独立经济审阅与资格状态机
 
 ### 3.1 Reviewer I/O 合同
 
-**Reviewer 输入**：冻结版 horizon；Observation 快照及来源/权利/版本证据；三个 scenario 的 proposal 和 bridge；source conflicts/missing list；上游 Skill 的原始输出引用；确定性公式结果与敏感性（若全部输入合格）；review contract 版本。输入按 `proposalSetHash + bridgeHash + evidenceManifestHash` 锁定。
+**Reviewer 输入**：冻结版 horizon；逐条 Observation 和嵌入的 `ValueVersionProof`；来源/权利/版本失败清单；三个 scenario 的 proposal 和 bridge；source conflicts/missing list；上游 Skill 的原始输出引用；确定性公式结果与敏感性（若全部输入合格）；review contract 版本。输入按 `proposalSetHash + bridgeHash + evidenceManifestHash + valueVersionProofSetHash + reviewPacketHash` 锁定。Reviewer 必须能复核精确 value row、versionAvailableAt 与 trust root，而不能只看 caller-supplied status string。
 
 **Reviewer 输出**：逐字段 finding (`QUALIFIED`, `REVISION_REQUIRED`, `REJECTED`)，因果路径说明，相关/不相关证据判断，期间与scope不匹配，反证检查，范围/残差处理，计算假设的敏感性和可证伪条件，跨情景一致性，明确决断、理由与 hash。Reviewer 不修改原 proposal；修订由 author 产生新 version，再进入新审阅。
 
@@ -393,7 +646,7 @@ perShareValue = classSpecificEquityValue / matchingDilutedClassShares
 
 | 维度 | 通过标准 | 拒绝 / 返回条件 |
 |---|---|---|
-| 证据到字段 | 引用含精确字段、source ID、段/表/页/单元、内容 hash、period、来源 rights 与 version status；证据相关于所支持 driver/value | 只有来源 ID 白名单、同公司不相关段落、report date 或非空 hash；未证明 hash 绑定到原始数值行 |
+| 证据到字段 / 版本 | 引用含精确字段、source ID、段/表/页/单元、内容 hash、row-binding hash、raw token、period、来源 rights、proof trust root、数值版本 availableAt 和 revision status；版本 proof hash 与 evidence manifest 一致且证据相关于所支持 driver/value | 只有来源 ID 白名单、同公司不相关段落、report date、publishedAt、source hash或非空版本字符串；未证明 hash 绑定到原始数值行/具体版本/可用时点 |
 | 经济机制 | 逐级说明 volume/price/mix/cost/capacity/acquired scope/working capital 等输入如何影响收入、毛利、费用、税、归母利润/现金流；保留 residual | 仅给高/低增长数；把历史同比、战略语句、认证、扩产或集中度文字直接变成未来值 |
 | 会计与时间 | FY/YTD/quarter、flow/stock、币种、单位、合并/归母、产品/分部定义、EPS basic/diluted、shares/equity scope一致；版本的 availableAt≤analysisAsOf | H1 YTD 当 FY、合并 NP 当归母、当前页面覆盖旧版本、CFO-capex 冒充 FCFF、用未上市 H 价回填 T0 |
 | 校准与反证 | Calibration basis有匹配期间和范围；解释它为何适用；counter-evidence 与假设同一机制；观测触发条件可检验 | FY23–25最小/中间/最大同比直接映射 Bear/Base/Bull；反证仅堆 source ID 或空泛“市场风险” |
@@ -413,7 +666,7 @@ PROPOSED
 DETERMINISTICALLY_VALIDATED -> REJECTED / UNAVAILABLE
 ECONOMIC_REVIEW_PENDING -> REVISION_REQUIRED -> PROPOSED (new version, bounded by existing retry budget)
 ECONOMIC_REVIEW_PENDING -> REJECTED
-any edit to proposal / bridge / source-version / rights / asOf -> STALE_REVIEW -> PROPOSED (new hash, fresh review)
+any edit to proposal / bridge / source version / raw token / normalized value / basis / rights / proof / analysisAsOf -> STALE_REVIEW -> PROPOSED (new hash, fresh review)
 missing/conflicted/unlicensed/post-cutoff required field -> UNAVAILABLE -> Workflow reports RESEARCH_GAP
 ```
 
@@ -423,7 +676,7 @@ missing/conflicted/unlicensed/post-cutoff required field -> UNAVAILABLE -> Workf
 | `… → ECONOMIC_REVIEW_PENDING` | validated snapshot hashes + rubric version + reviewer identity distinct from author | Workflow schedules independent reviewer | Use existing P0-19 operation/repair budget exactly as configured; no budget increase or loop to force pass |
 | `… → QUALIFIED` | one decision per required field/case, reviewer hash match, no required unknowns, cross-case coherence, publication gate satisfied | Independent reviewer decides semantics; Workflow validates record/signature and consumer gate | Any missing/failed field prevents qualification |
 | `… → REVISION_REQUIRED → PROPOSED` | finding list, same lineage manifest; author creates new proposal version | Author revises; Workflow invalidates old review | Existing retry budget only. Exhaustion -> `REJECTED` or `REVIEW_REQUIRED` + `RESEARCH_GAP` |
-| any changed input → `STALE_REVIEW` | hash mismatch for source/proposal/bridge/asOf/rights/method | Workflow | Prior PASS cannot be copied/retained; new review only if budget/authorization permits |
+| any changed input → `STALE_REVIEW` | hash mismatch for source/proposal/bridge/asOf/rights/method, raw value, unit/EPS basis, `ValueVersionProof`, signature chain or rights decision | Workflow | Prior PASS cannot be copied/retained; new review only if budget/authorization permits |
 | required input absent/conflicted/unauthorized → `UNAVAILABLE` | exact field reason and affected dependent outputs | Data result + Workflow gate | fail closed; no zero-fill; continue other independent chapters only if existing rules allow |
 
 `QUALIFIED` never itself marks 19/19. Product completion remains the existing 19/19 core-section gate **and** required independent semantic reviews for both companies plus downstream cross-chapter and publication checks.
@@ -454,6 +707,12 @@ missing/conflicted/unlicensed/post-cutoff required field -> UNAVAILABLE -> Workf
 | F16 | sensitivity formula正确，但 Bear/Base/Bull target values非有限或计算重复不相等 | pure calculator/recompute/monotonicity result rejected; reviewer cannot override deterministic failure |
 | F17 | counterEvidence引用真实且 hash 正确但与核心驱动无关；falsificationTrigger无法观测 | semantic relevance and trigger rubric fails; hash alone is not economic evidence |
 | F18 | scenario economics有条件敏感性但被表述为前瞻目标价/概率加权期望价值 | Skill output semantic rule and publication editor gate reject wording; conditions/limitations must remain explicit |
+| F19 `FIXTURE_ONLY` | missing observation has no `observedAt`, candidate ID, raw token or rights proof; explicitly passes `null` and lists missing fields | Type/contract validator accepts `UNAVAILABLE` representation only; precise `missingFields`/`rejectionReasons` required; rejects empty strings, epoch, a zero used to stand in for a missing value, and synthetic source IDs. A genuinely observed zero remains a value and still needs qualified evidence. Owner: deterministic observation validator + Workflow gate |
+| F20 `FIXTURE_ONLY` | a located official EML stage TEXT fact has a valid document binding but no order/acceptance/revenue row and no row-level observation time; a separate numeric recognized-revenue request is attempted | Stage-only TEXT may remain a qualified document FACT if its published-version proof qualifies; numeric revenue is separately `UNAVAILABLE` with missing causal chain, period/value and relevant evidence. Owner: source-binding validator + economic reviewer + Workflow required-driver gate |
+| F21 `FIXTURE_ONLY` | document/report published before T0, but aggregator value's immutable vintage is after T0 or no trusted version proof exists; a local hash is present | `UNVERIFIED`/`UNAVAILABLE`; reject the point for historical T0. `reportDate`, `publishedAt` and post-cutoff local hash cannot satisfy `valueVersionAvailableAt <= analysisAsOf`. Owner: ValueVersionProof validator + Workflow PIT gate |
+| F22 `FIXTURE_ONLY` | reviewer returns PASS, then `valueVersionProof`, source rights, raw token, EPS/share basis or `analysisAsOf` changes | old record becomes `STALE_REVIEW`; invalidate proof/packet/manifest hashes, require a fresh independent review only within existing retry budget. Owner: Workflow hash gate |
+| F23 `FIXTURE_ONLY` | only one share class has a valid quote but code attempts total company EV; separate case uses post-listing H quote to price a pre-listing T0 | `UNAVAILABLE`; do not equate single-class market cap with total equity market value or backfill hindsight price. Owner: deterministic EV input gate + reviewer time-slice check |
+| F24 `FIXTURE_ONLY` | an EV bridge counts the same lease/debt through both gross debt and net debt, or divides total equity value by one class's shares without a verified allocation rule | bridge consistency rejects double count; class per-share result `UNAVAILABLE` without rights/currency/share proof. Owner: deterministic EV reconciliation + reviewer allocation rubric |
 
 ### 4.2 纯确定性复算与测试分层
 
@@ -518,3 +777,27 @@ missing/conflicted/unlicensed/post-cutoff required field -> UNAVAILABLE -> Workf
 - 若报告提交到远端，只推送任务分支；不合并 `main`，不改变两份旧 run/sidecar/Knowledge 内容。
 
 **静态审查输入**：上游决策与字段血缘来自 `docs/engineering/reports/2026-10-28-company-research-p0-19-decision-004.md`、`docs/engineering/reports/2026-10-28-asof-and-reverse-dcf-feasibility.md`、`docs/engineering/reports/2026-10-27-company-research-gate1-contract-lineage-audit.md`、`docs/engineering/reports/2026-10-27-company-research-gate1-field-lineage-detail.md`；架构依据为 `docs/architecture/RESEARCH_SKILL_ARCHITECTURE_V1.md`、`docs/architecture/RESEARCHHUB_DATA_LAYER_ARCHITECTURE_V1.md`、`docs/architecture/RESEARCH_SKILL_CATALOG_V1.md`、`docs/architecture/REVIEW_GOVERNANCE_V0.1.md`。静态代码审查范围为本任务书列出的四个 `SKILL.md`、`skills/valuation/financials.ts`, `skills/valuation/contracts.ts`, `workflows/company-deep-research/scenario-assumptions.ts` 和现存 Company Research workflow mapping。
+
+## 8. 006 修订对照与设计验收
+
+| 契约级缺陷 | 修复位置 | 关闭依据 / 责任边界 |
+|---|---|---|
+| 缺失来源/时间/rights 无法由必填 string 表达 | §1.1 分离 `originKind` / 版本 proof / eligibility；§2.3 用 `QualifiedFactObservation`、`QualifiedDerivedObservation`、`MissingObservation` discriminated union；§3.3 missing → `UNAVAILABLE` → `RESEARCH_GAP` | Qualified fact 的 ID/location/hash/raw token/right/version 使用 validator 构造的非空类型；Missing union 可用 null/absence 并带非空 `missingFields/rejectionReasons`。派生值要求 qualified inputs+formula。F19、F20 检查 EML 阶段文本与未来收入、无来源产能利用率两类状态分离；不靠警告文字放行。 |
+| 数值版本无法审核或锁定到旧 review | §1.1 六种时间语义与准入顺序；§2.3 `ValueVersionProof`/trust root/逐值 hash binding/rights proof；§3.1 reviewer packet；§3.3 `STALE_REVIEW` 覆盖 value/basis/rights/asOf/proof；§4.1 F21、F22 | proof要求 immutable document/provider vintage 或经签名的 pre-T0 capture chain，且逐值 token、locator、source hash、binding hash、versionAvailableAt、revision state相符；本地 SHA 只证字节完整性。`valueVersionAvailableAt<=analysisAsOf`；输入改变使 review hash 失配并失效旧 PASS。不新增真实 proof 或 source。 |
+| 多股类别 EV/每股口径混同 | §2.4 取代旧 class-specific 简式，明确按股类别、价格、实际流通股数、FX 汇总 totalEquityMarketValue，使用总债务/现金单次桥接 EV→公司总权益，再通过经核验的类别权利分配到 class value 和 matched diluted shares；§4.1 F23、F24 | 无类别价格/FX/股数/权利/稀释/债务现金任一 required 输入则 `UNAVAILABLE`。T0 BYD H价/FX缺失；东山 T0早于 H 股交易，IPO价及挂牌后报价均不回填。没有执行 EV/目标价/Reverse DCF。 |
+
+**Git / 文件证据。** 本轮只读确认远端目标分支在冻结起点 `ec274cb660d1856fdc04a828e3c0b25b1bc3192d` 后才开始修订；目标报告是唯一获准文件，原 `S4-CONTRACT-005` 首次新增的父 SHA 记录仍为 `8af0acfb21aaea22f67e97acc263836179c5d16c`。本轮主内容修订 commit SHA 将记录为包含三项实质修复的主提交；仅随后追加该 Git 返回值的验收元数据提交也只触及本报告。唯一差异路径为 `docs/engineering/reports/2026-10-28-company-research-s4-scenario-method-contract.md`；每个提交均只包含该文件，不合并 `main`。本轮 `git diff --check` 与提交前 staged-path 检查结果将在验收元数据提交中记录。
+
+**本地保护检查。** 五个用户未提交 evidence JSON 在修订前的 SHA-256 如下；结束前需逐一重算并确认仍一致、仍处于用户原 dirty 状态：
+
+| 未提交文件 | 修订前 SHA-256 |
+|---|---|
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-thesis-authorized.json` | `7252fd35dec70403fd6bb8b3edc6ffadd25211fd158461a1dde30458bf07f442` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-event-readonly.json` | `ef0e7475e0464ca1e3950feb348b0d3ed6dc7383e32200faa3fc413207bc641a` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-industry-readonly.json` | `12c951be5ca88fb35b155187055b0a15a50d212133c9b68088c0d1674500c0fa` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-thesis-references.json` | `61cd5cf5b24a7f0fc10746e0269a845d6e29464614c43738d7585ec075fb4670` |
+| `tests/validation/evidence/company-quality-pi-default-deny.json` | `4c02302a5b31cec6d93b9298e06a76bd0b834b4bacc914670c7fd06aa6300038` |
+
+修订前本地可读的 12 个 BYD/东山分析、report、workflow、bundle、Markdown 与 KB integrity sidecar SHA-256 在本轮复算后全部匹配 §0.3 列表。五个用户未提交 evidence JSON 仍保持原 dirty 状态且 SHA-256 与表中修订前记录完全相同。`runtime-launch.stderr.log`、`runtime-launch.stdout.log`、document parser `__pycache__` 和 `tmp/` 均仍位于原位置；本轮没有清理或改写命令。本次文档-only 未运行 Node、客户端、类型检查、构建、模型、Reviewer、数据源或真实研究 Workflow；已知历史 Node 21 项与 client 5 项失败是既有基线，不是本轮新回归或全绿声明。
+
+**验收结果：** `DESIGN_READY_FOR_ARCHITECTURE_APPROVAL`。产品状态维持 P0-19 `NOT_ACCEPTED`、两家公司 17/19 blocked、真实独立语义审阅 0。S4 设计完成 ≠ 方法实施获批 ≠ 19/19 产品验收
