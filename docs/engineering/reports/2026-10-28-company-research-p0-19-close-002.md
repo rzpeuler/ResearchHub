@@ -2,7 +2,7 @@
 
 **Task:** `RHL-CQR-P0-19-CLOSE-002`
 **Status:** `IN_PROGRESS`; Gate 4 has not passed and P0-19 remains `NOT_ACCEPTED`.
-**Scope of this record:** Gate 0 baseline capture and the first private Gate 1 point-binding slice.
+**Scope of this record:** Gate 0 baseline, private Gate 1 point binding and eligibility, and the initial Gate 2 scenario-plan validator.
 
 ## Gate 0 baseline
 
@@ -14,21 +14,30 @@
 - The inherited regression baseline is 21 Node failures and 5 client failures; baseline comparison recorded zero added and zero disappeared failures. Those results are not a passing full-suite result.
 - Other pre-existing modified evidence files and ignored local runtime artifacts were left out of this slice.
 
+## Current delivery snapshot
+
+- Current task-branch HEAD and remote HEAD: `5a7a0f1` (`fix(research): enforce forecast snapshot cutoff`).
+- Task commits since starting SHA: `b70a699` (point-to-row binding), `b8634b8` (verified point-proof eligibility), `fccfa55` (scenario-plan validation), and `5a7a0f1` (sealed `asOf` availability check). The unrelated UI commit `1010df8` remains outside the new task commits.
+- Current `origin/main` and merge-base remain `51fd2112c0767a664bba4e887e7debb031fcf66e`.
+
 ## Gate 1 implementation slice
 
 The Plugin now attaches a private `EarningsEstimatePointProof` to each normalized estimate row from native EastMoney, the EastMoney AKShare route, and THS. It binds the estimate ID, source candidate ID, provider row/field, metric, value, unit, period, institution, publication timestamp, and a deterministic hash of the observed row. The sidecar stays outside the public `EstimatePoint` contract. The earnings-review acquisition joins proofs back to estimate points and rejects mismatches or missing proof records.
 
-This establishes current-row binding only. It does **not** establish immutable historical value versions, correction/revision history, or EPS definition basis. Those statuses remain `UNVERIFIED`; no proof is promoted to eligible historical PIT evidence. This slice has not yet wired the proof qualification into the Company Research variant-perception selector, so it does not close the blocked section or satisfy G1 acceptance.
+This establishes current-row binding only. It does **not** establish immutable historical value versions, correction/revision history, or EPS definition basis. Those statuses remain `UNVERIFIED`; no proof is promoted to eligible historical PIT evidence. The Company Research selector is now wired to the proofs. It checks exact point/source/provider/metric/value/unit/FY/institution/publication binding, actual source retrieval no later than the sealed `asOf`, allowed public/AI/retention rights, and verified basis, value-version, and correction statuses. The current adapters always return `UNVERIFIED` for those statuses, so current points remain excluded and no channel median is calculated.
 
-The source-field audit has not established document-level proof for either provider. The current THS route provides an aggregate row without original report identity, exact document locator, immutable version, correction ID, or EPS basis. The current EastMoney routes expose a report-like identifier and forecast row but do not yet prove immutable value-version history, correction status, EPS definition basis, or exact accessible source document for every estimate. No report PDF was fetched or redistributed in this slice.
+The Gate 1 audit found that the saved sidecars omit projected estimate rows/proofs and exact candidate counts, and that both pairs of forecast acquisitions finished after the run's sealed `asOf`. THS does not provide an immutable original report, exact document locator, correction history, or EPS basis. EastMoney may expose report identifiers/URLs, but current code does not bind each value to a verified immutable document/version or EPS basis. No authorized current route can pass Gate 1 for these saved reports. See `2026-10-28-company-research-p0-19-close-002-gate1-audit.md`. No report PDF was fetched or redistributed.
+
+The private `scenario-assumptions.ts` now has a source-exact FY2026 candidate builder and validator. It binds FY2023–FY2025 revenue and parent-attributable net-profit values to the matching year columns in annual report rows, cross-checks FY2026 H1 current/prior values separately, and recomputes the historical min/mid/max operating assumptions and independent 3×3 revenue-growth × parent-profit-growth sensitivity grid. The plan is deliberately returned as `candidate_requires_semantic_review`: the validator may report structural integrity, but `valid` and `reportEligible` remain false because historical calibration alone does not prove economic reasonableness. This remains **unintegrated**: no Workflow call path, renderer, section evidence wiring, or report use is present. FY2026 H1 is counterevidence, not blended into the annual calibration.
 
 ## Validation for this slice
 
 - `node --import tsx --test tests/workflows/earnings-expectation-source-eastmoney.test.ts tests/workflows/earnings-expectations-acquisition-d1.test.ts` — 24 passed, 0 failed. These are deterministic fixture tests, not live-provider or Company Research acceptance.
+- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts tests/workflows/company-scenario-assumptions.test.ts` — 17 passed, 0 failed on the current working tree (7 selector/eligibility tests and 10 scenario-builder/validator tests; fixture-only, not live acceptance).
 - `npm run typecheck` — passed.
-- `git diff --check` — passed; Git emitted only existing LF-to-CRLF notices for unrelated modified evidence files.
+- `git diff --check` — passed; Git emitted line-ending notices for modified files.
 - Full Node/client regressions and the paired live Company Research acceptance were not rerun for this slice.
 
 ## Remaining gates
 
-Gate 1 still needs provider-by-provider point coverage against authorized original documents/version evidence and integration with Company Research eligibility. Gate 2 needs a validated, source-bound research assumption plan and deterministic three-scenario calculations. Gate 3 needs two genuinely distinct economic expectation surfaces. Gate 4 requires fresh BYD and Dongshan 19/19 runs, actual semantic review, report/sidecar evidence, regression checks, and unchanged Knowledge hashes. Until all of Gate 4 passes, the task remains `NOT_ACCEPTED`.
+Gate 1 remains blocked on authorized immutable point/version and EPS-basis evidence; the saved sidecars also lack per-point audit detail. Gate 2 needs a source-exact plan builder, deterministic operating projections and 3×3 sensitivity, report/evidence integration, and semantic review of actual assumptions. Gate 3 still lacks two genuinely distinct, comparable economic expectation surfaces. Gate 4 requires fresh BYD and Dongshan 19/19 runs on one code SHA, actual 19-section semantic review, full independently readable reports/sidecars via an authorized channel, regressions/type/build checks, and unchanged Knowledge hashes. Until all Gate 4 criteria pass, the task remains `NOT_ACCEPTED`.

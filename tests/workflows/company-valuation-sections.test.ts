@@ -150,6 +150,32 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
 })
 
+test('point proofs reject source-provider mismatches and missing internal-use rights', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const cases = [
+    {
+      source: { ...original.projection.sources[0]!, candidate: { ...original.projection.sources[0]!.candidate, provider: 'unexpected-provider' } },
+      expected: 'PROOF_BINDING_MISMATCH',
+    },
+    {
+      source: { ...original.projection.sources[0]!, rights: { ...original.projection.sources[0]!.rights, aiProcessingAllowed: false } },
+      expected: 'SOURCE_RIGHTS_NOT_QUALIFIED',
+    },
+  ]
+  for (const scenario of cases) {
+    const projection = { ...original.projection, sources: [scenario.source, ...original.projection.sources.slice(1)] }
+    const changed = {
+      ...acquisition,
+      earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }],
+    } as unknown as CompanyReadOnlyAcquisition
+    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: changed, sources: [filing] })
+    assert.ok(result.diagnostics.includes(`EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:${scenario.expected}`))
+  }
+})
+
 test('filing EPS selects the unique FY row under the main summary heading and matching year header', () => {
   const selected = extractFilingBasicEps([filing], 2025, asOf)
   assert.equal(selected?.value, 3.58)
