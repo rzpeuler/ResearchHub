@@ -645,7 +645,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       }
     }
     abortIfNeeded(input.signal)
-    const valuationBuild = buildCompanyValuationSections({ company: { symbol: company.symbol, name: company.name ?? company.symbol }, asOf, acquisition: readOnlyAcquisition, sources: acquired.sources })
+    const valuationBuild = buildCompanyValuationSections({ company: { symbol: company.symbol, name: company.name ?? company.symbol }, asOf, asOfMode: input.asOf === undefined ? 'CURRENT_VALUE_ONLY' : 'HISTORICAL', acquisition: readOnlyAcquisition, sources: acquired.sources })
     const valuationAcquisitionDiagnostics = [...new Set([
       ...(readOnlyAcquisitionTimeout ? ['COMPANY_READ_ONLY_ACQUISITION_BUDGET_EXHAUSTED'] : []),
       ...(readOnlyAcquisition?.valuationError ? [`VALUATION_RESOLVER_ERROR:${readOnlyAcquisition.valuationError}`] : []),

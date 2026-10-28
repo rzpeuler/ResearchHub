@@ -4,8 +4,9 @@ import { buildCompanyValuationSections, extractFilingBasicEps } from '../../work
 import type { CompanyReadOnlyAcquisition } from '../../workflows/company-deep-research/contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 
-const asOf = '2026-10-26T00:00:00.000Z'
+const asOf = '2026-10-26T08:00:00.000Z'
 const filing = {
   candidate: { candidateId: 'annual-2025', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T00:00:00.000Z' },
   title: '2025年年度报告', content: '重要提示\n基本每股收益 99.00\n六、主要会计数据和财务指标\n2025 年 2024 年 本年比上年增减 2023 年\n基本每股收益（元/股） 3.58 4.61 -22.34% 3.44\n七、股本变动及股东情况\n基本每股收益（旧股） 11.12 基本每股收益（新股） 3.58', contentHash: 'filing-hash', retrievedAt: asOf,
@@ -13,7 +14,7 @@ const filing = {
 } as any
 const quote = {
   candidateId: 'quote-payload', kind: 'market', observation: { priceDate: '2026-10-26', close: 100 },
-  sourceId: 'market-source', originPublisher: 'Tencent', retrievalProvider: 'AKShare', sourceUrl: 'https://example.test/quote', retrievedAt: asOf,
+  sourceId: 'market-source', originPublisher: 'Tencent', retrievalProvider: 'AKShare', sourceUrl: 'https://example.test/quote', retrievedAt: asOf, observationAvailableAt: dailyCloseAvailableAt('2026-10-26'),
 }
 const expectationSource = (candidateId: string, provider: string, publisher: string, day: number) => ({
   candidate: { candidateId, kind: 'structured_data', title: `FY2026 estimate ${candidateId}`, provider, publishedAt: `2026-10-${day}T00:00:00.000Z` },
@@ -141,7 +142,7 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   if (original.kind !== 'expectation') return
   const delayedProjection = {
     ...original.projection,
-    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T00:00:01.000Z' } : source),
+    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T08:00:01.000Z' } : source),
   }
   const delayed = {
     ...acquisition,
@@ -150,6 +151,39 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: delayed, sources: [filing] })
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'))
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
+})
+
+test('current-run acquisitions may finish after the sealed asOf when the proven expectation was published by the cutoff', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const delayedProjection = {
+    ...original.projection,
+    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T08:00:01.000Z' } : source),
+  }
+  const delayed = {
+    ...acquisition,
+    earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection: delayedProjection }, acquisition: { observations: [] } }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: delayed, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
+  assert.doesNotMatch(result.sections[2]!.markdown, /同花顺 .*eligible=0/)
+})
+
+test('same-day market close is rejected before the Shanghai session close and accepted after availability', () => {
+  const beforeClose = '2026-10-26T06:59:59.999Z'
+  const earlyQuote = { ...quote, observationAvailableAt: dailyCloseAvailableAt('2026-10-26') }
+  const earlyAcquisition = {
+    ...acquisition,
+    valuationItems: [{ ...acquisition.valuationItems[0]!, value: earlyQuote }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const rejected = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf: beforeClose, acquisition: earlyAcquisition, sources: [filing] })
+  assert.ok(rejected.diagnostics.includes('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE'))
+  assert.match(rejected.sections[0]!.markdown, /^研究缺口：/)
+
+  const accepted = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing] })
+  assert.match(accepted.sections[0]!.markdown, /3\.58 CNY\/share/)
 })
 
 test('point proofs reject source-provider mismatches and missing internal-use rights', () => {

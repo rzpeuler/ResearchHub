@@ -6,6 +6,7 @@ import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/co
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { CompanyScenarioAssumptionsPlan } from './scenario-assumptions.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 
 export interface CompanyValuationSection {
   readonly id: 'valuation' | 'bull-base-bear' | 'variant-perception'
@@ -292,7 +293,7 @@ function canonicalInstitutionName(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/[\s　·.（）()]/gu, '').replace(/(证券|银行|研究所)?(股份有限公司|有限责任公司|有限公司|股份|有限)$/u, '$1')
 }
 
-function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPointProofForSelection[], sources: ReadonlyMap<string, NormalizedResearchSource>, asOf: string): string | undefined {
+function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPointProofForSelection[], sources: ReadonlyMap<string, NormalizedResearchSource>, asOf: string, asOfMode: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'): string | undefined {
   const matches = proofs.filter(proof => proof.estimateId === estimate.estimateId)
   if (matches.length !== 1) return matches.length === 0 ? 'PROOF_MISSING' : 'PROOF_AMBIGUOUS'
   const proof = matches[0]!
@@ -309,7 +310,7 @@ function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPoi
     || proof.provider !== source.candidate.provider
     || source.candidate.publishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
   const availableAt = Date.parse(source.retrievedAt)
-  if (!Number.isFinite(availableAt) || availableAt > Date.parse(asOf)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
+  if (!Number.isFinite(availableAt) || asOfMode === 'HISTORICAL' && availableAt > Date.parse(asOf)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
   if (source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true) return 'SOURCE_RIGHTS_NOT_QUALIFIED'
   if (proof.basisStatus !== 'VERIFIED' || proof.valueVersionStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
     return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
@@ -317,7 +318,7 @@ function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPoi
   return undefined
 }
 
-function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFiscalYear: number, asOf: string): ExpectationSurfaceSelection {
+function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFiscalYear: number, asOf: string, asOfMode: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'): ExpectationSurfaceSelection {
   const item = acquisition.earningsExpectationItems.find(candidate => candidate.metricId === 'earnings_expectation_eps')
   if (!item) return { surfaces: [], diagnostics: [] }
   const payloads = [item.value, ...(item.acquisition.observations ?? []).map(observation => observation.data)]
@@ -342,7 +343,7 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
     if (!provider) continue
     const proofs = (payload.projection.pointProofs ?? []) as readonly ExpectationPointProofForSelection[]
     const estimates = candidates.filter(estimate => {
-      const rejection = proofRejection(estimate, proofs, sourceById, asOf)
+      const rejection = proofRejection(estimate, proofs, sourceById, asOf, asOfMode)
       if (rejection) diagnostics.push(`EXPECTATION_POINT_PROOF_REJECTED:${provider}:${estimate.estimateId}:${rejection}`)
       return rejection === undefined
     }).map(estimate => {
@@ -400,11 +401,13 @@ function dedupeContributors(surfaces: readonly ExpectationSurface[]): { readonly
 export function buildCompanyValuationSections(input: {
   readonly company: { readonly symbol: string; readonly name: string }
   readonly asOf: string
+  readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
   readonly acquisition?: CompanyReadOnlyAcquisition
   readonly sources: readonly NormalizedResearchSource[]
   readonly scenarioCandidate?: CompanyScenarioAssumptionsPlan
 }): CompanyValuationSectionsResult {
   const diagnostics: string[] = []
+  const asOfMode = input.asOfMode ?? 'HISTORICAL'
   const variantGap = gap('variant-perception', titles['variant-perception'], '未取得与 FY2026 EPS 共识同指标、同期间、同单位的公司指引或独立本方预测')
   if (!input.acquisition) return { sections: [gap('valuation', titles.valuation, '估值数据解析器未配置或共享采集预算已耗尽'), gap('bull-base-bear', titles['bull-base-bear'], '估值数据解析器未配置或共享采集预算已耗尽'), variantGap], evidenceSources: [], reportSourceCandidateIds: [], diagnostics: ['VALUATION_DATA_RESOLVER_NOT_CONFIGURED_OR_BUDGET_EXHAUSTED'] }
   if (input.acquisition.valuationError) diagnostics.push(`VALUATION_RESOLVER_ERROR:${input.acquisition.valuationError}`)
@@ -418,6 +421,8 @@ export function buildCompanyValuationSections(input: {
   const quote = quoteItem?.status === 'AVAILABLE' && quoteItem.value?.kind === 'market'
     && quoteItem.quality.pointInTimeSafe
     && quoteItem.value.observation.priceDate <= input.asOf.slice(0, 10)
+    && quoteItem.value.observationAvailableAt === dailyCloseAvailableAt(quoteItem.value.observation.priceDate)
+    && Date.parse(quoteItem.value.observationAvailableAt) <= Date.parse(input.asOf)
     ? quoteItem.value
     : undefined
   if (!quote) diagnostics.push('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE')
@@ -425,7 +430,7 @@ export function buildCompanyValuationSections(input: {
   const filingEps = extractFilingBasicEps(input.sources, basisYear, input.asOf)
   if (!filingEps) diagnostics.push('VALUATION_FILING_BASIC_EPS_UNAVAILABLE_OR_AMBIGUOUS')
 
-  const expectationSelection = expectationSurfaces(input.acquisition, input.acquisition.expectationTargetFiscalYear, input.asOf)
+  const expectationSelection = expectationSurfaces(input.acquisition, input.acquisition.expectationTargetFiscalYear, input.asOf, asOfMode)
   const surfaces = expectationSelection.surfaces
   diagnostics.push(...expectationSelection.diagnostics)
   const dedupedExpectations = dedupeContributors(surfaces)
