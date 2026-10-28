@@ -37,7 +37,8 @@ const emEstimates = [
 const proofFor = (estimate: EstimatePoint, provider: 'akshare-ths-institution-forecast' | 'akshare-eastmoney-research-report', sourceCandidateId = estimate.sourceCandidateIds[0]!, statuses = { basisStatus: 'VERIFIED', valueVersionStatus: 'VERIFIED', correctionStatus: 'VERIFIED' }) => ({
   estimateId: estimate.estimateId, sourceCandidateId, provider, matchedField: 'fixture-row', matchedMetric: estimate.metric,
   matchedValue: estimate.value, matchedUnit: estimate.unit, matchedPeriod: estimate.fiscalPeriod, matchedInstitutionKey: estimate.institutionKey,
-  matchedPublishedAt: estimate.publishedAt, observedRowHash: `row-${estimate.estimateId}`, pointFingerprint: `point-${estimate.estimateId}`, ...statuses,
+  matchedPublishedAt: estimate.publishedAt, observedRowHash: `row-${estimate.estimateId}`, pointFingerprint: `point-${estimate.estimateId}`,
+  versionAvailableAt: estimate.publishedAt, valueVersionId: `version:${estimate.estimateId}`, valueVersionKind: 'IMMUTABLE_DOCUMENT', ...statuses,
 })
 const acquisition = {
   expectationTargetFiscalYear: 2026,
@@ -143,6 +144,9 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   const delayedProjection = {
     ...original.projection,
     sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T08:00:01.000Z' } : source),
+    pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
+      ...proof, valueVersionId: 'version:ths-e1:current', valueVersionKind: 'MUTABLE_SNAPSHOT', snapshotSealedAt: '2026-10-26T08:00:01.000Z',
+    } : proof),
   }
   const delayed = {
     ...acquisition,
@@ -153,7 +157,7 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
 })
 
-test('current-run acquisitions may finish after the sealed asOf when the proven expectation was published by the cutoff', () => {
+test('late retrieval can use the exact immutable value version available by cutoff in either mode', () => {
   const baseItem = acquisition.earningsExpectationItems[0]!
   const original = baseItem.value!
   assert.equal(original.kind, 'expectation')
@@ -169,6 +173,63 @@ test('current-run acquisitions may finish after the sealed asOf when the proven 
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: delayed, sources: [filing] })
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
   assert.doesNotMatch(result.sections[2]!.markdown, /同花顺 .*eligible=0/)
+  const historical = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: delayed, sources: [filing] })
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
+})
+
+test('version proof requires independent availability, immutable identity, and verified correction status', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const scenarios = [
+    { proof: { valueVersionId: undefined }, expected: 'VALUE_VERSION_METADATA_INCOMPLETE' },
+    { proof: { versionAvailableAt: '2026-10-26T08:00:00.001Z' }, expected: 'VALUE_VERSION_NOT_AVAILABLE_BY_AS_OF' },
+    { proof: { correctionStatus: 'UNVERIFIED' }, expected: 'PROOF_NOT_VERIFIED:basis=VERIFIED,valueVersion=VERIFIED,correction=UNVERIFIED' },
+  ]
+  for (const scenario of scenarios) {
+    const projection = { ...original.projection, pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? { ...proof, ...scenario.proof } : proof) }
+    const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
+    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: altered, sources: [filing] })
+    assert.ok(result.diagnostics.includes(`EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:${scenario.expected}`), scenario.expected)
+  }
+})
+
+test('retrieval time and publication time cannot substitute for a sealed dynamic snapshot or version availability', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const projection = {
+    ...original.projection,
+    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-27T00:00:00.000Z' } : source),
+    pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
+      ...proof, versionAvailableAt: undefined, valueVersionId: undefined, snapshotSealedAt: undefined,
+    } : proof),
+  }
+  const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: altered, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:VALUE_VERSION_METADATA_INCOMPLETE'))
+})
+
+test('a cutoff-sealed current snapshot may qualify current-only but cannot be backcast as historical', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const projection = {
+    ...original.projection,
+    pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
+      ...proof, valueVersionId: undefined, valueVersionKind: undefined, versionAvailableAt: undefined,
+      snapshotSealedAt: asOf, valueVersionStatus: 'UNVERIFIED',
+    } : proof),
+  }
+  const snapshot = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
+  const current = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: snapshot, sources: [filing] })
+  assert.ok(current.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
+  const historical = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: snapshot, sources: [filing] })
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:VALUE_VERSION_METADATA_INCOMPLETE'))
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
 })
 
 test('same-day market close is rejected before the Shanghai session close and accepted after availability', () => {

@@ -57,3 +57,62 @@
 - `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：11/11 通过。
 - `npm test -- --run tests/workflows/company-valuation-sections.test.ts`：客户端测试阶段先行执行全套 Vitest，15 个文件通过、2 个文件失败（5 项与本次 Workflow 无关的会话重命名/归档导航断言）；npm 脚本因此未运行 Node 测试。此命令不是有效的单文件过滤方式。
 - 未运行模型、公司研究重试、外部数据采集或 Knowledge 写入。
+
+## Recovery 003 补充审计（CNINFO 现有披露路径）
+
+复核时间：2026-10-28（Asia/Shanghai）。运行截止仍为 BYD `2026-10-27T20:19:59.628Z`、东山精密 `2026-10-27T20:26:46.347Z`。本补充不重跑公司研究模型；只读查询使用仓库现有 `CninfoOfficialDisclosureClient` 与已配置 Tencent/AKShare A 股日线结果。PDF 字节只在内存中解析，原文未落盘或提交。
+
+### Gate A — 逐点时间语义
+
+之前的校验把 `source.retrievedAt` 近似当成来源快照时间，导致迟到获取的旧版本被错误排除；反过来，CURRENT 模式也没有证明迟到获取的动态行在运行开始时已存在。本次私有 Workflow 判定现要求精确点证据提供独立的 `versionAvailableAt`、`valueVersionId` 和版本类型；CURRENT 模式允许在固定 cutoff 前已封存、内容哈希绑定的快照，HISTORICAL 仍要求截止前可用的具名数值版本。两种模式都不把发布日期或检索时间当作版本可用时间。当前 THS / EastMoney 适配器仍将版本、依据和修订状态标为 `UNVERIFIED`，因此生产预期仍被挡住；未把测试夹具的验证状态升级到适配器。
+
+新增正反例覆盖如下：
+
+| 情形 | 结果 | 定向测试 |
+|---|---|---|
+| 截止后获取、但绑定截止前已可用的不可变版本 | CURRENT 与 HISTORICAL 均接受 | `late retrieval can use the exact immutable value version available by cutoff in either mode` |
+| 只有早期报告发布日期/晚期检索时间，没有版本可用时点和版本标识 | 拒绝 | `retrieval time and publication time cannot substitute...` |
+| 截止后版本、更正状态未知、版本字段缺失 | 拒绝 | `version proof requires independent availability...` |
+| 截止前封存的动态快照 | CURRENT 接受；HISTORICAL 拒绝回填 | `a cutoff-sealed current snapshot may qualify current-only...` |
+| cutoff 后才封存的动态快照 | 拒绝 | `a current row retrieved after the sealed asOf...` |
+| 上海同日收盘前 / 收盘后 | 收盘前拒绝；对应收盘可用时点后接受 | `same-day market close is rejected before...` |
+| 多条机构/期间 EPS 逐点绑定及被篡改值 | 缺证据或绑定不一致的点被拒绝，其他有效点保留 | `expectation surfaces reject missing proof...`、`point proofs reject...` |
+
+这覆盖了八类要求的测试边界；现实中哪些历史供应商能出具版本更正证明仍未得到证实。历史更正文档若不能说明替代关系，保持 `UNVERIFIED`。没有 Data 公共契约、Knowledge、Skill 方法或适配器资格状态改动。
+
+### Gate B — 两家公司逐字段可行性
+
+`sourceCandidateId` 是 CNINFO URL 派生的现有规范 ID。以下官方报告版权边界均为 `accessScope=public`、`retentionAllowed=true`、`aiProcessingAllowed=true`、`redistributionAllowed=false`；仅供本地研究审计，不把原始 PDF 放入 Git。财报单位按表列示；财务数值为合并口径，人民币元，以下用十亿元（bn）显示。
+
+| 字段 | BYD 002594 | 东山精密 002384 | EV/反向 DCF 资格 |
+|---|---|---|---|
+| 价格与交易时点 | CNY 82.01/A 股、未复权、2026-10-27 日收；既有行情 fallback 为 `akshare-tencent-historical-market-data`。EastMoney primary 发生代理错误，故未交叉核验。cutoff 在次日上海时间 04:19，晚于该日 A 股收盘。 | CNY 101.09/A 股、未复权、2026-10-27 日收；同一 Tencent fallback，EastMoney primary 代理错误；cutoff 在次日上海时间 04:26。 | **部分**。都是 A 股单类别价格，不是集团 A/H 同时点市值；没有本任务现有市源路由返回 BYD H 股报价或东山上市后 H 股成交价。东山 cutoff 时 H 股尚未开市，IPO 发行价不等同于该时点可交易价格。 |
+| 最近公开普通股与类别 | H1 报告 `official-c19c34dd239b2e9c`，SHA-256 `c521306221e896b4cbfbdf18a84d18fadf409db5bea7a8d3ef70a08c4f366ca6`，披露 `2026-08-28T16:00Z`：A 股 5,433,797,565、H 股 3,683,400,000（报告 p.57；千股表 p.80）。CNINFO H 股月报 `official-aae298506d8e3fce`，公告 1225595406，披露 `2026-10-07T16:00Z`，文本 SHA `ed22804ac7a7d2dff12e4eed39ea6e5004dc06d13c7feb6eb49820c890eb175c`：截至 9/30 A/H 股各自结存仍为 5,433,797,565 / 3,683,400,000，9 月增减为空（表格段落 55–71、99–115、128–130）。 | H1 报告 `official-296fff2b2889c26f`，SHA-256 `6500c4e7c05ab455ebbbfc5eba1fa7ede7a48d6be171c53c4edc87c4682f707a`，披露 `2026-08-21T16:00Z`：A 股股本 1,831,607,532（p.37）；H1 员工持股计划列示 3,048,701 股，基本及稀释 EPS 均为 CNY 1.62（p.47）；EPS 分母是加权口径，不可替代估值日股数。回购公告 `official-f5baf98acbff1fd0`，公告 1225600029，披露 `2026-10-09T16:00Z`、截至 9/30 累计回购 A 股 255,200 股（0.01393%；文本段落 15）；未见注销，不能直接改变已发行股本。H 股发行仍处于挂牌前阶段。 | **BYD 股数部分可审计，但市值不完整**：A/H 股数已核实，仍缺同一截止时点的 H 股市价及 A/H 币种处理；也未从截止前最后一期的所有潜在摊薄安排得出完全稀释股数。**东山不完整**：H 股最终发行/配发数量未在本次已查到的 CNINFO 记录中确认；回购只证明截至 9/30 的买回额，不能证明 cutoff 前后净发行/库存股状态。 |
+| H 股披露后事项 | H 股月报证明截至 9/30 股数无增减；H1 之后仍须审视是否有 10 月发行、回购或其他 A 股变动。该月报不证明 10 月至 cutoff 全部公司行动。 | CNINFO 招股书刊发公告 `official-594d5acb2ae76fb0`，公告 1225611578，披露 `2026-10-19T23:40:10Z`，文本 SHA `97f2d3452f83b9b8d3660254a12236ef15fd19252d60d951bad17dfc22cf3f43`：H 股基础发行 113,783,200 股，发行量调整权最多 17,067,400 股，另有超额配股权，最大总发行 150,478,100 股（段落 31）；最终价格预告上限 HKD 93.80（段落 33）。CNINFO 发行价公告 `official-c99ce248ea972a56`，公告 1225621945，披露 `2026-10-25T23:46:08Z`，文本 SHA `b0d79f92118225acdebad09909a37c3cfe849562f71d67f95a171dc37bd5c9f9`：最终发行价 HKD 86.80（段落 13），预计 10/28 开始上市交易（段落 15–17）。 | **东山明确阻断项**：发行价和发行范围虽在 cutoff 前公开，但 cutoff 为 10/28 04:26 Shanghai、港股开盘前；基础发行股数不是最终配发数，发行价不是可交易收盘价。发行所得及上市后稀释均未并入 6/30 资产负债表或 9/30 股数。不得用发行上限、预计股数或 IPO 发行价冒充精确市值。 |
+| 现金与非经营资产 | 6/30 H1 合并现金 CNY 58.738bn（p.65）；受限货币资金 2.882bn（p.135），另有外币受限资金 0.335bn（p.107，是否重叠未核）；其他非流动资产内定期存款/CD 19.308bn，交易性金融资产 69.940bn（p.65、135）。 | 6/30 H1 现金 CNY 8.793bn（p.41）；受限货币资金 1.845bn（p.23、97）；现金等价物 6.948bn（p.49）。交易性金融资产 0.797bn，不能自动全作多余现金。 | 最近已公开资产负债表日期可用；但受限现金、外币受限资金重叠、存款可变现性、金融资产经营用途及 6/30 至 cutoff 变动未全部核清。**不能用估值日余额替代要求**，但需明示其时点差距和披露后事件。 |
+| 借款、债券、租赁和到期项 | 6/30 短借 37.646bn、长借 61.201bn、应付债券 14.994bn、租赁负债 8.610bn、流动到期项 3.453bn（p.66）。流动负债明细另列借款/债券/租赁/股东赎回等，须以附注拆分避免重复。其他非流动负债 81.278bn 不能全当有息债。 | 6/30 短借 9.630bn（p.42）、长期借款 9.441bn、租赁负债 1.917bn、流动到期项 2.975bn（p.43）；债券行未列。附注将到期项拆为长借 2.697bn、长期应付款 0.028bn、租赁 0.279bn（p.100），不得重复加总。 | 有部分债项，但没有同截止净债务清单、完整一年内到期拆分/重叠表、受限现金扣减规则、东山 IPO 现金流入和费用。BYD 另有其他权益工具/永续证券 20.847bn（p.66、83），无合同到期/付息特征，归入债或权益需要明确桥接政策。 |
+| 少数/优先权益 | 少数股东权益 12.552bn（6/30，p.66）；永续证券 20.847bn 分类未解决；未发现 H1 优先股。 | 少数股东权益 0.182bn（6/30，p.43）；无债券项目行，未见优先股行。 | 均需纳入明确 EV 到普通股权益的桥接；BYD 永续证券处理未批准。 |
+| 历史 CFO − capex | H1 YTD CFO 37.335bn 减购建长期资产现金流 44.703bn = −7.368bn。 | H1 YTD CFO 2.384bn 减购建长期资产现金流 5.253bn = −2.869bn。 | 仅为同期间、同币种算术差额，不是 FCFF；不得半年年化，也未调整利息税务、非现金、营运资本、净借款/少数股东。 |
+| 前瞻收入/FCFF | 无经授权并独立复核的逐年收入、利润率、税、折旧、资本开支、营运资本和 FCFF 桥。 | 同左。另需纳入 H 股新发股份及所得款项带来的后续资本结构变化。 | **不可作为已审计操作数**。有依据、可复算、明确标为研究假设的预测可能构成后续输入，但本次不造数、不年化历史 CFO−capex。 |
+| WACC / 终值 | 无截止适用的无风险利率、ERP、Beta、股权/债务成本、税盾和资本权重来源；无预测年限、稳定期再投资/利润率、终值增长依据。 | 同左；多类别股权及 IPO 后资本权重更未定。 | 不计算 Reverse DCF。现有 `calculateReverseDcf` 是纯算术核，无时点、来源或假设资格验证；现有 Skill 应明确“拒绝无来源合成值”，并区分允许被审计的未来研究假设。Gate B 已阻断，本轮不改 Skill 方法、不运行计算。 |
+
+**权利与来源边界：** CNINFO 发布的东山公告内容说明完整 H 股招股书在联交所刊发，CNINFO 公告仅为境内投资者提供信息，并不是购买/认购要约；本审计只使用 CNINFO 公告公开重复的发行范围、价格和预定上市日，没有抓取或提交完整 H 股招股书。BYD H 股月报和两家公司 H1 报告是官方公司披露；原始 PDF 不在 Git 中。CNINFO 披露不可再分发，因此报告保留字段、定位及哈希，不携带原文正文。
+
+### Gate C/D — 结论与最小授权点
+
+**Gate D 状态：`PARTIALLY_FEASIBLE`。** 两家公司均找到真实、截止前公开的官方报告输入；BYD 可证 A/H 已发行股数，东山可证 A 股基数、9 月回购及 H 股最终发行价。但两家都没有可独立复核的同截止时点完整股权市值与 EV 桥：BYD 缺 H 股同日市场价格/类别转换与全部稀释核对；东山在 H 股上市前截止，缺最终配发数、可交易 H 股价格和 IPO 后现金/股份桥。故 Reverse DCF 和 Price-implied Expectation 对两家公司均未达到数值可行；不实施替代预期面，不输出目标价、隐含 CAGR、WACC 或终值。
+
+继续前只需最小范围的明确授权/输入：
+
+1. **免费官方来源授权（若希望由 Codex 补查）：** 只读查看 HKEX 官方东山 H 股最终配发/超额配售结果与挂牌后日收、BYD 01211.HK 截止前收盘；允许仅在审计报告中记录定位/哈希，不复制或提交受限全文。若不授权新官方端点，可由用户提供这几项带来源和可用时点的字段。不得使用付费研究来源。
+2. **汇率与股份类别：** 指明允许用于同截止时点 HKD/CNY 转换的已有市场/官方 FX 记录；BYD A/H 分类别市值与 Dongshan IPO 新股数必须分开保留，禁止 A 价乘总股数。
+3. **估值阶段另行审批：** 只有 EV 桥成立后，才提交 FCFF 逐年研究假设、WACC 有界敏感性、稳定期/终值参数、来源/校准/反证和独立复核要求的具体实现计划。本次不预先授权这些经济假设。
+
+以上授权不会扩大公共数据契约或增加付费来源。仍须保持既定 19/19 核心章节、独立语义复核和只读 Knowledge 哈希标准；旧两家公司验收仍为 17/19、`blocked`，本次未重跑或升级。
+
+## 本次代码与验证
+
+- 修改仅在 `workflows/company-deep-research/valuation-sections.ts` 的 Workflow 私有判定和 `tests/workflows/company-valuation-sections.test.ts` 的定向夹具；没有改公共 Data contract、Skill、Knowledge、公司数据或报告运行产物。
+- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：14/14 通过。
+- `npm run typecheck`：通过。
+- 未运行全量测试；此前全客户端测试的 5 个既有会话导航断言失败仍与本任务无关。本次未调用新 provider 或付费来源，只对现有 CNINFO 路径做了公告列表和公告正文只读核验；没有模型运行、公司研究重跑或 Knowledge 写入。

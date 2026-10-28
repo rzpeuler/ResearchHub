@@ -287,6 +287,12 @@ type ExpectationPointProofForSelection = {
   readonly basisStatus: string
   readonly valueVersionStatus: string
   readonly correctionStatus: string
+  /** Exact value version availability, independent of source publication and retrieval times. */
+  readonly versionAvailableAt?: string
+  readonly valueVersionId?: string
+  readonly valueVersionKind?: 'IMMUTABLE_DOCUMENT' | 'MUTABLE_SNAPSHOT'
+  /** Present for mutable snapshots; it must be sealed no later than the run cutoff. */
+  readonly snapshotSealedAt?: string
 }
 
 function canonicalInstitutionName(value: string): string {
@@ -309,9 +315,27 @@ function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPoi
     || proof.matchedPublishedAt !== estimate.publishedAt
     || proof.provider !== source.candidate.provider
     || source.candidate.publishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
-  const availableAt = Date.parse(source.retrievedAt)
-  if (!Number.isFinite(availableAt) || asOfMode === 'HISTORICAL' && availableAt > Date.parse(asOf)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
+  const cutoff = Date.parse(asOf)
+  const retrievedAt = Date.parse(source.retrievedAt)
+  if (!Number.isFinite(cutoff) || !Number.isFinite(retrievedAt)) return 'RETRIEVAL_TIME_INVALID'
   if (source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true) return 'SOURCE_RIGHTS_NOT_QUALIFIED'
+  const snapshotSealedAt = proof.snapshotSealedAt === undefined ? Number.NaN : Date.parse(proof.snapshotSealedAt)
+  if (proof.snapshotSealedAt !== undefined && (!Number.isFinite(snapshotSealedAt) || snapshotSealedAt > cutoff)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
+  // Current-only runs may use a hash-bound snapshot sealed by their fixed cutoff.
+  // Historical runs need an independently identified value version instead.
+  if (asOfMode === 'CURRENT_VALUE_ONLY' && Number.isFinite(snapshotSealedAt)) {
+    if (proof.basisStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
+      return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
+    }
+    return undefined
+  }
+  const versionAvailableAt = Date.parse(proof.versionAvailableAt ?? '')
+  if (!Number.isFinite(cutoff) || !Number.isFinite(versionAvailableAt) || !proof.valueVersionId?.trim() || !proof.valueVersionKind) return 'VALUE_VERSION_METADATA_INCOMPLETE'
+  if (versionAvailableAt > cutoff) return 'VALUE_VERSION_NOT_AVAILABLE_BY_AS_OF'
+  if (retrievedAt > cutoff && proof.valueVersionKind !== 'IMMUTABLE_DOCUMENT') {
+    // A late read may qualify only when it binds to an identified immutable version.
+    return 'LATE_RETRIEVAL_WITHOUT_IMMUTABLE_VERSION'
+  }
   if (proof.basisStatus !== 'VERIFIED' || proof.valueVersionStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
     return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
   }
