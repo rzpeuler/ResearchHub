@@ -3,11 +3,13 @@ import test from 'node:test'
 import { buildCompanyValuationSections, extractFilingBasicEps } from '../../workflows/company-deep-research/valuation-sections.ts'
 import type { CompanyReadOnlyAcquisition } from '../../workflows/company-deep-research/contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 
 const asOf = '2026-10-26T00:00:00.000Z'
 const filing = {
   candidate: { candidateId: 'annual-2025', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T00:00:00.000Z' },
   title: '2025年年度报告', content: '重要提示\n基本每股收益 99.00\n六、主要会计数据和财务指标\n2025 年 2024 年 本年比上年增减 2023 年\n基本每股收益（元/股） 3.58 4.61 -22.34% 3.44\n七、股本变动及股东情况\n基本每股收益（旧股） 11.12 基本每股收益（新股） 3.58', contentHash: 'filing-hash', retrievedAt: asOf,
+  rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true },
 } as any
 const quote = {
   candidateId: 'quote-payload', kind: 'market', observation: { priceDate: '2026-10-26', close: 100 },
@@ -198,4 +200,82 @@ test('valuation builder fails closed when acquisition is absent or filing EPS is
   const wrongYear = { ...filing, content: '六、主要会计数据和财务指标\n2024 年 2023 年\n基本每股收益 3.58' }
   assert.equal(extractFilingBasicEps([wrongYear], 2025, asOf), undefined)
   assert.equal(extractFilingBasicEps([filing, { ...filing, candidate: { ...filing.candidate, candidateId: 'annual-2025-copy' } }], 2025, asOf), undefined)
+})
+
+function scenarioPlan() {
+  const profitSourceContent = '2025 年年度报告\n主要会计数据和财务指标\n2025 年 2024 年 本年比上年增减 2023 年\n归属于上市公司股东的净利润（元） 100 90 11.11% 80'
+  const profitSource = { ...filing, candidate: { ...filing.candidate, candidateId: 'profit-filing' }, content: profitSourceContent, contentHash: sha256(profitSourceContent), rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true } }
+  const refs = { sourceCandidateId: 'profit-filing', location: 'paragraph:4' }
+  const rowRates = [-0.1, 0.05, 0.2]
+  const columnRates = [-0.2, 0, 0.3]
+  const scenarios = (['bear', 'base', 'bull'] as const).map((name, index) => {
+    const revenueRate = rowRates[index]!
+    const profitRate = columnRates[index]!
+    const driver = (id: 'revenue' | 'parent-net-profit', rate: number) => {
+      const base = id === 'revenue' ? 1000 : 100
+      const metricLabel = id === 'revenue' ? '营业收入' : '归属于上市公司股东的净利润'
+      return {
+        id, scenarioId: name, targetFiscalYear: 2026, basisDate: asOf,
+        valuationMethod: 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION', financialMetric: id === 'revenue' ? 'revenue' : 'netProfit',
+        scope: 'consolidated', historicalBaseValue: base, basePeriod: '2025-12-31', baseSourceRefs: [refs],
+        proposedAssumption: { value: rate, unit: 'fraction', originKind: 'RESEARCH_ASSUMPTION' },
+        targetMetric: id === 'revenue' ? 'FY2026 revenue' : 'FY2026 parent-attributable net profit',
+        peerOrMultipleBasis: 'NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS', inputDependencies: [refs],
+        metricKey: id === 'revenue' ? 'revenue' : 'netProfit', metricLabel, unit: 'CNY', currency: 'CNY', basis: 'YTD',
+        historical: [2023, 2024, 2025].map((year, i) => ({ value: base * (i === 0 ? 0.8 : i === 1 ? 0.9 : 1), periodEnd: `${year}-12-31`, publishedAt: '2026-03-27T00:00:00Z', evidence: refs, sourceContentHash: profitSource.contentHash, verificationStatus: 'EXACT_OFFICIAL_ROW_AND_DATA_OBSERVATION_MATCHED' })),
+        proposal: { rateOriginKind: 'RESEARCH_ASSUMPTION', rate, targetValue: base * (1 + rate), targetValueOriginKind: 'DERIVED', targetPeriod: '2026-12-31' },
+        rationale: 'bounded fixture', assumptionDerivation: 'FY2026 = FY2025 × (1 + rate)', derivation: 'fixture',
+        counterEvidenceRefs: [refs], counterevidence: [refs], falsificationTrigger: 'FY2026 actual differs', confidenceLimitations: 'conditional fixture', limitations: 'fixture',
+        forecastBridge: { formula: 'last_observation * (1 + rate)' }, sensitivityRange: { lowRate: rate, highRate: rate }, dependencies: [refs],
+      }
+    }
+    return { name, drivers: [driver('revenue', revenueRate), driver('parent-net-profit', profitRate)], impliedParentNetMargin: { value: 1, originKind: 'DERIVED' } }
+  })
+  const cells = rowRates.map(revenueRate => columnRates.map(parentNetProfitRate => ({ revenueRate, parentNetProfitRate, revenue: 1000 * (1 + revenueRate), parentNetProfit: 100 * (1 + parentNetProfitRate), impliedParentNetMargin: 1, originKind: 'DERIVED' })))
+  return {
+    plan: { asOf, targetFiscalYear: 2026, scenarios, sensitivityGrid: { targetFiscalYear: 2026, rowRates, columnRates, cells },
+      h1CrossCheck: { revenue: { current: 1, prior: 1, yoy: 0, evidence: refs }, parentNetProfit: { current: 1, prior: 1, yoy: 0, evidence: refs } } } as any,
+    profitSource,
+  }
+}
+
+test('renders FY2026 per-share conditional reference-PE sensitivity and recalculates monotonically', () => {
+  const candidate = scenarioPlan()
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing, candidate.profitSource], scenarioCandidate: candidate.plan })
+  const section = result.sections[1]!
+  assert.match(section.markdown, /FY2025 参考 PE 的 FY2026 条件敏感性（非价格预测）/)
+  assert.match(section.markdown, /DERIVED 的条件研究敏感性/)
+  assert.match(section.markdown, /未复权收盘价 ÷ FY2025 年报基本 EPS/)
+  assert.match(section.markdown, /加权平均股数不变/)
+  assert.match(section.markdown, /股数变化、融资\/回购/)
+  assert.match(section.markdown, /不评价参考 PE 的经济合理性/)
+  assert.match(section.markdown, /\| BEAR \| FY2026 归母净利润 80 CNY \| 80 ÷ 100 \| 3\.58 × \(80 ÷ 100\) = 2\.8640 CNY\/share \| 80 CNY\/share \| DERIVED \/ 条件敏感性 \|/)
+  assert.match(section.markdown, /\| BASE \| FY2026 归母净利润 100 CNY \| 100 ÷ 100 \| 3\.58 × \(100 ÷ 100\) = 3\.5800 CNY\/share \| 100 CNY\/share \| DERIVED \/ 条件敏感性 \|/)
+  assert.match(section.markdown, /\| BULL \| FY2026 归母净利润 130 CNY \| 130 ÷ 100 \| 3\.58 × \(130 ÷ 100\) = 4\.6540 CNY\/share \| 130 CNY\/share \| DERIVED \/ 条件敏感性 \|/)
+  assert.equal((section.markdown.split('FY2026 3×3 条件敏感性')[1]?.match(/CNY\/share \| DERIVED \/ 条件敏感性 \|/g) ?? []).length, 9)
+  assert.ok(section.sourceCandidateIds.includes('profit-filing'))
+  assert.ok(section.sourceCandidateIds.includes('annual-2025'))
+  assert.ok(section.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
+  assert.ok(!result.diagnostics.includes('CONDITIONAL_REFERENCE_PE_SENSITIVITY_INPUTS_UNQUALIFIED'))
+})
+
+test('conditional reference-PE sensitivity fails closed for tampering, missing evidence, and invalid monotonicity', () => {
+  const base = scenarioPlan()
+  const cases = [
+    { label: 'tampered FY2025 profit', plan: { ...base.plan, scenarios: base.plan.scenarios.map((scenario: any, index: number) => index === 0 ? { ...scenario, drivers: scenario.drivers.map((driver: any) => driver.id === 'parent-net-profit' ? { ...driver, historicalBaseValue: 101 } : driver) } : scenario) } },
+    { label: 'tampered source hash', plan: { ...base.plan, scenarios: base.plan.scenarios.map((scenario: any, index: number) => index === 0 ? { ...scenario, drivers: scenario.drivers.map((driver: any) => driver.id === 'parent-net-profit' ? { ...driver, historical: driver.historical.map((point: any) => point.periodEnd === '2025-12-31' ? { ...point, sourceContentHash: 'tampered' } : point) } : driver) } : scenario) } },
+    { label: 'invalid monotonicity', plan: { ...base.plan, sensitivityGrid: { ...base.plan.sensitivityGrid, columnRates: [0.3, 0, -0.2] } } },
+  ]
+  for (const item of cases) {
+    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing, base.profitSource], scenarioCandidate: item.plan })
+    assert.match(result.sections[1]!.markdown, /研究缺口：无法绑定经核验的 asOf 收盘价、FY2025 基本 EPS 与 FY2025 归母净利润情景基数/, item.label)
+    assert.ok(result.diagnostics.includes('CONDITIONAL_REFERENCE_PE_SENSITIVITY_INPUTS_UNQUALIFIED'), item.label)
+    assert.doesNotMatch(result.sections[1]!.markdown, /\| BEAR \| FY2026 归母净利润/, item.label)
+  }
+  const missing = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing], scenarioCandidate: base.plan })
+  assert.ok(missing.diagnostics.includes('CONDITIONAL_REFERENCE_PE_SENSITIVITY_INPUTS_UNQUALIFIED'))
+  assert.doesNotMatch(missing.sections[1]!.markdown, /\| BASE \| FY2026 归母净利润/)
+  const restrictedEps = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [{ ...filing, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: false } }, base.profitSource], scenarioCandidate: base.plan })
+  assert.ok(restrictedEps.diagnostics.includes('CONDITIONAL_REFERENCE_PE_SENSITIVITY_INPUTS_UNQUALIFIED'))
+  assert.doesNotMatch(restrictedEps.sections[1]!.markdown, /\| BASE \| FY2026 归母净利润/)
 })

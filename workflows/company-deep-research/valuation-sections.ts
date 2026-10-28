@@ -136,8 +136,115 @@ function formatScenarioRate(value: number): string { return `${(value * 100).toF
 function formatScenarioAmount(value: number): string { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value) }
 function scenarioCitation(ref: { readonly sourceCandidateId: string; readonly location: string }): string { return `[${ref.sourceCandidateId}@${ref.location}]` }
 
+type ConditionalPeSensitivity = {
+  readonly markdown: string
+  readonly sourceCandidateIds: readonly string[]
+}
+
+/**
+ * Revalue the scenario profit bridge at the observed FY2025 reference PE.
+ * Every input is re-bound to the existing asOf quote, issuer EPS row, and
+ * scenario-plan filing row; this is a conditional sensitivity, never a target.
+ */
+function conditionalReferencePeSensitivity(input: {
+  readonly plan: CompanyScenarioAssumptionsPlan
+  readonly quote: number
+  readonly marketSourceId: string
+  readonly filingEps: NonNullable<ReturnType<typeof extractFilingBasicEps>>
+  readonly basisYear: number
+  readonly asOf: string
+  readonly sources: readonly NormalizedResearchSource[]
+}): ConditionalPeSensitivity | undefined {
+  const { plan, quote, marketSourceId, filingEps, basisYear, asOf, sources } = input
+  if (basisYear !== 2025 || plan.targetFiscalYear !== 2026 || plan.asOf !== asOf
+    || !Number.isFinite(quote) || quote <= 0 || !Number.isFinite(filingEps.value) || filingEps.value <= 0
+    || filingEps.source.rights.accessScope !== 'public' || filingEps.source.rights.retentionAllowed !== true
+    || filingEps.source.rights.aiProcessingAllowed !== true) return undefined
+  const scenarios = ['bear', 'base', 'bull'] as const
+  if (plan.scenarios.length !== scenarios.length || plan.sensitivityGrid.targetFiscalYear !== 2026) return undefined
+  const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
+  const baseDriver = plan.scenarios[0]?.drivers.find(driver => driver.id === 'parent-net-profit')
+  const basePoint = baseDriver?.historical.find(point => point.periodEnd === '2025-12-31')
+  const baseProfit = baseDriver?.historicalBaseValue
+  if (!baseDriver || !basePoint || baseDriver.targetFiscalYear !== 2026
+    || baseDriver.basePeriod !== '2025-12-31' || baseDriver.unit !== 'CNY' || baseDriver.currency !== 'CNY'
+    || baseDriver.scope !== 'consolidated' || baseDriver.financialMetric !== 'netProfit'
+    || baseDriver.valuationMethod !== 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION'
+    || baseDriver.proposal.rateOriginKind !== 'RESEARCH_ASSUMPTION'
+    || baseDriver.proposal.targetValueOriginKind !== 'DERIVED'
+    || baseDriver.proposal.targetPeriod !== '2026-12-31'
+    || !Number.isFinite(baseDriver.historicalBaseValue) || baseDriver.historicalBaseValue <= 0
+    || basePoint.value !== baseDriver.historicalBaseValue
+    || !baseDriver.baseSourceRefs.some(ref => ref.sourceCandidateId === basePoint.evidence.sourceCandidateId && ref.location === basePoint.evidence.location)) return undefined
+  const profitSource = sourceById.get(basePoint.evidence.sourceCandidateId)
+  if (!profitSource || sha256(profitSource.content) !== basePoint.sourceContentHash
+    || profitSource.candidate.kind !== 'official_disclosure'
+    || !profitSource.candidate.publishedAt || Date.parse(profitSource.candidate.publishedAt) > Date.parse(asOf)
+    || profitSource.rights.accessScope !== 'public' || profitSource.rights.retentionAllowed !== true
+    || profitSource.rights.aiProcessingAllowed !== true) return undefined
+  const profitLineNumber = Number(/^paragraph:(\d+)$/u.exec(basePoint.evidence.location)?.[1])
+  const profitLines = profitSource.content.split(/\r?\n/u).map(line => line.normalize('NFKC'))
+  const profitLine = Number.isInteger(profitLineNumber) ? profitLines[profitLineNumber - 1]?.trim() : undefined
+  const profitMarker = profitLine ? /归属于上市公司股东的净利润\s*[（(]元[）)]/u.exec(profitLine) : undefined
+  const disclosedProfit = profitMarker ? numberTokens(profitLine!.slice(profitMarker.index + profitMarker[0].length))[0] : undefined
+  const headerHasBasisYear = profitLines.slice(0, profitLineNumber - 1).some(line => new RegExp(`(?:^|\\D)${basisYear}\\s*年`).test(line))
+  if (!profitLine || !profitMarker || disclosedProfit !== baseProfit || !headerHasBasisYear) return undefined
+
+  if (baseProfit === undefined) return undefined
+  const grid = plan.sensitivityGrid
+  if (grid.rowRates.length !== 3 || grid.columnRates.length !== 3
+    || grid.rowRates.some((rate, index) => !Number.isFinite(rate) || index > 0 && !(rate > grid.rowRates[index - 1]!))
+    || grid.columnRates.some((rate, index) => !Number.isFinite(rate) || index > 0 && !(rate > grid.columnRates[index - 1]!))
+    || grid.cells.length !== 3 || grid.cells.some(row => row.length !== 3)) return undefined
+  const cells = grid.cells.map((row, rowIndex) => row.map((cell, columnIndex) => {
+    if (cell.originKind !== 'DERIVED' || cell.parentNetProfitRate !== grid.columnRates[columnIndex]
+      || cell.revenueRate !== grid.rowRates[rowIndex] || !Number.isFinite(cell.parentNetProfit)
+      || cell.parentNetProfit <= 0 || !Number.isFinite(cell.parentNetProfitRate)) return undefined
+    const recomputedProfit = baseProfit * (1 + cell.parentNetProfitRate)
+    if (!Number.isFinite(recomputedProfit) || Math.abs(recomputedProfit - cell.parentNetProfit) > Math.max(1e-6, Math.abs(recomputedProfit) * 1e-12)) return undefined
+    const value = quote * cell.parentNetProfit / baseProfit
+    return Number.isFinite(value) && value > 0 ? value : undefined
+  }))
+  if (cells.some(row => row.some(value => value === undefined))) return undefined
+  for (let row = 0; row < 3; row++) for (let column = 0; column < 2; column++) {
+    if (!(cells[row]![column]! < cells[row]![column + 1]!)) return undefined
+  }
+
+  const namedRows = plan.scenarios.map((scenario, index) => {
+    if (scenario.name !== scenarios[index]) return undefined
+    const driver = scenario.drivers.find(item => item.id === 'parent-net-profit')
+    if (!driver || driver.scenarioId !== scenario.name || driver.targetFiscalYear !== 2026
+      || driver.basisDate !== asOf || driver.basePeriod !== '2025-12-31'
+      || driver.historicalBaseValue !== baseProfit || driver.unit !== 'CNY' || driver.currency !== 'CNY'
+      || driver.scope !== 'consolidated' || driver.financialMetric !== 'netProfit'
+      || driver.proposal.rateOriginKind !== 'RESEARCH_ASSUMPTION' || driver.proposal.targetValueOriginKind !== 'DERIVED'
+      || driver.proposal.targetPeriod !== '2026-12-31'
+      || driver.proposal.rate !== driver.proposedAssumption.value
+      || !Number.isFinite(driver.proposal.targetValue) || driver.proposal.targetValue <= 0
+      || Math.abs(driver.proposal.targetValue - baseProfit * (1 + driver.proposal.rate)) > Math.max(1e-6, Math.abs(driver.proposal.targetValue) * 1e-12)
+      || driver.proposal.rate !== grid.columnRates[index]
+      || grid.rowRates[index] !== scenario.drivers.find(item => item.id === 'revenue')?.proposal.rate) return undefined
+    const historical = driver.historical.find(point => point.periodEnd === '2025-12-31')
+    if (!historical || historical.value !== baseProfit || historical.evidence.sourceCandidateId !== basePoint.evidence.sourceCandidateId
+      || historical.evidence.location !== basePoint.evidence.location || historical.sourceContentHash !== basePoint.sourceContentHash) return undefined
+    const conditionalValue = quote * driver.proposal.targetValue / baseProfit
+    const epsProxy = filingEps.value * driver.proposal.targetValue / baseProfit
+    if (!Number.isFinite(conditionalValue) || conditionalValue <= 0 || !Number.isFinite(epsProxy) || epsProxy <= 0) return undefined
+    return `| ${scenario.name.toUpperCase()} | FY2026 归母净利润 ${formatScenarioAmount(driver.proposal.targetValue)} CNY | ${formatScenarioAmount(driver.proposal.targetValue)} ÷ ${formatScenarioAmount(baseProfit)} | ${filingEps.value} × (${formatScenarioAmount(driver.proposal.targetValue)} ÷ ${formatScenarioAmount(baseProfit)}) = ${epsProxy.toFixed(4)} CNY/share | ${formatScenarioAmount(conditionalValue)} CNY/share | DERIVED / 条件敏感性 |`
+  })
+  if (namedRows.some(row => row === undefined)) return undefined
+
+  const sensitivityRows = cells.flatMap((row, rowIndex) => row.map((value, columnIndex) =>
+    `| ${formatScenarioRate(grid.rowRates[rowIndex]!)} | ${formatScenarioRate(grid.columnRates[columnIndex]!)} | ${formatScenarioAmount(grid.cells[rowIndex]![columnIndex]!.parentNetProfit)} CNY | ${formatScenarioAmount(value!)} CNY/share | DERIVED / 条件敏感性 |`))
+  const refs = [marketSourceId, filingEps.source.candidate.candidateId, basePoint.evidence.sourceCandidateId]
+  return {
+    sourceCandidateIds: [...new Set(refs)],
+    markdown: `\n\n### FY2025 参考 PE 的 FY2026 条件敏感性（非价格预测）\n以下每个数均为 DERIVED 的条件研究敏感性，不是目标价、价格预测或概率加权结果。FY2025 参考 PE = asOf 未复权收盘价 ÷ FY2025 年报基本 EPS = ${quote} CNY/share ÷ ${filingEps.value} CNY/share = ${(quote / filingEps.value).toFixed(4)} 倍 ${citations([marketSourceId])} ${scenarioCitation({ sourceCandidateId: filingEps.source.candidate.candidateId, location: filingEps.location })}。FY2025 归母净利润基数为 ${formatScenarioAmount(baseProfit)} CNY ${scenarioCitation(basePoint.evidence)}。\n\n逐情景公式：FY2026 EPS proxy（CNY/share）= FY2025 基本 EPS（CNY/share） × [FY2026 情景归母净利润（CNY） ÷ FY2025 归母净利润（CNY）]；条件每股值（CNY/share）= EPS proxy × FY2025 参考 PE（倍）= asOf 收盘价（CNY/share） × [FY2026 情景归母净利润 ÷ FY2025 归母净利润]。示例操作数和情景假设沿用上表对应研究情景 ${scenarioCitation(basePoint.evidence)}；所有输出均基于 FY2025 全年基本 EPS 与归母净利润、FY2026 全年情景，以及 ${asOf.slice(0, 10)} 收盘价 ${citations([marketSourceId])} ${scenarioCitation({ sourceCandidateId: filingEps.source.candidate.candidateId, location: filingEps.location })}。条件假设是参考 PE 不变且加权平均股数不变；EPS proxy 是每股数，不是公司披露的 FY2026 EPS。股数变化、融资/回购、会计口径变化、资本结构与风险变化、估值倍数变化都会使该条件不成立。此算式不评价参考 PE 的经济合理性，不给情景概率，也不把条件每股值解释为合理价值。\n\n| 情景 | FY2026 情景归母净利润 | 净利润比例操作数 | FY2026 EPS proxy | 条件每股敏感性 | 类型 |\n|---|---:|---:|---:|---:|---|\n${namedRows.join('\n')}\n\nFY2026 3×3 条件敏感性使用同一股权每股口径；行沿用收入增速、列独立变动归母净利润增速。FY2026 利润单元格复算自 FY2025 归母净利润基数；对应 EPS proxy × FY2025 参考 PE，等价于收盘价 × FY2026/FY2025 归母净利润。\n\n| 收入增速假设 | 归母净利润增速假设 | FY2026 归母净利润 | 条件每股敏感性 (CNY/share) | 类型 |\n|---:|---:|---:|---:|---|\n${sensitivityRows.join('\n')}`,
+  }
+}
+
 /** Render only a structurally validated candidate; economic eligibility remains with the independent reviewer. */
-export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsPlan): CompanyValuationSection {
+export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsPlan, conditionalPe?: ConditionalPeSensitivity): CompanyValuationSection {
   const scenarioNames = { bear: 'Bear / 悲观', base: 'Base / 基准', bull: 'Bull / 乐观' } as const
   const blocks = plan.scenarios.map(scenario => {
     const drivers = scenario.drivers.map(driver => {
@@ -152,10 +259,10 @@ export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsP
   const rows = plan.sensitivityGrid.cells.flatMap(row => row.map(cell => `| ${formatScenarioRate(cell.revenueRate)} | ${formatScenarioRate(cell.parentNetProfitRate)} | ${formatScenarioAmount(cell.revenue)} | ${formatScenarioAmount(cell.parentNetProfit)} | ${formatScenarioRate(cell.impliedParentNetMargin)} |`))
   const h1 = plan.h1CrossCheck
   const h1Text = `FY2026 H1 独立交叉核对（YTD，不并入年度情景校准）：营业收入 ${formatScenarioAmount(h1.revenue.current)} CNY 对比上年同期 ${formatScenarioAmount(h1.revenue.prior)} CNY，同比 ${formatScenarioRate(h1.revenue.yoy)} ${scenarioCitation(h1.revenue.evidence)}；归母净利润 ${formatScenarioAmount(h1.parentNetProfit.current)} CNY 对比上年同期 ${formatScenarioAmount(h1.parentNetProfit.prior)} CNY，同比 ${formatScenarioRate(h1.parentNetProfit.yoy)} ${scenarioCitation(h1.parentNetProfit.evidence)}。`
-  const allRefs = [...new Set(plan.scenarios.flatMap(scenario => scenario.drivers.flatMap(driver => [...driver.dependencies, ...driver.counterevidence])).concat([h1.revenue.evidence, h1.parentNetProfit.evidence]).map(ref => ref.sourceCandidateId))]
+  const allRefs = [...new Set(plan.scenarios.flatMap(scenario => scenario.drivers.flatMap(driver => [...driver.dependencies, ...driver.counterevidence])).concat([h1.revenue.evidence, h1.parentNetProfit.evidence]).map(ref => ref.sourceCandidateId).concat(conditionalPe?.sourceCandidateIds ?? []))]
   return {
     id: 'bull-base-bear', title: titles['bull-base-bear'],
-    markdown: `独立经济理由审查状态：待审；以下为 FY2026 研究假设候选，不是概率加权结果，也未给出目标价。校准约定：Bear/Base/Bull 分别取 FY2023–FY2025 两段同比增速包络的低值、上下界算术中点和高值；历史范围本身不能证明经济合理性。\n\n${blocks.join('\n\n')}\n\n### 3×3 敏感性（行=营业收入同比假设，列=归母净利润同比假设）\nFY2026 值分别按 FY2025 基数 × (1 + 对应增速) 复算；利润率=归母净利润÷营业收入。\n| 收入增速 | 净利润增速 | FY2026 收入 (CNY) | FY2026 归母净利润 (CNY) | 归母净利率 |\n|---:|---:|---:|---:|---:|\n${rows.join('\n')}\n\n${h1Text}`,
+    markdown: `独立经济理由审查状态：待审；以下为 FY2026 研究假设候选，不是概率加权结果，也未给出目标价。校准约定：Bear/Base/Bull 分别取 FY2023–FY2025 两段同比增速包络的低值、上下界算术中点和高值；历史范围本身不能证明经济合理性。\n\n${blocks.join('\n\n')}\n\n### 3×3 敏感性（行=营业收入同比假设，列=归母净利润同比假设）\nFY2026 值分别按 FY2025 基数 × (1 + 对应增速) 复算；利润率=归母净利润÷营业收入。\n| 收入增速 | 净利润增速 | FY2026 收入 (CNY) | FY2026 归母净利润 (CNY) | 归母净利率 |\n|---:|---:|---:|---:|---:|\n${rows.join('\n')}${conditionalPe?.markdown ?? '\n\n研究缺口：无法绑定经核验的 asOf 收盘价、FY2025 基本 EPS 与 FY2025 归母净利润情景基数；不输出参考 PE 条件敏感性。'}\n\n${h1Text}`,
     sourceCandidateIds: allRefs,
   }
 }
@@ -346,9 +453,13 @@ export function buildCompanyValuationSections(input: {
   let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], `本轮没有来源支持的目标年经营驱动假设（销量/产品收入、经营利润率、现金流驱动及其 Bear/Base/Bull 区间），无法构成同财年、同方法的可复算敏感性。已尝试的估值/预期采集路线及资格状态：${acquisitionAttempts}。在获得合格经营假设前不建立三情景估值`)
   diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
   if (input.scenarioCandidate) {
-    scenarioSection = renderCompanyScenarioCandidate(input.scenarioCandidate)
+    const conditionalPe = quote && filingEps && marketEvidenceSource
+      ? conditionalReferencePeSensitivity({ plan: input.scenarioCandidate, quote: quote.observation.close, marketSourceId: marketEvidenceSource.candidate.candidateId, filingEps, basisYear, asOf: input.asOf, sources: input.sources })
+      : undefined
+    scenarioSection = renderCompanyScenarioCandidate(input.scenarioCandidate, conditionalPe)
     diagnostics.splice(diagnostics.indexOf('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE'), 1)
     diagnostics.push('SCENARIO_CANDIDATE_REQUIRES_INDEPENDENT_ECONOMIC_REVIEW')
+    if (!conditionalPe) diagnostics.push('CONDITIONAL_REFERENCE_PE_SENSITIVITY_INPUTS_UNQUALIFIED')
   }
   if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)
