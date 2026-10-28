@@ -2,7 +2,7 @@
 
 **Task:** `RHL-CQR-P0-19-CLOSE-002`
 **Status:** `NOT_ACCEPTED`; this records an unresolved Gate 1 / Gate 3 / Gate 4 blocker and is not a completion report.
-**Branch snapshot:** `8edffe80d940ab21c393ee2f6f66d5b77212d261`
+**Code snapshot reviewed:** `69ccc0d7e1f3fb42d3aa1d7cf8a5d8616480974f`; subsequent focused Gate 2 changes are recorded in the progress report.
 **Evidence detail:** see [Gate 1 provider and point audit](2026-10-28-company-research-p0-19-close-002-gate1-audit.md) and the Gate 0 baseline manifest.
 
 ## What was established
@@ -30,7 +30,7 @@ With zero qualified historical consensus points, the current run cannot provide 
 
 ## Gate 2 implementation status at this snapshot
 
-The current branch now has a deterministic FY2026 operating candidate path with explicit research-assumption/derived labels, source row hashes and locators, historical base values, scenario scope, formula, sensitivity cells, separate H1 counterevidence, and six per-driver semantic decisions including falsifiability assessment. The candidate enters the second synthesis only after the first independent review and scenario checks pass. This remains a partial Gate 2 result: the code explicitly marks `OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION`, because no valuation basis/multiple is qualified. It does not satisfy the required forward valuation bridge, full G2-03 scenario-to-checklist linkage, or Gate 4 real-company review.
+The current branch has a deterministic FY2026 operating candidate path with explicit research-assumption/derived labels, source row hashes and locators, historical base values, scenario scope, formula, sensitivity cells, separate H1 counterevidence, and six per-driver semantic decisions including falsifiability assessment. The candidate enters the second synthesis only after the first independent review and scenario checks pass. A later focused update adds a fail-closed conditional reference-PE sensitivity and a deterministic Base-scenario-to-checklist row when the exact annual and H1 evidence and review conditions hold. These remain partial Gate 2 results: the operating candidate explicitly marks `OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION`, and the conditional sensitivity assumes an unchanged observed reference PE and share count without evaluating whether that multiple is reasonable. Gate 2 does not establish a qualified forward valuation basis/multiple or complete real-company review.
 
 The Gate 0 pair remains the last actual BYD/Dongshan acceptance evidence: both runs are `17/19`, with `bull-base-bear` and `variant-perception` blocked and zero semantic-review attempts. No later live pair has been run under the current code SHA. Their local reports and sidecars are ignored runtime artifacts, not an independently accessible evidence package. Gate 4 is therefore not met.
 

@@ -2,7 +2,7 @@
 
 **Task:** `RHL-CQR-P0-19-CLOSE-002`
 **Status:** `IN_PROGRESS`; Gate 4 has not passed and P0-19 remains `NOT_ACCEPTED`.
-**Scope of this record:** Gate 0 baseline, Gate 1 point binding and eligibility audit, and Gate 2 scenario candidate integration with independent economic review.
+**Scope of this record:** Gate 0 baseline, Gate 1 point binding and eligibility audit, and Gate 2 scenario candidate integration with independent economic review and deterministic report monitoring.
 
 ## Gate 0 baseline
 
@@ -16,8 +16,8 @@
 
 ## Current delivery snapshot
 
-- Current task-branch HEAD and remote HEAD: `8edffe8` (`fix(research): gate scenario synthesis on economic review`).
-- Task commits since starting SHA: `b70a699` (point-to-row binding), `b8634b8` (verified point-proof eligibility), `fccfa55` (scenario-plan validation), `5a7a0f1` (sealed `asOf` availability check), `f5c59f2` (initial gated FY2026 scenario builder), and `8edffe8` (Workflow promotion only after independent review). The unrelated UI commit `1010df8` remains outside the new task commits.
+- Code snapshot reviewed for this update: `69ccc0d7e1f3fb42d3aa1d7cf8a5d8616480974f` (`fix(company-research): add auditable FY2026 scenario assumptions`); the two focused follow-up slices are `6ef02c9` (verified scenario-to-monitoring linkage) and `f6b7d72` (conditional reference-PE sensitivity).
+- Task commits since starting SHA include `b70a699` (point-to-row binding), `b8634b8` (verified point-proof eligibility), `fccfa55` (scenario-plan validation), `5a7a0f1` (sealed `asOf` availability check), `f5c59f2` (initial gated FY2026 scenario builder), `8edffe8` (Workflow promotion only after independent review), `69ccc0d` (auditable scenario assumptions), `6ef02c9` (monitoring linkage), and `f6b7d72` (conditional PE sensitivity). The unrelated UI commit `1010df8` remains separate.
 - Current `origin/main` and merge-base remain `51fd2112c0767a664bba4e887e7debb031fcf66e`.
 
 ## Gate 1 implementation slice
@@ -46,6 +46,15 @@ The private `scenario-assumptions.ts` builder and validator now have a Workflow 
 - `npm run typecheck` — passed.
 - `git diff --check` — passed; Git reported line-ending normalization notices only.
 
+## Gate 2 deterministic valuation and monitoring update (2026-10-28)
+
+- The valuation section now adds a fail-closed conditional FY2026 per-share sensitivity only when the as-of close, FY2025 basic EPS, FY2025 parent-profit source row/hash/rights, and all scenario grid calculations bind and reconcile. It keeps the unchanged-reference-PE and unchanged-share-count assumptions explicit and labels results as derived sensitivities, not forecasts or target prices. Unsupported inputs retain a visible gap and diagnostic.
+- After synthesis, the Workflow adds one deterministic falsifiable Base assumption checklist row only when the scenario ledger is verified, the bounded independent scenario review passed, and both the exact annual-base and same-metric H1 cross-check locators are present in verified evidence. Model-authored rows with the same marker are removed; the annual trigger is kept separate from interim monitoring, and the final locator set is checked before return for complete-report review.
+- Added tests for recalculation/monotonicity, tampering, missing or restricted source evidence, invalid grids, approved checklist insertion, exact citations, and fail-closed missing/unapproved scenario evidence.
+- `node --import tsx --test tests/workflows/company-research-assembly.test.ts tests/workflows/company-valuation-sections.test.ts tests/workflows/company-deep-research.test.ts tests/workflows/company-scenario-assumptions.test.ts tests/workflows/company-semantic-quality.test.ts` — 224 passed, 0 failed.
+- `npm run typecheck` — passed; `npm run client:typecheck` — passed; `npm run client:build` — passed with the existing large-chunk warning; `git diff --check` — passed with line-ending notices.
+- The full Node regression comparison from the preceding code snapshot found 21 inherited failures and zero new failures; it was not rerun after these two focused changes. The earlier client baseline comparison was also unchanged at five inherited failures. These comparisons are not full-suite passes.
+
 ## Remaining gates
 
-Gate 1 remains blocked on an authorized, cutoff-compatible original-report/value-version proof. Existing saved EastMoney report URLs and forecast rows do not include captured PDF hashes, exact value locators, or correction/version evidence; THS remains unqualified. Gate 2 now has an auditable operating-assumption candidate path, but forward valuation and deterministic checklist linkage still need review and no qualified valuation bridge is present. Gate 3 still lacks two genuinely distinct, comparable economic expectation surfaces. Gate 4 requires fresh BYD and Dongshan 19/19 runs on one code SHA, actual 19-section semantic review, full independently readable reports/sidecars via an authorized channel, baseline-aware regressions/type/build checks, and unchanged Knowledge hashes. Until all Gate 4 criteria pass, the task remains `NOT_ACCEPTED`.
+Gate 1 remains blocked on an authorized, cutoff-compatible original-report/value-version proof. Existing saved EastMoney report URLs and forecast rows do not include captured PDF hashes, exact value locators, or correction/version evidence; THS remains unqualified. Gate 2 now includes a conditional reference-PE sensitivity path and deterministic scenario-to-checklist linkage, but these do not establish a qualified forward valuation basis or multiple. Gate 3 still lacks two genuinely distinct, comparable economic expectation surfaces. Gate 4 requires fresh BYD and Dongshan 19/19 runs on one code SHA, actual 19-section semantic review, full independently readable reports/sidecars via an authorized channel, baseline-aware regressions/type/build checks, and unchanged Knowledge hashes. Until all Gate 4 criteria pass, the task remains `NOT_ACCEPTED`.
