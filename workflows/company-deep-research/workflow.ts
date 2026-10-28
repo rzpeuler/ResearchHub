@@ -37,7 +37,8 @@ function attachScenarioRationaleReviews<T extends { readonly id: string; readonl
   const blocks = reviews.map(review => {
     const rationale = review.economicRationale.replace(/\[[^\]\n]*@paragraph:\d+\]/gu, '（未将模型文本内引用作为证据）').replace(/[\r\n]+/gu, ' ').trim()
     const refs = (items: readonly { readonly sourceCandidateId: string; readonly location: string }[]) => items.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')
-    return `- ${scenarioLabels[review.scenario]} / ${driverLabels[review.driverId]}：${rationale} 支持依据：${refs(review.supportingEvidenceRefs)}。反证：${refs(review.counterevidenceRefs)}。`
+    const falsification = review.falsificationAssessment.replace(/[\r\n]+/gu, ' ').trim()
+    return `- ${scenarioLabels[review.scenario]} / ${driverLabels[review.driverId]}：${rationale} 支持依据：${refs(review.supportingEvidenceRefs)}。反证：${refs(review.counterevidenceRefs)}。失效审查：${falsification}`
   }).join('\n')
   const sourceCandidateIds = [...new Set([...section.sourceCandidateIds, ...reviews.flatMap(review => [...review.supportingEvidenceRefs, ...review.counterevidenceRefs].map(ref => ref.sourceCandidateId))])]
   const baseMarkdown = section.markdown.split(/\n\n### 独立经济理由审查\n/u)[0]!

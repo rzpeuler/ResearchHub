@@ -1,5 +1,6 @@
 import type { CompanyFinancialObservation } from '../../data/company-research-contracts.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 
 export type CompanyScenarioName = 'bull' | 'base' | 'bear'
 export interface ScenarioEvidenceRef { readonly sourceCandidateId: string; readonly location: `paragraph:${number}` }
@@ -9,9 +10,25 @@ export interface CompanyScenarioHistoryPoint {
   readonly periodEnd: string
   readonly publishedAt: string
   readonly evidence: ScenarioEvidenceRef
+  /** Hash of the exact normalized text used to bind this row, not a numeric-version proof. */
+  readonly sourceContentHash: string
+  readonly verificationStatus: 'EXACT_OFFICIAL_ROW_AND_DATA_OBSERVATION_MATCHED'
 }
 
 export interface CompanyScenarioDriver {
+  readonly scenarioId: CompanyScenarioName
+  readonly targetFiscalYear: 2026
+  readonly basisDate: string
+  readonly valuationMethod: 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION'
+  readonly financialMetric: 'revenue' | 'netProfit'
+  readonly scope: 'consolidated'
+  readonly historicalBaseValue: number
+  readonly basePeriod: '2025-12-31'
+  readonly baseSourceRefs: readonly [ScenarioEvidenceRef]
+  readonly proposedAssumption: { readonly value: number; readonly unit: 'fraction'; readonly originKind: 'RESEARCH_ASSUMPTION' }
+  readonly targetMetric: 'FY2026 revenue' | 'FY2026 parent-attributable net profit'
+  readonly peerOrMultipleBasis: 'NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS'
+  readonly inputDependencies: readonly ScenarioEvidenceRef[]
   readonly id: 'revenue' | 'parent-net-profit'
   readonly metricKey: 'revenue' | 'netProfit'
   readonly metricLabel: string
@@ -28,9 +45,12 @@ export interface CompanyScenarioDriver {
   }
   /** Mechanical calibration rationale only; economic reasonableness needs separate semantic review. */
   readonly rationale: string
+  readonly assumptionDerivation: string
   readonly derivation: string
+  readonly counterEvidenceRefs: readonly ScenarioEvidenceRef[]
   readonly counterevidence: readonly ScenarioEvidenceRef[]
   readonly falsificationTrigger: string
+  readonly confidenceLimitations: string
   readonly limitations: string
   readonly forecastBridge: { readonly formula: 'last_observation * (1 + rate)' }
   readonly sensitivityRange: { readonly lowRate: number; readonly highRate: number }
@@ -304,24 +324,44 @@ function makeSensitivityGrid(
 }
 
 function driverFor(
+  scenarioId: CompanyScenarioName,
   metric: Metric,
   history: readonly CompanyScenarioHistoryPoint[],
   rate: number,
   crossEvidence: ScenarioEvidenceRef,
+  asOf: string,
 ): CompanyScenarioDriver {
   const last = history.at(-1)!
   const envelope = rateEnvelope(history)!
+  const derivation = `FY2026 ${metric.label} = FY2025 ${last.value} CNY × (1 + ${rate}); 计算值为 ${last.value * (1 + rate)} CNY。`
+  const limitations = '两段历史同比增速不足以证明未来驱动、结构或利润可持续；未把2026H1 YTD同比混入年度校准，也未给出情景概率或目标价。未具备经验证的前瞻估值方法/倍数输入，因此本情景只输出经营指标，不输出股权价值或企业价值。'
   return {
+    scenarioId,
+    targetFiscalYear: TARGET_YEAR,
+    basisDate: asOf,
+    valuationMethod: 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION',
+    financialMetric: metric.key,
+    scope: 'consolidated',
+    historicalBaseValue: last.value,
+    basePeriod: '2025-12-31',
+    baseSourceRefs: [last.evidence],
+    proposedAssumption: { value: rate, unit: 'fraction', originKind: 'RESEARCH_ASSUMPTION' },
+    targetMetric: metric.key === 'revenue' ? 'FY2026 revenue' : 'FY2026 parent-attributable net profit',
+    peerOrMultipleBasis: 'NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS',
+    inputDependencies: history.map(point => point.evidence),
     id: metric.id,
     metricKey: metric.key,
     metricLabel: metric.label,
     unit: 'CNY', currency: 'CNY', basis: 'YTD', historical: history,
     proposal: { rateOriginKind: 'RESEARCH_ASSUMPTION', rate, targetValue: last.value * (1 + rate), targetValueOriginKind: 'DERIVED', targetPeriod: '2026-12-31' },
     rationale: `研究假设：FY2023-FY2025 两个同比增速包络为 ${(envelope[0] * 100).toFixed(2)}% 至 ${(envelope[2] * 100).toFixed(2)}%；本案取 ${(rate * 100).toFixed(2)}%。中位情景取上下界算术中点，仅为校准约定，不是概率或共识。历史范围本身不证明经济合理性。`,
-    derivation: `FY2026 ${metric.label} = FY2025 ${last.value} CNY × (1 + ${rate}); 计算值为 ${last.value * (1 + rate)} CNY。`,
+    assumptionDerivation: derivation,
+    derivation,
+    counterEvidenceRefs: [crossEvidence],
     counterevidence: [crossEvidence],
     falsificationTrigger: `FY2026 年报披露的${metric.label}若低于或高于该情景推算值，则该情景的点预测被证伪；2026H1同比结果仅作中期交叉核对。`,
-    limitations: '两段历史同比增速不足以证明未来驱动、结构或利润可持续；未把2026H1 YTD同比混入年度校准，也未给出情景概率或目标价。需要独立语义审查经营理由及跨章节一致性。',
+    confidenceLimitations: limitations,
+    limitations,
     forecastBridge: { formula: 'last_observation * (1 + rate)' },
     sensitivityRange: { lowRate: envelope[0], highRate: envelope[2] },
     dependencies: history.map(point => point.evidence),
@@ -345,7 +385,7 @@ export function buildCompanyScenarioAssumptionPlan(input: CompanyScenarioAssumpt
       if (!evidence) { diagnostics.push(`ANNUAL_SOURCE_OBSERVATION_JOIN_UNPROVEN:${metric.key}:${year}`); continue }
       const publishedAt = evidence.observation.publishedAt!
       if (!Number.isFinite(dateOnly(publishedAt)) || dateOnly(publishedAt) > cutoff) { diagnostics.push(`ANNUAL_OBSERVATION_PUBLISHED_AFTER_AS_OF:${metric.key}:${year}`); continue }
-      history.push({ value: evidence.observation.metrics[metric.key]!, periodEnd: `${year}-12-31`, publishedAt, evidence: { sourceCandidateId: evidence.source.candidate.candidateId, location: evidence.location } })
+      history.push({ value: evidence.observation.metrics[metric.key]!, periodEnd: `${year}-12-31`, publishedAt, evidence: { sourceCandidateId: evidence.source.candidate.candidateId, location: evidence.location }, sourceContentHash: sha256(evidence.source.content), verificationStatus: 'EXACT_OFFICIAL_ROW_AND_DATA_OBSERVATION_MATCHED' })
     }
     if (history.length !== 3) diagnostics.push(`ANNUAL_HISTORY_INCOMPLETE:${metric.key}`)
     if (!rateEnvelope(history)) diagnostics.push(`ANNUAL_RATE_ENVELOPE_INVALID:${metric.key}`)
@@ -371,8 +411,8 @@ export function buildCompanyScenarioAssumptionPlan(input: CompanyScenarioAssumpt
   if (!sensitivityGrid) return { status: 'blocked', diagnostics: ['SENSITIVITY_GRID_NOT_FINITE_OR_MONOTONE'] }
 
   const scenarios = (['bear', 'base', 'bull'] as const).map((name, index) => {
-    const revenueDriver = driverFor(revenueMetric, revenueHistory, revenueRates[index]!, h1.get(revenueMetric)!.evidence)
-    const profitDriver = driverFor(profitMetric, profitHistory, profitRates[index]!, h1.get(profitMetric)!.evidence)
+    const revenueDriver = driverFor(name, revenueMetric, revenueHistory, revenueRates[index]!, h1.get(revenueMetric)!.evidence, input.asOf)
+    const profitDriver = driverFor(name, profitMetric, profitHistory, profitRates[index]!, h1.get(profitMetric)!.evidence, input.asOf)
     return {
       name,
       drivers: [revenueDriver, profitDriver] as const,
@@ -447,6 +487,7 @@ export function validateCompanyScenarioAssumptions(input: CompanyScenarioValidat
           if (!close(observation.metrics[metric.key]!, point.value) || observation.publishedAt !== point.publishedAt || metadata?.unit !== 'CNY' || metadata.currency !== 'CNY' || metadata.basis !== 'YTD') add('OBSERVATION_VALUE_PERIOD_UNIT_OR_BASIS_MISMATCH')
           const resolved = resolveParagraph(point.evidence, input.sources, input.company, asOfTime, true)
           if (!resolved) { add('ANNUAL_EVIDENCE_UNRESOLVED_OR_UNAUTHORIZED'); continue }
+          if (point.sourceContentHash !== sha256(resolved.source.content) || point.verificationStatus !== 'EXACT_OFFICIAL_ROW_AND_DATA_OBSERVATION_MATCHED') add('ANNUAL_EVIDENCE_CONTENT_BINDING_INVALID')
           const rows = parseAnnualMetricRow({ ...resolved.source, content: resolved.lines.join('\n') }, metric)
           const exactRow = rows.find(row => row.line === resolved.line)
           const year = Number(point.periodEnd.slice(0, 4))
@@ -458,6 +499,19 @@ export function validateCompanyScenarioAssumptions(input: CompanyScenarioValidat
         if (!envelope) { add('ANNUAL_RATE_ENVELOPE_INVALID'); continue }
         const scenarioIndex = scenario.name === 'bear' ? 0 : scenario.name === 'base' ? 1 : 2
         const proposal = driver.proposal
+        const basePoint = history[2]!
+        if (driver.scenarioId !== scenario.name || driver.targetFiscalYear !== TARGET_YEAR || driver.basisDate !== input.asOf
+          || driver.valuationMethod !== 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION'
+          || driver.financialMetric !== metric.key || driver.scope !== 'consolidated'
+          || !close(driver.historicalBaseValue, basePoint.value) || driver.basePeriod !== '2025-12-31'
+          || JSON.stringify(driver.baseSourceRefs) !== JSON.stringify([basePoint.evidence])
+          || driver.proposedAssumption?.originKind !== 'RESEARCH_ASSUMPTION' || driver.proposedAssumption?.unit !== 'fraction'
+          || !close(driver.proposedAssumption?.value ?? Number.NaN, proposal.rate)
+          || driver.targetMetric !== (metric.key === 'revenue' ? 'FY2026 revenue' : 'FY2026 parent-attributable net profit')
+          || driver.peerOrMultipleBasis !== 'NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS'
+          || JSON.stringify(driver.inputDependencies) !== JSON.stringify(driver.dependencies)
+          || driver.counterEvidenceRefs.length !== 1 || JSON.stringify(driver.counterEvidenceRefs) !== JSON.stringify(driver.counterevidence)
+          || driver.assumptionDerivation !== driver.derivation || driver.confidenceLimitations !== driver.limitations) add('SCENARIO_ASSUMPTION_AUDIT_FIELDS_INCONSISTENT')
         if (proposal.rateOriginKind !== 'RESEARCH_ASSUMPTION' || !close(proposal.rate, envelope[scenarioIndex])) add('SCENARIO_RATE_NOT_HISTORICAL_ENVELOPE_POINT')
         if (proposal.targetValueOriginKind !== 'DERIVED' || proposal.targetPeriod !== '2026-12-31' || !close(proposal.targetValue, history[2]!.value * (1 + proposal.rate))) add('FORECAST_BRIDGE_ARITHMETIC_MISMATCH')
         if (driver.forecastBridge.formula !== 'last_observation * (1 + rate)' || !driver.rationale.includes('研究假设') || !driver.rationale.includes('不证明经济合理性') || !driver.derivation.trim() || !driver.falsificationTrigger.trim() || !driver.limitations.trim()) add('ASSUMPTION_RATIONALE_OR_BRIDGE_MISSING')

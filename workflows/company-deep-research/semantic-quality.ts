@@ -30,6 +30,7 @@ export interface CompanyScenarioRationaleReview {
   readonly driverId: 'revenue' | 'parent-net-profit'
   readonly supported: boolean
   readonly economicRationale: string
+  readonly falsificationAssessment: string
   readonly supportingEvidenceRefs: readonly { readonly sourceCandidateId: string; readonly location: string }[]
   readonly counterevidenceRefs: readonly { readonly sourceCandidateId: string; readonly location: string }[]
   readonly reasons: readonly string[]
@@ -124,7 +125,7 @@ const rubric: Readonly<Record<string, string>> = {
 const reviewRubric: Readonly<Record<string, string>> = {
   ...rubric,
   valuation: '说明估值日、市场价格日期、币种及复权状态；至少有一条基于可核验同口径输入的可复算路径。逐项核对 EPS/BVPS/EBITDA 的财年、单位、披露日及历史版本资格；公式与操作数应在正文可复核。区分历史与预测倍数、股权价值与企业价值、总值与每股值；解释敏感因素、方法失效和可比性边界。仅有行情、固定研究缺口或无来源目标价均不通过。',
-  'bull-base-bear': '逐一审查 Bear/Base/Bull 是否具名主要经营或财务驱动、同口径关键假设、条件、目标期间、来源及反证；三者使用相同估值方法、基准和目标财年，且经确定性公式计算并满足 Bear≤Base≤Bull。至少提供一项能重算的敏感性结果。没有独立校准证据不得给概率；不得将泛泛情绪描述或未说明依据的数字作为情景输入。检查情景变量是否与增长驱动、风险及监控相连。若输入含scenarioAssumptionsPlan，另须在scenarioRationaleReviews中逐一给出Bear/Base/Bull×收入/归母净利润的6项决定；每项用精确sourceCandidateId+paragraph引用相关已完成方法的经营支持与H1或风险章节反证，给出具体机制和适用条件。历史包络本身不证明合理性；只要一项缺少独立经营支持或存在未处理反证，该项supported=false并阻塞整节。',
+  'bull-base-bear': '逐一审查 Bear/Base/Bull 是否具名主要经营或财务驱动、同口径关键假设、条件、目标期间、来源及反证；三者使用相同估值方法、基准和目标财年，且经确定性公式计算并满足 Bear≤Base≤Bull。至少提供一项能重算的敏感性结果。没有独立校准证据不得给概率；不得将泛泛情绪描述或未说明依据的数字作为情景输入。检查情景变量是否与增长驱动、风险及监控相连。若输入含scenarioAssumptionsPlan，另须在scenarioRationaleReviews中逐一给出Bear/Base/Bull×收入/归母净利润的6项决定；每项用精确sourceCandidateId+paragraph引用相关已完成方法的经营支持与H1或风险章节反证，给出具体机制和适用条件，并评估计划中falsificationTrigger的可观察性和失效含义。历史包络本身不证明合理性；只要一项缺少独立经营支持、可检验失效判断或存在未处理反证，该项supported=false并阻塞整节。没有合格前瞻估值方法或倍数依据时，不得声称产生了股权价值或企业价值结论。',
   'variant-perception': '至少比较两个截至 asOf 的真实预期面，严格对齐指标、财年/期间、单位、币种和范围；逐一核对贡献机构/发布者、发布日期、样本数、去重及可用版本证据。用可复算差异说明研究观点与市场/机构/公司预期在哪里不同，或有证据地说明没有实质差异，并指出验证条件和失效条件。单一共识不是第二个预期面；没有共识不等于没有预期差；仅写缺口不通过。',
   'industry-exposure': `${rubric['industry-exposure']} 分行业或分产品表的毛利率同比增减必须逐字沿用该来源列名、单位行和单元格所示单位；来源以百分号列示且报告明确照录原表口径时，不得擅自把数值改判为百分点。只有报告自行将原表百分比变动改称百分点，或将其与由两个毛利率水平复算的百分点差混淆时，才判单位错误。具名路线候选已在competition章节或已完成competitive_market_map中引用时，不得将同口径市场份额、成本或性能对照缺失扩大为没有具名候选或路线。`,
   'financial-quality': `${rubric['financial-quality']} 反驳年度分行业收入占比缺口时，必须使用同年度的分行业表；其他年度（例如半年报）的占比或分产品表的占比不能证明该年度分行业占比已披露。若结论明确限定为本年度原表未列占比，不能把另一期间或另一分类的表当作反证。分行业毛利率同比增减必须沿用原表列单位，不得仅凭“同比变化”改称百分点。`,
@@ -184,10 +185,11 @@ function validateScenarioRationaleReviews(output: unknown, input: CompanySemanti
   const reviews = rows.map((item): CompanyScenarioRationaleReview => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('FORMAT: Scenario rationale decision object required')
     const row = item as Record<string, unknown>
-    const keys = ['scenario', 'driverId', 'supported', 'economicRationale', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons']
+    const keys = ['scenario', 'driverId', 'supported', 'economicRationale', 'falsificationAssessment', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons']
     if (Object.keys(row).length !== keys.length || keys.some(key => !(key in row))
       || !['bear', 'base', 'bull'].includes(String(row.scenario)) || !['revenue', 'parent-net-profit'].includes(String(row.driverId))
       || typeof row.supported !== 'boolean' || typeof row.economicRationale !== 'string' || !row.economicRationale.trim() || row.economicRationale.length > 1200
+      || typeof row.falsificationAssessment !== 'string' || !row.falsificationAssessment.trim() || row.falsificationAssessment.length > 1200
       || !Array.isArray(row.reasons) || row.reasons.length > 8 || row.reasons.some(reason => typeof reason !== 'string' || !reason.trim() || reason.length > 600)) throw new Error('FORMAT: Invalid scenario rationale decision fields')
     const scenario = row.scenario as CompanyScenarioName
     const driverId = row.driverId as 'revenue' | 'parent-net-profit'
@@ -196,7 +198,7 @@ function validateScenarioRationaleReviews(output: unknown, input: CompanySemanti
     const counterevidenceRefs = validateRefs(row.counterevidenceRefs, allowedCounter, 'counterevidenceRefs')
     if (row.supported && row.reasons.length > 0) throw new Error('FORMAT: Supported rationale cannot contain unresolved blocking reasons')
     if (!row.supported && row.reasons.length === 0) throw new Error('FORMAT: Unsupported rationale requires a blocking reason')
-    return { scenario, driverId, supported: row.supported, economicRationale: row.economicRationale.trim(), supportingEvidenceRefs, counterevidenceRefs, reasons: row.reasons as string[] }
+    return { scenario, driverId, supported: row.supported, economicRationale: row.economicRationale.trim(), falsificationAssessment: row.falsificationAssessment.trim(), supportingEvidenceRefs, counterevidenceRefs, reasons: row.reasons as string[] }
   })
   if (expected.size) throw new Error('FORMAT: Missing scenario-driver rationale decision')
   return reviews
@@ -207,7 +209,7 @@ export const COMPANY_SEMANTIC_QUALITY_SCHEMA = {
       required: ['sectionId', 'questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission', 'reasons'],
       properties: { sectionId: { type: 'string', enum: COMPANY_CORE_SECTION_IDS }, questionAnswered: { type: 'boolean' }, evidenceSupportsConclusion: { type: 'boolean' }, numericReproducible: { type: 'boolean' }, riskTransmission: { type: 'boolean' }, reasons: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 1200 } } },
     } },
-    scenarioRationaleReviews: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['scenario', 'driverId', 'supported', 'economicRationale', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons'], properties: { scenario: { type: 'string', enum: ['bear', 'base', 'bull'] }, driverId: { type: 'string', enum: ['revenue', 'parent-net-profit'] }, supported: { type: 'boolean' }, economicRationale: { type: 'string', minLength: 1, maxLength: 1200 }, supportingEvidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, counterevidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, reasons: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 600 } } } } },
+    scenarioRationaleReviews: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['scenario', 'driverId', 'supported', 'economicRationale', 'falsificationAssessment', 'supportingEvidenceRefs', 'counterevidenceRefs', 'reasons'], properties: { scenario: { type: 'string', enum: ['bear', 'base', 'bull'] }, driverId: { type: 'string', enum: ['revenue', 'parent-net-profit'] }, supported: { type: 'boolean' }, economicRationale: { type: 'string', minLength: 1, maxLength: 1200 }, falsificationAssessment: { type: 'string', minLength: 1, maxLength: 1200 }, supportingEvidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, counterevidenceRefs: { type: 'array', minItems: 1, items: { sourceCandidateId: 'exact cited source id', location: 'paragraph:N' } }, reasons: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 600 } } } } },
   },
 } as const
 
@@ -243,6 +245,7 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
     ? (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
       scenario, driverId, supported: false,
       economicRationale: '独立解释该假设如何由经营证据支持，并说明历史包络只是计算校准。',
+      falsificationAssessment: '核对计划中的FY2026年度披露触发条件是否可复核，并说明何种实际值会使该假设失效。',
       supportingEvidenceRefs: [{ sourceCandidateId: '<精确复制相关已完成方法的来源ID>', location: 'paragraph:1' }],
       counterevidenceRefs: [{ sourceCandidateId: '<精确复制反证来源ID>', location: 'paragraph:1' }],
       reasons: ['逐项说明假设适用条件、反证及跨章节一致性。'],

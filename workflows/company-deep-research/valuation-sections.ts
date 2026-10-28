@@ -5,7 +5,6 @@ import { buildValuationBasis, methodEligibility } from '../../skills/valuation/f
 import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
-import type { EarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
 import type { CompanyScenarioAssumptionsPlan } from './scenario-assumptions.ts'
 
 export interface CompanyValuationSection {
@@ -142,11 +141,11 @@ export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsP
   const scenarioNames = { bear: 'Bear / 悲观', base: 'Base / 基准', bull: 'Bull / 乐观' } as const
   const blocks = plan.scenarios.map(scenario => {
     const drivers = scenario.drivers.map(driver => {
-      const history = driver.historical.map(point => `${point.periodEnd.slice(0, 4)} ${formatScenarioAmount(point.value)} CNY ${scenarioCitation(point.evidence)}`).join('；')
+      const history = driver.historical.map(point => `${point.periodEnd.slice(0, 4)} ${formatScenarioAmount(point.value)} CNY ${scenarioCitation(point.evidence)}（text-sha256=${point.sourceContentHash}; ${point.verificationStatus}）`).join('；')
       const historyGrowth = driver.historical.slice(1).map((point, index) => `${point.periodEnd.slice(0, 4)}同比=${formatScenarioRate(point.value / driver.historical[index]!.value - 1)}`).join('，')
       const supportRefs = driver.dependencies.map(scenarioCitation).join(' ')
       const counterRefs = driver.counterevidence.map(scenarioCitation).join(' ')
-      return `- ${driver.metricLabel}：研究假设增速 ${formatScenarioRate(driver.proposal.rate)}；${historyGrowth}。FY2026 = FY2025 ${formatScenarioAmount(driver.historical[2]!.value)} CNY × (1 + ${formatScenarioRate(driver.proposal.rate)}) = ${formatScenarioAmount(driver.proposal.targetValue)} CNY。历史行：${history}。支持/校准证据：${supportRefs}。反证与中期交叉核对（不混入年度校准）：${counterRefs}。${driver.limitations}`
+      return `- ${driver.metricLabel}：scenarioId=${driver.scenarioId}；targetFiscalYear=${driver.targetFiscalYear}；basisDate=${driver.basisDate}；scope=${driver.scope}；valuationMethod=${driver.valuationMethod}；financialMetric=${driver.financialMetric}；unit=${driver.unit}；历史基数=${formatScenarioAmount(driver.historicalBaseValue)} CNY，basePeriod=${driver.basePeriod}，baseSourceRefs=${driver.baseSourceRefs.map(scenarioCitation).join(' ')}。研究假设增速 ${formatScenarioRate(driver.proposedAssumption.value)}（${driver.proposedAssumption.originKind}）；${historyGrowth}。${driver.assumptionDerivation} 历史行：${history}。targetMetric=${driver.targetMetric}；peerOrMultipleBasis=${driver.peerOrMultipleBasis}。支持/校准证据：${supportRefs}。反证与中期交叉核对（不混入年度校准）：${counterRefs}。可证伪条件：${driver.falsificationTrigger}。置信限制：${driver.confidenceLimitations}`
     }).join('\n')
     return `### ${scenarioNames[scenario.name]}\n${drivers}\n- 推导归母净利率 = FY2026 归母净利润 ÷ FY2026 营业收入 = ${formatScenarioRate(scenario.impliedParentNetMargin.value)}（DERIVED）。`
   })
@@ -163,7 +162,20 @@ export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsP
 
 type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
 type ExpectationSurfaceSelection = { readonly surfaces: readonly ExpectationSurface[]; readonly diagnostics: readonly string[] }
-type ExpectationPointProofForSelection = Omit<EarningsEstimatePointProof, 'basisStatus' | 'valueVersionStatus' | 'correctionStatus'> & {
+// The acquisition payload crosses into Workflow as data. Keep this local
+// structural view here so Workflow does not depend on a Plugin module.
+type ExpectationPointProofForSelection = {
+  readonly estimateId: string
+  readonly sourceCandidateId: string
+  readonly provider: string
+  readonly matchedMetric: string
+  readonly matchedValue: number
+  readonly matchedUnit: string
+  readonly matchedPeriod: string
+  readonly matchedInstitutionKey: string
+  readonly matchedPublishedAt: string
+  readonly observedRowHash: string
+  readonly pointFingerprint: string
   readonly basisStatus: string
   readonly valueVersionStatus: string
   readonly correctionStatus: string

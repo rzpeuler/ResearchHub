@@ -48,11 +48,12 @@ test('scenario eligibility requires six exact per-driver economic decisions with
   const plan = { h1CrossCheck: { revenue: { evidence: ref }, parentNetProfit: { evidence: ref } } } as any
   const methodResults = [{ skillId: 'business_driver_analysis', status: 'complete', answer: 'Revenue drivers', findings: [{ text: 'Product demand supports revenue', kind: 'fact', evidence: [ref] }], limitations: [], risks: [], sections: [{ id: 'growth-drivers', markdown: 'Product demand supports revenue.[filing@paragraph:1]' }, { id: 'risks', markdown: 'Cash conversion is counterevidence.[filing@paragraph:1]' }] }] as any
   const decisions = (supported = true) => (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
-    scenario, driverId, supported, economicRationale: 'Demand and product mix support this rate under the stated operating conditions.',
+    scenario, driverId, supported, economicRationale: 'Demand and product mix support this rate under the stated operating conditions.', falsificationAssessment: 'Repeated FY2026 filing shows the actual target metric below this point forecast, invalidating the point assumption.',
     supportingEvidenceRefs: [ref], counterevidenceRefs: [ref], reasons: supported ? [] : ['No independent driver evidence supports this scenario.'],
   })))
   const accepted = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async request => {
     assert.ok(request.outputContract.required.includes('scenarioRationaleReviews'))
+    assert.ok(request.outputContract.properties.scenarioRationaleReviews.items.required.includes('falsificationAssessment'))
     assert.equal(request.outputContract.properties.scenarioRationaleReviews.minItems, 6)
     assert.equal(request.outputContract.properties.scenarioRationaleReviews.maxItems, 6)
     assert.equal(request.input.scenarioAssumptionsPlan, plan)
@@ -67,6 +68,10 @@ test('scenario eligibility requires six exact per-driver economic decisions with
   badPair[0] = { ...badPair[0]!, supportingEvidenceRefs: [{ sourceCandidateId: 'filing', location: 'paragraph:2' }] }
   const malformed = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async () => ({ ...output, scenarioRationaleReviews: badPair })) })
   assert.equal(malformed.passed, false)
+  const missingFalsification = decisions().map((decision, index) => index === 0 ? (({ falsificationAssessment: _removed, ...rest }) => rest)(decision) : decision)
+  const missingFalsificationResult = await reviewCompanyResearchSemantics({ ...input, methodResults, scenarioAssumptionsPlan: plan, reasoningExecutor: executor(async () => ({ ...output, scenarioRationaleReviews: missingFalsification })) })
+  assert.equal(missingFalsificationResult.passed, false)
+  assert.ok(missingFalsificationResult.diagnostics.some(item => item.code === 'FORMAT_ERROR'))
 })
 
 test('semantic review ignores a false 2025-to-2025 period objection only when the report and cited financial source prove 2024-to-2025', () => {

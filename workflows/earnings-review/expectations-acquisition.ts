@@ -7,7 +7,10 @@ import type { ResearchCompanyIdentity, ResearchProviderOutcome } from '../../plu
 import { createEarningsDataResolver, hasConfiguredEarningsExpectationOperation, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import type { EarningsEastmoneyExpectationSource } from './contracts.ts'
 import type { EstimateProjectionResult } from './expectation-source-eastmoney.ts'
-import type { EarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
+
+// Projection proofs cross the Plugin boundary as data. Reuse the projection's
+// declared output type without importing its Plugin implementation module.
+type EarningsEstimatePointProof = NonNullable<EstimateProjectionResult['pointProofs']>[number]
 
 const THS_SOURCE_ID = 'ths-institution-forecast'
 const EASTMONEY_SOURCE_ID = 'eastmoney-individual-research-report'

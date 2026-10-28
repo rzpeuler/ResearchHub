@@ -309,6 +309,7 @@ test('FY2026 scenario enters only the post-six-decision synthesis; missing and f
             const supportingRef = driverMethod.findings[0].evidence[0]
             output.scenarioRationaleReviews = (['bear', 'base', 'bull'] as const).flatMap(scenario => (['revenue', 'parent-net-profit'] as const).map(driverId => ({
               scenario, driverId, supported: true, economicRationale: `${scenario} ${driverId} 假设在产品需求和经营现金回收条件成立时可支持，若需求转弱则该假设失效。`,
+              falsificationAssessment: 'FY2026 年报实际指标低于本情景推算值时，该点假设被证伪。',
               supportingEvidenceRefs: [supportingRef],
               counterevidenceRefs: [driverId === 'revenue' ? plan.h1CrossCheck.revenue.evidence : plan.h1CrossCheck.parentNetProfit.evidence],
               reasons: [],

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { CompanyFinancialObservation } from '../../data/company-research-contracts.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { buildCompanyScenarioAssumptionPlan, validateCompanyScenarioAssumptions } from '../../workflows/company-deep-research/scenario-assumptions.ts'
 import { renderCompanyScenarioCandidate } from '../../workflows/company-deep-research/valuation-sections.ts'
 
@@ -40,7 +41,7 @@ function halfYearSource(companyName: string, candidateId: string, publishedAt: s
 function source(candidateId: string, title: string, publishedAt: string, content: string, companyName: string, rights: Partial<NormalizedResearchSource['rights']> = {}): NormalizedResearchSource {
   return {
     candidate: { candidateId, kind: 'official_disclosure', tier: 1, title, provider: 'CNINFO', publishedAt },
-    retrievedAt: '2026-10-28T00:00:00Z', title, content, contentHash: `hash-${candidateId}`, publisher: companyName,
+    retrievedAt: '2026-10-28T00:00:00Z', title, content, contentHash: sha256(content), publisher: companyName,
     rights: { accessScope: 'public', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: false, redistributionAllowed: false, ...rights },
   }
 }
@@ -99,6 +100,17 @@ test('generates BYD and Dongshan FY2026 candidates from precisely paired annual 
     assert.ok(result.plan!.scenarios.every(scenario => scenario.drivers.every(driver => driver.proposal.rateOriginKind === 'RESEARCH_ASSUMPTION' && driver.proposal.targetValueOriginKind === 'DERIVED')))
     for (const scenario of result.plan!.scenarios) {
       assert.equal(scenario.drivers.length, 2)
+      for (const driver of scenario.drivers) {
+        assert.equal(driver.scenarioId, scenario.name)
+        assert.equal(driver.targetFiscalYear, 2026)
+        assert.equal(driver.basisDate, asOf)
+        assert.equal(driver.valuationMethod, 'OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION')
+        assert.equal(driver.historicalBaseValue, driver.historical[2]!.value)
+        assert.deepEqual(driver.baseSourceRefs, [driver.historical[2]!.evidence])
+        assert.equal(driver.proposedAssumption.originKind, 'RESEARCH_ASSUMPTION')
+        assert.equal(driver.peerOrMultipleBasis, 'NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS')
+        assert.ok(driver.historical.every(point => point.sourceContentHash === sha256(f.sources.find(source => source.candidate.candidateId === point.evidence.sourceCandidateId)!.content)))
+      }
       assert.equal(scenario.drivers[0]!.proposal.targetValue, scenario.drivers[0]!.historical[2]!.value * (1 + scenario.drivers[0]!.proposal.rate))
       assert.equal(scenario.drivers[1]!.proposal.targetValue, scenario.drivers[1]!.historical[2]!.value * (1 + scenario.drivers[1]!.proposal.rate))
       assert.equal(scenario.impliedParentNetMargin.value, scenario.drivers[1]!.proposal.targetValue / scenario.drivers[0]!.proposal.targetValue)
@@ -138,7 +150,7 @@ test('candidate renderer binds each scenario formula, annual history, H1 counter
   const section = renderCompanyScenarioCandidate(plan)
   assert.equal(section.id, 'bull-base-bear')
   for (const scenario of ['Bear / 悲观', 'Base / 基准', 'Bull / 乐观']) assert.ok(section.markdown.includes(scenario))
-  assert.equal((section.markdown.match(/FY2026 = FY2025/g) ?? []).length, 6)
+  assert.equal((section.markdown.match(/FY2026 .* = FY2025/g) ?? []).length, 6)
   assert.ok(section.markdown.includes('FY2026 H1 独立交叉核对'))
   assert.ok(section.markdown.includes('3×3 敏感性'))
   assert.equal((section.markdown.match(/^\| [^\n]+$/gm) ?? []).length, 10)
@@ -146,6 +158,9 @@ test('candidate renderer binds each scenario formula, annual history, H1 counter
   assert.ok(section.markdown.includes('[002384-h1-2026@paragraph:8]'))
   assert.deepEqual(new Set(section.sourceCandidateIds), new Set(['002384-fy2024', '002384-fy2025', '002384-h1-2026']))
   assert.match(section.markdown, /不是概率加权结果，也未给出目标价/)
+  assert.match(section.markdown, /OPERATING_BRIDGE_ONLY_NO_FORWARD_VALUATION/)
+  assert.match(section.markdown, /NOT_APPLIED_NO_QUALIFIED_FORWARD_VALUATION_BASIS/)
+  assert.match(section.markdown, /text-sha256=/)
 })
 
 test('blocks target years outside FY2026, missing company identity, and history-only claims of economic validity', () => {
