@@ -8,6 +8,8 @@ import { resolveEarningsExpectations } from '../../workflows/earnings-review/aut
 import type { EarningsReviewWorkflowInput } from '../../workflows/earnings-review/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import { createEarningsDataResolver } from '../../plugins/research-acquisition/earnings-data.ts'
+import type { EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
 
 const AS_OF = '2026-09-22T00:00:00.000Z'
 const RETRIEVED = '2026-09-22T01:00:00.000Z'
@@ -74,6 +76,24 @@ test('THS row order does not change deterministic estimate or source IDs', () =>
   assert.deepEqual(left.sources.map((item) => item.candidate.candidateId), right.sources.map((item) => item.candidate.candidateId))
 })
 
+test('THS point proof binds the current row and never upgrades version, correction, or basis status', () => {
+  const first = projectThsInstitutionForecasts({ payload: [thsRow('诚通证券', '2026-09-18', 65.14)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const changed = projectThsInstitutionForecasts({ payload: [thsRow('诚通证券', '2026-09-18', 66.14)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const firstProof = first.pointProofs?.find((item) => item.matchedPeriod === '2026-FY' && item.matchedField === '预测年报每股收益2026预测')
+  const changedProof = changed.pointProofs?.find((item) => item.matchedPeriod === '2026-FY' && item.matchedField === '预测年报每股收益2026预测')
+  assert.ok(firstProof)
+  assert.ok(changedProof)
+  assert.equal(firstProof.sourceCandidateId, first.estimates.find((item) => item.fiscalPeriod === '2026-FY' && item.metric === 'eps')?.sourceCandidateIds[0])
+  assert.equal(firstProof.matchedValue, 65.14)
+  assert.notEqual(firstProof.observedRowHash, changedProof.observedRowHash)
+  assert.notEqual(firstProof.pointFingerprint, changedProof.pointFingerprint)
+  for (const proof of [firstProof, changedProof]) {
+    assert.equal(proof.basisStatus, 'UNVERIFIED')
+    assert.equal(proof.valueVersionStatus, 'UNVERIFIED')
+    assert.equal(proof.correctionStatus, 'UNVERIFIED')
+  }
+})
+
 test('THS success prevents EastMoney fallback calls', async () => {
   let thsCalls = 0
   let emCalls = 0
@@ -86,6 +106,8 @@ test('THS success prevents EastMoney fallback calls', async () => {
   assert.equal(emCalls, 0)
   assert.equal(result.status, 'available')
   assert.equal(result.projection.estimates.filter((item) => item.metric === 'net_profit').length, 2)
+  assert.equal(result.projection.pointProofs?.length, new Set(result.projection.estimates.map((estimate) => estimate.estimateId)).size)
+  assert.ok(result.projection.pointProofs?.every((proof) => proof.valueVersionStatus === 'UNVERIFIED' && proof.basisStatus === 'UNVERIFIED' && proof.correctionStatus === 'UNVERIFIED'))
   assert.ok(result.projection.estimates.filter((item) => item.metric === 'net_profit').every((item) => item.fiscalPeriod === '2026-FY'))
   assert.equal(result.providerOutcomes.find((item) => item.provider === 'eastmoney-individual-research-report')?.providerAttempted, false)
 })
@@ -112,6 +134,52 @@ test('EastMoney individual projection preserves PDF URL and date-only EOD', () =
   assert.equal(projection.estimates[0]?.unit, 'CNY_per_share')
   assert.equal(projection.estimates[0]?.publishedAt, '2026-08-21T15:59:59.999Z')
   assert.equal(projection.sources[0]?.candidate.url, 'https://pdf.dfcfw.com/pdf/西南证券.pdf')
+})
+
+test('EastMoney AKShare point proof changes with its source row and remains version-unverified', () => {
+  const first = projectAkshareEastmoneyResearchReports({ payload: [emRow('西南证券', '2026-08-21', 66.2)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const changed = projectAkshareEastmoneyResearchReports({ payload: [emRow('西南证券', '2026-08-21', 67.2)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const firstProof = first.pointProofs?.[0]
+  const changedProof = changed.pointProofs?.[0]
+  assert.ok(firstProof)
+  assert.ok(changedProof)
+  assert.equal(firstProof.matchedValue, 66.2)
+  assert.notEqual(firstProof.sourceCandidateId, changedProof.sourceCandidateId)
+  assert.notEqual(firstProof.pointFingerprint, changedProof.pointFingerprint)
+  assert.equal(firstProof.providerObjectId, undefined)
+  assert.equal(firstProof.valueVersionStatus, 'UNVERIFIED')
+  assert.equal(firstProof.correctionStatus, 'UNVERIFIED')
+  assert.equal(firstProof.basisStatus, 'UNVERIFIED')
+})
+
+test('acquisition rejects a point proof whose exact observed value does not join to its EstimatePoint', async () => {
+  const original = projectThsInstitutionForecasts({ payload: [thsRow('诚通证券', '2026-09-18', 65.14)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const tampered = { ...original, pointProofs: original.pointProofs?.map((proof) => ({ ...proof, matchedValue: proof.matchedValue + 1 })) }
+  const dataResolver = {
+    resolveOne: async (requirement: { readonly id: string; readonly dataKind: string; readonly metricId?: string }) => {
+      const acquisition = { requirementId: requirement.id, status: 'AVAILABLE', source: {}, quality: {}, attempts: [] }
+      return { requirementId: requirement.id, dataKind: requirement.dataKind, metricId: requirement.metricId, status: 'AVAILABLE', value: { kind: 'expectation', projection: tampered }, source: {}, required: false, quality: {}, attempts: [], acquisition }
+    },
+  } as unknown as DataResolver<EarningsDataPayload>
+  const source = new AkshareEarningsExpectationsSource({ dataResolver })
+  const result = await source.acquire({ company: COMPANY, asOf: AS_OF, targetFiscalYear: 2026, metric: 'eps' })
+  assert.deepEqual(result.projection.pointProofs, [])
+  assert.ok(result.projection.diagnostics.some((diagnostic) => diagnostic.startsWith('expectation_point_proof_join_rejected:')))
+})
+
+test('acquisition diagnoses an estimate that has no private point proof', async () => {
+  const original = projectThsInstitutionForecasts({ payload: [thsRow('诚通证券', '2026-09-18', 65.14)], company: COMPANY, asOf: AS_OF, retrievedAt: RETRIEVED })
+  const unproved = { ...original, pointProofs: undefined }
+  const dataResolver = {
+    resolveOne: async (requirement: { readonly id: string; readonly dataKind: string; readonly metricId?: string }) => {
+      const acquisition = { requirementId: requirement.id, status: 'AVAILABLE', source: {}, quality: {}, attempts: [] }
+      return { requirementId: requirement.id, dataKind: requirement.dataKind, metricId: requirement.metricId, status: 'AVAILABLE', value: { kind: 'expectation', projection: unproved }, source: {}, required: false, quality: {}, attempts: [], acquisition }
+    },
+  } as unknown as DataResolver<EarningsDataPayload>
+  const source = new AkshareEarningsExpectationsSource({ dataResolver })
+  const result = await source.acquire({ company: COMPANY, asOf: AS_OF, targetFiscalYear: 2026, metric: 'eps' })
+  assert.deepEqual(result.projection.pointProofs, [])
+  assert.ok(result.projection.diagnostics.some((diagnostic) => diagnostic.startsWith('expectation_point_proof_missing:')))
 })
 
 test('W2 assembly selects latest estimate per institution and builds two-institution consensus without averaging raw points', () => {

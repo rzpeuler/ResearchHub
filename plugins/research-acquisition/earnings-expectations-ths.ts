@@ -4,6 +4,7 @@ import type { NormalizedResearchSource, ResearchCompanyIdentity, ResearchProvide
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EstimateProjectionResult } from './earnings-expectation-source-eastmoney.ts'
 import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
+import { createEarningsEstimatePointProof, type EarningsEstimatePointProof } from './earnings-expectation-point-proof.ts'
 
 export const THS_INSTITUTION_FORECAST_INDICATOR = '业绩预测详表-机构' as const
 export const THS_PROVIDER = 'akshare-ths-institution-forecast' as const
@@ -93,6 +94,7 @@ export interface ThsProjectionInput {
 export function projectThsInstitutionForecasts(input: ThsProjectionInput): EstimateProjectionResult {
   const diagnostics: string[] = []
   const estimates: EstimatePoint[] = []
+  const pointProofs: EarningsEstimatePointProof[] = []
   const sources: NormalizedResearchSource[] = []
   const institutions = new Map<string, { readonly institutionKey: string; readonly name: string; readonly providerCode: string }>()
   let futureCount = 0
@@ -126,6 +128,19 @@ export function projectThsInstitutionForecasts(input: ThsProjectionInput): Estim
         sourceCandidateIds: [source.candidate.candidateId],
       }
       estimates.push(point)
+      pointProofs.push(createEarningsEstimatePointProof({
+        estimateId: point.estimateId,
+        sourceCandidateId: source.candidate.candidateId,
+        provider: THS_PROVIDER,
+        matchedField: field.key,
+        matchedMetric: point.metric,
+        matchedValue: value,
+        matchedUnit: point.unit,
+        matchedPeriod: point.fiscalPeriod,
+        matchedInstitutionKey: point.institutionKey,
+        matchedPublishedAt: point.publishedAt,
+        observedRow: row,
+      }))
       acceptedForRow += 1
     }
     if (acceptedForRow > 0) {
@@ -140,5 +155,5 @@ export function projectThsInstitutionForecasts(input: ThsProjectionInput): Estim
   sources.sort((left, right) => left.candidate.candidateId.localeCompare(right.candidate.candidateId))
   const uniqueDiagnostics = uniqueSorted(diagnostics)
   const providerOutcome: ResearchProviderOutcome = { provider: THS_PROVIDER, providerAttempted: true, providerSucceeded: estimates.length > 0, providerEmpty: rawRows.length === 0 || estimates.length === 0, providerFailed: uniqueDiagnostics.includes('ths_response_rows_invalid'), usableSourceCount: sources.length }
-  return { sources, estimates, institutions: [...institutions.values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey)), diagnostics: uniqueDiagnostics, providerOutcome, truncated: false }
+  return { sources, estimates, pointProofs: pointProofs.sort((left, right) => left.estimateId.localeCompare(right.estimateId)), institutions: [...institutions.values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey)), diagnostics: uniqueDiagnostics, providerOutcome, truncated: false }
 }

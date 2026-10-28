@@ -7,6 +7,7 @@ import type { ResearchCompanyIdentity, ResearchProviderOutcome } from '../../plu
 import { createEarningsDataResolver, hasConfiguredEarningsExpectationOperation, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import type { EarningsEastmoneyExpectationSource } from './contracts.ts'
 import type { EstimateProjectionResult } from './expectation-source-eastmoney.ts'
+import type { EarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
 
 const THS_SOURCE_ID = 'ths-institution-forecast'
 const EASTMONEY_SOURCE_ID = 'eastmoney-individual-research-report'
@@ -64,6 +65,38 @@ function failedAttempt(attempt: AcquisitionAttempt): boolean {
   return (attempt.status === 'UNSUPPORTED' || attempt.status === 'SOURCE_ERROR' || attempt.status === 'PARSE_ERROR' || attempt.status === 'TIMEOUT' || attempt.status === 'RATE_LIMITED' || attempt.status === 'ACCESS_DENIED') && !(attempt.sourceId === LEGACY_SOURCE_ID && attempt.diagnostic?.includes('LEGACY_REPORT_ROUTE_UNAVAILABLE'))
 }
 
+function exactPointProofs(estimates: EstimateProjectionResult['estimates'], projections: readonly EstimateProjectionResult[]): { readonly proofs: readonly EarningsEstimatePointProof[]; readonly diagnostics: readonly string[] } {
+  const candidates = projections.flatMap((projection) => projection.pointProofs ?? [])
+  const byEstimate = new Map<string, EarningsEstimatePointProof[]>()
+  for (const proof of candidates) byEstimate.set(proof.estimateId, [...(byEstimate.get(proof.estimateId) ?? []), proof])
+  const estimateById = new Map<string, EstimateProjectionResult['estimates'][number][]>()
+  for (const estimate of estimates) estimateById.set(estimate.estimateId, [...(estimateById.get(estimate.estimateId) ?? []), estimate])
+  const proofs: EarningsEstimatePointProof[] = []
+  const diagnostics: string[] = []
+  for (const estimateId of estimateById.keys()) {
+    if (!byEstimate.has(estimateId)) diagnostics.push(`expectation_point_proof_missing:${estimateId}`)
+  }
+  for (const [estimateId, matchingProofs] of byEstimate) {
+    const estimateMatches = estimateById.get(estimateId) ?? []
+    const proof = matchingProofs[0]
+    if (proof === undefined || matchingProofs.some((candidate) => JSON.stringify(candidate) !== JSON.stringify(proof)) || estimateMatches.length === 0 || estimateMatches.some((candidate) => JSON.stringify(candidate) !== JSON.stringify(estimateMatches[0]))) {
+      diagnostics.push(`expectation_point_proof_join_rejected:${estimateId}`)
+      continue
+    }
+    const estimate = estimateMatches[0]!
+    const exact = estimate.sourceCandidateIds.includes(proof.sourceCandidateId)
+      && proof.matchedMetric === estimate.metric
+      && proof.matchedPeriod === estimate.fiscalPeriod
+      && proof.matchedValue === estimate.value
+      && proof.matchedUnit === estimate.unit
+      && proof.matchedInstitutionKey === estimate.institutionKey
+      && proof.matchedPublishedAt === estimate.publishedAt
+    if (!exact) { diagnostics.push(`expectation_point_proof_join_rejected:${estimateId}`); continue }
+    proofs.push(proof)
+  }
+  return { proofs: proofs.sort((left, right) => left.estimateId.localeCompare(right.estimateId)), diagnostics: uniqueSorted(diagnostics) }
+}
+
 function providerOutcome(sourceId: string, items: readonly ResolvedDataItem<EarningsDataPayload>[]): ResearchProviderOutcome {
   const ids = sourceId === EASTMONEY_SOURCE_ID ? new Set([EASTMONEY_SOURCE_ID, LEGACY_SOURCE_ID]) : new Set([sourceId])
   const attempts = items.flatMap((item) => item.attempts.filter((attempt) => ids.has(attempt.sourceId)))
@@ -93,8 +126,9 @@ export class AkshareEarningsExpectationsSource implements EarningsExpectationsAc
     })
     const sources = [...new Map(successful.flatMap((projection) => projection.sources.map((source) => [source.candidate.candidateId, source] as const))).values()].sort((left, right) => left.candidate.candidateId.localeCompare(right.candidate.candidateId))
     const estimates = successful.flatMap((projection) => projection.estimates).sort((left, right) => left.estimateId.localeCompare(right.estimateId))
+    const pointProofResult = exactPointProofs(estimates, successful)
     const institutions = [...new Map(successful.flatMap((projection) => projection.institutions.map((institution) => [institution.institutionKey, institution] as const))).values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey))
-    const projection: EstimateProjectionResult = { sources, estimates, institutions, diagnostics: uniqueSorted([...diagnostics, ...successful.flatMap((item) => item.diagnostics)]), providerOutcome: { provider: PROVIDER_LADDER, providerAttempted: attempts.length > 0, providerSucceeded: estimates.length > 0, providerEmpty: estimates.length === 0, providerFailed: attempts.some(failedAttempt), usableSourceCount: sources.length }, truncated: successful.some((item) => item.truncated) }
+    const projection: EstimateProjectionResult = { sources, estimates, pointProofs: pointProofResult.proofs, institutions, diagnostics: uniqueSorted([...diagnostics, ...successful.flatMap((item) => item.diagnostics), ...pointProofResult.diagnostics]), providerOutcome: { provider: PROVIDER_LADDER, providerAttempted: attempts.length > 0, providerSucceeded: estimates.length > 0, providerEmpty: estimates.length === 0, providerFailed: attempts.some(failedAttempt), usableSourceCount: sources.length }, truncated: successful.some((item) => item.truncated) }
     const legacyOnly = this.options.legacyEastmoney !== undefined && !hasConfiguredEarningsExpectationOperation({ akshare: this.options.akshare })
     if (legacyOnly) {
       const legacyAttempts = attempts.filter((attempt) => attempt.sourceId === LEGACY_SOURCE_ID)

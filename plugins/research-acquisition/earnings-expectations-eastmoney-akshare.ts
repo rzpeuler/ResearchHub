@@ -3,6 +3,7 @@ import { normalizeEastmoneyTimestamp } from './expectations/eastmoney-report.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity, ResearchProviderOutcome } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EstimateProjectionResult } from './earnings-expectation-source-eastmoney.ts'
+import { createEarningsEstimatePointProof, type EarningsEstimatePointProof } from './earnings-expectation-point-proof.ts'
 
 export const EASTMONEY_AKSHARE_PROVIDER = 'akshare-eastmoney-research-report' as const
 export const EASTMONEY_AKSHARE_EPS_UNIT = 'CNY_per_share' as const
@@ -34,6 +35,7 @@ export interface EastmoneyAkshareProjectionInput {
 export function projectAkshareEastmoneyResearchReports(input: EastmoneyAkshareProjectionInput): EstimateProjectionResult {
   const diagnostics: string[] = []
   const estimates: EstimatePoint[] = []
+  const pointProofs: EarningsEstimatePointProof[] = []
   const sources: NormalizedResearchSource[] = []
   const institutions = new Map<string, { readonly institutionKey: string; readonly name: string; readonly providerCode: string }>()
   let futureCount = 0
@@ -64,7 +66,9 @@ export function projectAkshareEastmoneyResearchReports(input: EastmoneyAksharePr
       const value = finite(row[field.key])
       if (value === undefined) { diagnostics.push(`eastmoney_akshare_eps_invalid:${rowIndex}:${field.key}`); continue }
       if (Date.parse(publishedAt) > Date.parse(input.asOf)) { futureCount += 1; continue }
-      estimates.push({ estimateId: `eastmoney-estimate-${sha256(`${sourceId}|${input.company.symbol}|${institution}|eps|${field.fiscalYear}-FY|${publishedAt}|${value}`)}`, metric: 'eps', fiscalPeriod: `${field.fiscalYear}-FY`, value, unit: EASTMONEY_AKSHARE_EPS_UNIT, institutionKey: `eastmoney-org:${institution}`, publishedAt, sourceCandidateIds: [sourceId] })
+      const point: EstimatePoint = { estimateId: `eastmoney-estimate-${sha256(`${sourceId}|${input.company.symbol}|${institution}|eps|${field.fiscalYear}-FY|${publishedAt}|${value}`)}`, metric: 'eps', fiscalPeriod: `${field.fiscalYear}-FY`, value, unit: EASTMONEY_AKSHARE_EPS_UNIT, institutionKey: `eastmoney-org:${institution}`, publishedAt, sourceCandidateIds: [sourceId] }
+      estimates.push(point)
+      pointProofs.push(createEarningsEstimatePointProof({ estimateId: point.estimateId, sourceCandidateId: sourceId, provider: EASTMONEY_AKSHARE_PROVIDER, matchedField: field.key, matchedMetric: point.metric, matchedValue: value, matchedUnit: point.unit, matchedPeriod: point.fiscalPeriod, matchedInstitutionKey: point.institutionKey, matchedPublishedAt: point.publishedAt, observedRow: row }))
       acceptedForRow += 1
     }
     if (acceptedForRow > 0) {
@@ -79,5 +83,5 @@ export function projectAkshareEastmoneyResearchReports(input: EastmoneyAksharePr
   sources.sort((left, right) => left.candidate.candidateId.localeCompare(right.candidate.candidateId))
   const uniqueDiagnostics = uniqueSorted(diagnostics)
   const providerOutcome: ResearchProviderOutcome = { provider: EASTMONEY_AKSHARE_PROVIDER, providerAttempted: true, providerSucceeded: estimates.length > 0, providerEmpty: rawRows.length === 0 || estimates.length === 0, providerFailed: uniqueDiagnostics.includes('eastmoney_akshare_response_rows_invalid'), usableSourceCount: sources.length }
-  return { sources, estimates, institutions: [...institutions.values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey)), diagnostics: uniqueDiagnostics, providerOutcome, truncated: false }
+  return { sources, estimates, pointProofs: pointProofs.sort((left, right) => left.estimateId.localeCompare(right.estimateId)), institutions: [...institutions.values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey)), diagnostics: uniqueDiagnostics, providerOutcome, truncated: false }
 }

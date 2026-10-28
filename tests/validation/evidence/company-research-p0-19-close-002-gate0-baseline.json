@@ -1,0 +1,637 @@
+{
+  "evidenceType": "company-research-p0-19-close-002-gate0-baseline",
+  "capturedAt": "2026-10-28",
+  "task": "RHL-CQR-P0-19-CLOSE-002",
+  "gateStatus": "G0 frozen; implementation pending",
+  "repository": "https://github.com/rzpeuler/ResearchHub",
+  "branch": "codex/company-research-p0-01-06",
+  "startingHead": "0bc37b4d89ba02139e6ae09539b15a087a71a7ec",
+  "remoteHead": "0bc37b4d89ba02139e6ae09539b15a087a71a7ec",
+  "originMain": "51fd2112c0767a664bba4e887e7debb031fcf66e",
+  "mergeBaseWithMain": "51fd2112c0767a664bba4e887e7debb031fcf66e",
+  "unrelatedUiCommit": {
+    "sha": "1010df8",
+    "title": "feat(reports): improve report browsing and evidence navigation",
+    "disposition": "outside CLOSE-002 change scope; keep separate from CLOSE-002 delivery"
+  },
+  "preexistingWorktreeChanges": [
+    "plugins/research-acquisition/earnings-expectation-source-eastmoney.ts",
+    "plugins/research-acquisition/earnings-expectations-eastmoney-akshare.ts",
+    "plugins/research-acquisition/earnings-expectations-ths.ts",
+    "tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-thesis-authorized.json",
+    "tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-event-readonly.json",
+    "tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-industry-readonly.json",
+    "tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-thesis-references.json",
+    "tests/validation/evidence/company-quality-pi-default-deny.json",
+    "tests/workflows/earnings-expectation-source-eastmoney.test.ts",
+    "tests/workflows/earnings-expectations-acquisition-d1.test.ts",
+    "plugins/document/parsers/docling/bridge/__pycache__/",
+    "plugins/research-acquisition/earnings-expectation-point-proof.ts",
+    "runtime-launch.stderr.log",
+    "runtime-launch.stdout.log",
+    "tmp/"
+  ],
+  "acceptanceState": "NOT_ACCEPTED",
+  "sourceCodeRevision": "14f4d2a028ddbdcab6e369ef96cf36d503acc954",
+  "latestReadonlyPair": {
+    "model": "openai-codex/gpt-6-luna",
+    "writeKnowledge": false,
+    "knowledgeIntegrityMode": "readonly",
+    "artifacts": {
+      "002384": {
+        "reportJson": "6FA63686B889150551B42EAB66B3CE32F4246871F5A3D4BE99117D0E0D8917D4",
+        "markdownExport": "3C14D4FBB29AEE31BC434B9C99B98DE3E79F6897581C4519A46AA87F236EB91F",
+        "analysisSidecar": "72588193FAFF4C2E75FB2E07C0B07197619B8C23B9FA49F843E7F05AE34E98B3"
+      },
+      "002594": {
+        "reportJson": "2867B270318B21E334C28246935326DAB19FA734C094253BB80637B2C32390C1",
+        "markdownExport": "0F83C1CD96F5962402EAE69503E2C53CDF76E16F01A6ACF2F0324E986A036604",
+        "analysisSidecar": "60C877932829D114EB02AF13304402EC5599B4410DF5BC63926F4F646489DE35"
+      }
+    },
+    "runs": [
+      {
+        "symbol": "002594",
+        "runId": "82bcc425-d48d-4e55-bc45-111aa8c28ba4",
+        "coreSections": "17/19",
+        "methodSummary": "10/10 complete",
+        "semanticReviewAttempts": 0,
+        "failedSections": {
+          "bull-base-bear": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ],
+          "variant-perception": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        }
+      },
+      {
+        "symbol": "002384",
+        "runId": "860916a8-4958-4d29-8da1-56ad5dd1c2c6",
+        "coreSections": "17/19",
+        "methodSummary": "10/10 complete",
+        "semanticReviewAttempts": 0,
+        "failedSections": {
+          "bull-base-bear": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ],
+          "variant-perception": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        }
+      }
+    ],
+    "kbHashes": {
+      "manifest.yaml": "face39bd8ec6d6548d1a998edc2583b6e8d6db7e9a4dbd0cb2f0e6b3f901d0c9",
+      "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "localArtifactDirectory": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/ (ignored, reports and sidecars retained locally)"
+  },
+  "priorFailingRun": {
+    "runId": "88f73a4f-0b7b-4e9e-9f2f-e0751a88bf37",
+    "symbol": "002594",
+    "method": "company_risk_analysis",
+    "target": "finding-5",
+    "exactRow": "official-c19c34dd239b2e9c@paragraph:4821",
+    "rawArtifacts": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-post-cbfb0b5/ (ignored)",
+    "preserved": true
+  },
+  "sourceScope": {
+    "bydCandidateCount": 42,
+    "bydCandidates": [
+      {
+        "candidateId": "official-f7c8d23d2829a5e8",
+        "title": "2025年年度报告",
+        "publishedAt": "2026-03-27T16:00:00Z",
+        "contentHash": "51b0acae9aca05f698070fa41027809b86b425bb93d31a509005b192c78ee5a0"
+      },
+      {
+        "candidateId": "official-f6274e510499a654",
+        "title": "2024年年度报告",
+        "publishedAt": "2025-03-24T16:00:00Z",
+        "contentHash": "a805c2253568d51c6e10928a596cbc6473521d18c2856909c11c88ffbceb5717"
+      },
+      {
+        "candidateId": "official-c19c34dd239b2e9c",
+        "title": "2026年半年度报告",
+        "publishedAt": "2026-08-28T16:00:00Z",
+        "contentHash": "c521306221e896b4cbfbdf18a84d18fadf409db5bea7a8d3ef70a08c4f366ca6"
+      },
+      {
+        "candidateId": "public-web-111b662fa22715aa",
+        "title": "比亚迪 products_models page",
+        "publishedAt": null,
+        "contentHash": "8b9e3a2e70d94db17cb9755dfb4e62a96b13555e1a158dc1e7896e22d60bff38"
+      },
+      {
+        "candidateId": "public-web-1af89c8cc881a0b2",
+        "title": "比亚迪 model_price_launch page",
+        "publishedAt": null,
+        "contentHash": "c6d1b897b1f6890adf72dd183713312bf5f06d479d91055f093a1079d4811083"
+      },
+      {
+        "candidateId": "public-web-5d5c2c25e92e9b4a",
+        "title": "比亚迪 sales_delivery page",
+        "publishedAt": null,
+        "contentHash": "3e1428eb1759378dea6b329ede6cb71816cdd0e18230f004bc848ba973c55146"
+      },
+      {
+        "candidateId": "public-web-b40b26fb21f952ce",
+        "title": "比亚迪 china_nev_market page",
+        "publishedAt": null,
+        "contentHash": "bc4f55b1ca0dc708e37de0c8c53a9ed78cc722c05f6461248ed01ffae23ebc67"
+      },
+      {
+        "candidateId": "public-web-650c2046590f913d",
+        "title": "吉利银河E8 官方车型与配置",
+        "publishedAt": null,
+        "contentHash": "a9509a115ea32f468073657f0fd1f645948d52234052366d3f93b5b50df3f405"
+      },
+      {
+        "candidateId": "public-web-7b03b36fe1ff595a",
+        "title": "企业简介",
+        "publishedAt": null,
+        "contentHash": "324c5081ebec48722ff220aca47d54ea8c45e0e154bfd2be1024d604920a2872"
+      },
+      {
+        "candidateId": "public-web-68b7fdc6aa5a0823",
+        "title": "GEELY吉利汽车-造每个人的智能精品车 -吉利汽车官方网站",
+        "publishedAt": null,
+        "contentHash": "788dddb9c8d3003e0651300829ba3ab53e47140e8d4f29e48900b1a0dbeb27ac"
+      },
+      {
+        "candidateId": "public-web-33230a8f44bbb217",
+        "title": "吉利银河-新能源架构造车引领者-吉利银河汽车官方网站",
+        "publishedAt": null,
+        "contentHash": "4a2edc5a38beb7aeeddacc8fe43b2443067531a0c1fbc94fc017412d1683fc83"
+      },
+      {
+        "candidateId": "public-web-a61d87bdd443ca96",
+        "title": "吉利汽车集团官网",
+        "publishedAt": null,
+        "contentHash": "586daec533ebc7cecd247966f47ffca67da9cbbbb3572e8bfdbebeac5ff044b8"
+      },
+      {
+        "candidateId": "akshare-financial-002594",
+        "title": "Company financial history",
+        "publishedAt": null,
+        "contentHash": "e53f57b48168e99af65db0583011b230157a4c4c23968671111581f114f3b3d8"
+      },
+      {
+        "candidateId": "company-valuation-market-002594-2026-10-27",
+        "title": "Company Research read-only market close 002594 2026-10-27",
+        "publishedAt": "2026-10-27",
+        "contentHash": "f77c6e4c32206b95dae058b076c2ec542254f4a30d49395324b3aa0e356f89ba"
+      },
+      {
+        "candidateId": "ths-institution-1a4ec86fd02fb02431f1462b570c66c1599034abaef7da8ea4ba1ecd03930d4c",
+        "title": "Tonghuashun institution forecast: 国海证券",
+        "publishedAt": "2026-09-11T15:59:59.999Z",
+        "contentHash": "06f56f2ae5f08d5750231196f67740f9a1c65138133f5019f49b61c0a8b90e53"
+      },
+      {
+        "candidateId": "ths-institution-38240439ea4301905e8ef19aacf67fb7e532725deb2f612a2331790db0d6d725",
+        "title": "Tonghuashun institution forecast: 广发证券",
+        "publishedAt": "2026-10-07T15:59:59.999Z",
+        "contentHash": "08660170abab457d04e6c3bb6ccf18d47e73d958a2636a1ea6dfddc6f5c6b7a7"
+      },
+      {
+        "candidateId": "ths-institution-52d8251467a78192fbcf481a789d0a04e5d819fd4c4b12e53d34caa4e331b806",
+        "title": "Tonghuashun institution forecast: 浙商证券",
+        "publishedAt": "2026-09-19T15:59:59.999Z",
+        "contentHash": "c5a1f896bf4709f096ea0c180a349966e285108b0e851a4b47bf6e3f06ebc03f"
+      },
+      {
+        "candidateId": "ths-institution-762150bd4ffb586c8a4faba1642d6824fe192034cd952e673a85b971e0508745",
+        "title": "Tonghuashun institution forecast: 东方证券",
+        "publishedAt": "2026-10-06T15:59:59.999Z",
+        "contentHash": "0812f945f92930231b4b552496db6f134902fc899df36065643deaf68468d0db"
+      },
+      {
+        "candidateId": "ths-institution-8d3f3af2ef920b840ef2885d9d95476faec4b5c10a02520b5c63947c3cc2633a",
+        "title": "Tonghuashun institution forecast: 西部证券",
+        "publishedAt": "2026-09-19T15:59:59.999Z",
+        "contentHash": "cba763855473c5f1adf033ecb05119bd57179042fee7c63555f9645cc7cb7105"
+      },
+      {
+        "candidateId": "ths-institution-9c69c733b5448428900f6bc907f0d439d308aef4edc68d53283f56319a809be7",
+        "title": "Tonghuashun institution forecast: 湘财证券",
+        "publishedAt": "2026-10-17T15:59:59.999Z",
+        "contentHash": "a014813164c908b0a97ac3ef39695d4cbdff3bcc1f4883dad98fbbcd08b79b1c"
+      },
+      {
+        "candidateId": "ths-institution-d353aee2ccadd02e0e4b8de1cf6ef75fc18b83e27103b4f85498f2f2dd3a05b9",
+        "title": "Tonghuashun institution forecast: 东吴证券",
+        "publishedAt": "2026-10-07T15:59:59.999Z",
+        "contentHash": "0f34d03eb6362b12a41c77fd4046a1657dda30ff86a974fec19e377aa46269c8"
+      },
+      {
+        "candidateId": "ths-institution-dff56ef632836598c6d229a886addfc9d7830a3b2c03800c04c4dcb795b4ae2d",
+        "title": "Tonghuashun institution forecast: 中国银河",
+        "publishedAt": "2026-09-20T15:59:59.999Z",
+        "contentHash": "3fdb48543201f6798a0ee59a875168fd5209c6baa8949b6bfabefb547b366ea4"
+      },
+      {
+        "candidateId": "ths-institution-e660e066773df0590b6d876abd19027e2b5ddb4131f0e8b1883f286ed0b4aa72",
+        "title": "Tonghuashun institution forecast: 国联民生",
+        "publishedAt": "2026-10-02T15:59:59.999Z",
+        "contentHash": "3f699b4d3cd84a91027270970fc56d01626be1b408992f6f18d35955960c5c97"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-0d757e2537242c3da98c714cc98d196f0d495b083eafd194c8a7b6e2da34bcf7",
+        "title": "闪充中国,SHENZHEN世界",
+        "publishedAt": "2026-09-04T15:59:59.999Z",
+        "contentHash": "faec23827f0ecae35af5e9f789a052088313829de39fb51e6fce80638891a0b8"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-2969063652bf2eae9538afdfb25475930b464c8333992561db6c51e946d86008",
+        "title": "盈利能力回升,电车出口贡献核心增量",
+        "publishedAt": "2026-09-09T15:59:59.999Z",
+        "contentHash": "f5f0b16eb537a4a596f622b03d60627929a52d42d595fe2eaa1b50935eb98f97"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-445414013658f3b0ea3fa87f41002760c2bf1efee7cb6522c022e9500cf116ee",
+        "title": "海外市场跨越式增长,新技术未来可期",
+        "publishedAt": "2026-09-11T15:59:59.999Z",
+        "contentHash": "0a95c9e6d7e9c273321f0b9b37000ee9be7baf22eff72dbf3899797190278460"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-52f20f615e15d739cbc0a3d439b0ae4d79a911db8636ca94c6d339f2f17bf4d9",
+        "title": "海外销量增长迅猛,盈利能力开始改善",
+        "publishedAt": "2025-11-05T15:59:59.999Z",
+        "contentHash": "87c3ed78b018c46a3f64afa84d23c52f21930ba2a29d81add3aa68ccd573bb60"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-53d7141042a1b2e249680b071824f1e02149f105023a716349093a6adde097ff",
+        "title": "深度报告:技术驱动后期大众市场,产能出海加速全球突破",
+        "publishedAt": "2026-05-24T15:59:59.999Z",
+        "contentHash": "0c299698f712dc57ca8cc2b74c8fdd2e3e1ecd544729c06d07ef3a4583408467"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-5433b5a57a282fa338af0a6573352b410b31caf5bd831975b0cbf1413dabf113",
+        "title": "需求东风拂面,深耕业务多面开花",
+        "publishedAt": "2025-11-14T15:59:59.999Z",
+        "contentHash": "18a6a3568ffe2ced9fb8c26bc29b84288bc6f9047bda8c4351d015301ff61b52"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-5af3c07869e7dc32be8d072d15c6a7f8ffc76f430d80cf02e0e83fd4c11d5e40",
+        "title": "海外扩张加速,DM-i 5.0油耗进一步降低",
+        "publishedAt": "2025-08-13T15:59:59.999Z",
+        "contentHash": "abf10013081b52e6aa89982143619f34f1fa44d6994fab4eca5e917e7a5f8722"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-5b96b292987709fea86e743d712c4ca7f2be779f88f0948e43359e96e31251ff",
+        "title": "25Q1销量突破100万辆,海外大增111%",
+        "publishedAt": "2025-04-07T15:59:59.999Z",
+        "contentHash": "5e69f3831af419e3302a0c364a7375c3afe66ceb79f8f84f6988ae17cc378610"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-741f5b1573587e3368703d6cb694c2026b91439ab7d804e961f9e986f048050d",
+        "title": "2Q26 earnings signal enhanced cost discipline",
+        "publishedAt": "2026-08-31T15:59:59.999Z",
+        "contentHash": "7be53ba6827a70f94ce5ca6e1a836c1456315eebbf6570fed0811a3f8bd48edc"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-79e833bf834269b422cb92992d98d760a3687011aa227aa6a029c1c02e37773f",
+        "title": "公司点评:短期汇兑扰动,出海+高端化韧性显现",
+        "publishedAt": "2026-04-30T15:59:59.999Z",
+        "contentHash": "172e8cdd925d1a91a186cfa9d0faa5ebcd07794ba0a2fac1584474e5472521c9"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-804a4abf161c0799bb58648498e0241cff203042a8b58f7db5bc15d0be32f3a9",
+        "title": "2025年11月销量点评报告:出口销量环比+57.2%,看好出海带动盈利能力修复",
+        "publishedAt": "2025-12-03T15:59:59.999Z",
+        "contentHash": "2aabbc0fc01db1866ec6a40918acd6e1ac25f8be7889c5bc5f04590b68bd711a"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-920bce65d49d8b4ffe3f8e9323002d5ccb808913525587b8217545d29dd01e52",
+        "title": "26Q2业绩符合预期,还原汇兑后利润增长亮眼",
+        "publishedAt": "2026-08-30T15:59:59.999Z",
+        "contentHash": "ac30d07f8e561473977f7fdbd8547e06d13a207bd0421313fc38c6d8e1bcd653"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-9a42de6b3f908ed6b905da257b0b4e52a213d5477eca2d8d6603ac7f4732a42b",
+        "title": "24年业绩同比高增,智能化、高端化、全球化全面提速",
+        "publishedAt": "2025-03-28T15:59:59.999Z",
+        "contentHash": "641ed9cbba7b7edf8ceba87fc2b1c2d409d052e34eb93fcbb49b3c02583918c4"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-9e3f27d4a145107062440f376f01b57ecf92237002d0526a6391b55d2cc81c1a",
+        "title": "公司点评:同比高增 出海仍可期",
+        "publishedAt": "2024-12-06T15:59:59.999Z",
+        "contentHash": "4880dd8737ddd8c4a14f46dee893e598e51648627de586b8b832f5391453e097"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-afb94d85f63c72f9abccac791306054eb975eb5b12557bca7981b8b57c931fde",
+        "title": "销量持续攀升,二季度单车利润逆势增长",
+        "publishedAt": "2024-08-30T15:59:59.999Z",
+        "contentHash": "3cfca2de17aaa86a25ede0ec9ceb1769da0c851b4ed50d02fa45556d225071a4"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-b93bb6420bed43fa77bbd20f8672fc1da4d937bc9b059f8789eca4d3d0c3f0e5",
+        "title": "公司2024年净利润YOY+34%,销量保持高增,建议“买进”",
+        "publishedAt": "2025-03-25T15:59:59.999Z",
+        "contentHash": "91fb5cbfb5687a12eded7358b542ba87e847a5654654d69b746cbd7710770708"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-f05495e19bd5daf8838ce9a73e2431b5f2f0954a5784400931712e7def7168f4",
+        "title": "2025年半年报点评:Q2利润有所下滑,出海业务稳步推进",
+        "publishedAt": "2025-09-02T15:59:59.999Z",
+        "contentHash": "9fe1fa5322e89937253ca1bf870f67f7d98ea75a71ee66613d10cc9cfa6c45aa"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-f1988c57a4fca59428128535c82f2d1f798a9e8982506fba4493658a9d72476a",
+        "title": "公司信息更新报告:Q2业绩同环比高增,海外市场持续发力",
+        "publishedAt": "2026-09-01T15:59:59.999Z",
+        "contentHash": "1e15c8a1944cf2524f14e71ad9dc451f533b925b7fa950f0ca2641f04f30c350"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-faff1f1a193b590580b992794fcda3773e4ba15d087376a8d52c9e8ad8b92f28",
+        "title": "系列点评三十六:批发销量环比回升 高端、出海逐步突破",
+        "publishedAt": "2025-11-03T15:59:59.999Z",
+        "contentHash": "55f06beed13c8811dc5741dac4d4e562b520a133ed6889fde93b4d85be26d9f8"
+      }
+    ],
+    "dongshanCandidateCount": 25,
+    "dongshanCandidates": [
+      {
+        "candidateId": "official-39e591fa149e4543",
+        "title": "2025年年度报告",
+        "publishedAt": "2026-04-21T16:00:00Z",
+        "contentHash": "8009fc94cc5a754b4cf5c18132217ce704c216484c2922d74d92f7f008ba3330"
+      },
+      {
+        "candidateId": "official-135019c30466a0c8",
+        "title": "2024年年度报告",
+        "publishedAt": "2025-04-24T16:00:00Z",
+        "contentHash": "a350bd321a13088e5e418cb4d472607c727f1d3a9c396f6e882d002fc452a2b8"
+      },
+      {
+        "candidateId": "official-296fff2b2889c26f",
+        "title": "2026年半年度报告",
+        "publishedAt": "2026-08-21T16:00:00Z",
+        "contentHash": "6500c4e7c05ab455ebbbfc5eba1fa7ede7a48d6be171c53c4edc87c4682f707a"
+      },
+      {
+        "candidateId": "public-web-126ee2b2aac40359",
+        "title": "InnoLight Technology - The World's Leading Developer and Manufacturer ...",
+        "publishedAt": null,
+        "contentHash": "13b7a93940632ac1124e4cff110e005da7ee83c1a60467efe0b8abb735be81ed"
+      },
+      {
+        "candidateId": "public-web-77d9552df41de1a2",
+        "title": "About InnoLight",
+        "publishedAt": null,
+        "contentHash": "bdfe40998ba15cd0f08315820305e0049e8d303ca75b39f78f97e2d4b09f8a31"
+      },
+      {
+        "candidateId": "public-web-81fba475c168ce3c",
+        "title": "投资者提问:请问,公司800G,1.6T光模块产品生产规模多大?能否满...",
+        "publishedAt": null,
+        "contentHash": "b222cf77d60301332a881748283fa14aed12149c3dda67a10587e6d7a1fd98cd"
+      },
+      {
+        "candidateId": "public-web-2e4e8f90fb9e55d6",
+        "title": "中际旭创：800G产品中AI需求已过半 未来三年未看到光模块“天花板...",
+        "publishedAt": null,
+        "contentHash": "2f75294be7dd9e226202b087758b83364fee4fa08e6d9225fd7582ff44f41835"
+      },
+      {
+        "candidateId": "public-web-7092914a670f51f8",
+        "title": "中际旭创：800G光模块产品仍在持续放量中",
+        "publishedAt": null,
+        "contentHash": "a7ef9eaf1a498dcbb9f76286d9631c8dbb1953d3af88bbdc954dcb983276548c"
+      },
+      {
+        "candidateId": "public-web-6ef099ef124224f5",
+        "title": "中际旭创2023年中报点评报告:业绩符合预期,800G放量有望增厚业...",
+        "publishedAt": null,
+        "contentHash": "caeb0ec3ea17cde109393cb1836af0a144437214806af45f24f9b2671b32aae8"
+      },
+      {
+        "candidateId": "public-web-9a60d3ab18791a66",
+        "title": "光模块中际旭创2024年财报-今日头条",
+        "publishedAt": null,
+        "contentHash": "75a24b2555b1dadb4c9d8548e9a35008fcc3d0b4c9ac9573189225c61fa7c83d"
+      },
+      {
+        "candidateId": "akshare-financial-002384",
+        "title": "Company financial history",
+        "publishedAt": null,
+        "contentHash": "5696f40e6295a5e5f9500ac52543562171bc80c90490bb448ede4b8371f5c230"
+      },
+      {
+        "candidateId": "company-valuation-market-002384-2026-10-27",
+        "title": "Company Research read-only market close 002384 2026-10-27",
+        "publishedAt": "2026-10-27",
+        "contentHash": "02343a12044283eb13e414f947d4dc86678d989c62e0504a8c8e2a5f86f25b0c"
+      },
+      {
+        "candidateId": "ths-institution-1eeca550b3f48876041cea01536bba455c8df681e5f9f219aa719731bed6d1fd",
+        "title": "Tonghuashun institution forecast: 中泰证券",
+        "publishedAt": "2026-08-24T15:59:59.999Z",
+        "contentHash": "0a9fabbeeb68dcd1dba9e342203dc71a8df9c1b1d72d7ef6b5be69d3bbb0829a"
+      },
+      {
+        "candidateId": "ths-institution-43259ca441e6fdeb8367b5f84803406a3d616563db03b22be3fed5b197dae6a3",
+        "title": "Tonghuashun institution forecast: 国盛证券",
+        "publishedAt": "2026-08-23T15:59:59.999Z",
+        "contentHash": "1e9fa668d9cd1f0428b4ad614bcdad18ec44f11c7ee0391a8edab78c29ecd655"
+      },
+      {
+        "candidateId": "ths-institution-b8f8d25887b23dc18b71bc1bdb9f938fb0e37bab93a6158c5683a704080a692c",
+        "title": "Tonghuashun institution forecast: 中国银河",
+        "publishedAt": "2026-08-20T15:59:59.999Z",
+        "contentHash": "78666c32c50f02e19f60c10d8ce985c81b5668f967c27aa307bb0565ae6ce254"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-03d2bceac83d3b2e93b76a77a4667aa084b51f6243d9a2fef4e387e31b90627f",
+        "title": "智造时代,共创辉煌",
+        "publishedAt": "2025-07-02T15:59:59.999Z",
+        "contentHash": "619ee94183282cf15b5b313848e20cbd495459f93558e5d651da06d28c4da48c"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-139de6c9bd8340e81a1cf2d2d199112144c31cb4479ee312d0fb7fd6199c9f4f",
+        "title": "光模块与高端PCB双轮驱动AI基建新龙头",
+        "publishedAt": "2026-03-30T15:59:59.999Z",
+        "contentHash": "4c6093b533afce0a4ef876ba50c6d09c05f70923fe7fa1a0579c794537eb180e"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-14179bf9407e314b6ffe860ffe78db496203a7d07e0d1214f56488026837fdd6",
+        "title": "事件点评:算力追光者,东山精密收购索尔思光电",
+        "publishedAt": "2025-06-16T15:59:59.999Z",
+        "contentHash": "8f43431e7b0b835b46106cb959efa47510e41f7eaa7cafa2303273d1e20e788d"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-3501af8fefb1baa8b17a22d3e032c1d8ab6f6a48f94b4966cb33529a06dbbd08",
+        "title": "公司信息更新报告:2026H1业绩强劲增长,“AI PCB与光模块”双核领航成长",
+        "publishedAt": "2026-08-26T15:59:59.999Z",
+        "contentHash": "ede3c5d91a3fdf14258d986929ea52b8979ad0783bcf827354107c5e89cbb29a"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-3e64039ab3d76d232f7916ff84404c140c7f18eef1092cc521f17ff8a43cc309",
+        "title": "新兴应用迭出,PCB+汽车电子双轮驱动",
+        "publishedAt": "2024-05-07T15:59:59.999Z",
+        "contentHash": "ac5507caa7893a19f8c2fb8adea473997e8c491fd8086f806b22a642a8e0c106"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-583bad8476e2dcfcf4bd76d56bddf929cfeacfa04ded930205a3367b16e491e0",
+        "title": "消费电子受益AI增量稳健增长,新能源加速推进",
+        "publishedAt": "2024-10-31T15:59:59.999Z",
+        "contentHash": "32754f002445d4949b49ad9544a9ff96615c0f1c57ae9d003da2b53505247554"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-5894a37f802d4d538d9040088284f38c602b0d834077e7b445e1f7863d700b32",
+        "title": "2024年三季报点评报告:三季度收入增长符合预期,新能源收入增速较高",
+        "publishedAt": "2024-11-09T15:59:59.999Z",
+        "contentHash": "b578bade489eba34411f8f0f14a97025437b75a71c82b3cf3ddafaa7c23f0ef9"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-a8e95ded100c251ac2524611fe72e59ff86563a63c80d8c6495371de104bdddc",
+        "title": "非线路板业务盈利改善,一季度归母净利润高增",
+        "publishedAt": "2025-05-12T15:59:59.999Z",
+        "contentHash": "962138041f83d88abdbdefe0d0d4c91d5434f04f6e64ba2928e44dd63096214a"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-d32038e155308cd6c87e91595631603ef6a5aeedd6c7c1b3dcb5ad0ca60e47ba",
+        "title": "深耕优势赛道,多元布局开启新程",
+        "publishedAt": "2026-04-17T15:59:59.999Z",
+        "contentHash": "e13f63e210cd1f7cd0cf9700e186f4b0f053e9b646e44d7a8c656ade7c328b24"
+      },
+      {
+        "candidateId": "eastmoney-akshare-report-fda3c1f2dd5a3bbb32e207c3baef9cd4bd237c3dd013f30188556d694621d849",
+        "title": "东山精密2026年半年报:AI需求旺盛,光模块+AI PCB双轮驱动",
+        "publishedAt": "2026-09-02T15:59:59.999Z",
+        "contentHash": "8d809bcf2ae28b9c73b89df782921f78ac93d2f559359f643100ec7b42f05a21"
+      }
+    ],
+    "contentIncluded": false,
+    "inventoryFields": [
+      "candidateId",
+      "title",
+      "publishedAt",
+      "contentHash"
+    ]
+  },
+  "regressionBaseline": {
+    "approvedRevision": "dcfb144b0a81f0f3995bf1f64c9371e98c487ad5",
+    "node": {
+      "command": "npm run test:node",
+      "baselineFailed": 21,
+      "currentFailed": 21,
+      "added": [],
+      "disappeared": [],
+      "failureIdentities": [
+        {
+          "filePath": "tests\\app\\services\\research-skill-architecture.test.ts:1:5691",
+          "testTitle": "Workflow metadata composes canonical peers without registering composite Skill IDs"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:12952",
+          "testTitle": "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:13930",
+          "testTitle": "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:15855",
+          "testTitle": "semantic section classification receives only readable facts and cannot block the base projection"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:17744",
+          "testTitle": "current restricted or expired source rights suppress company exposures and dependent competition data"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:18732",
+          "testTitle": "company projection is readable through a canonical business exposure without adding a company graph node"
+        },
+        {
+          "filePath": "tests\\app\\services\\theme-workspace-projection.test.ts:1:19176",
+          "testTitle": "stale expected revision and a corrupt scope ledger fail closed"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:6226",
+          "testTitle": "Gateway creates a competition Module and maps its local proposal ID"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:7336",
+          "testTitle": "Gateway blocks numeric Module cells that disagree with their canonical facts"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:8564",
+          "testTitle": "same Industry table replays idempotently with the same canonical Module ref"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:10643",
+          "testTitle": "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:12995",
+          "testTitle": "same Claim may support a canonical numeric display update after new provenance is admitted"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:15436",
+          "testTitle": "Module blocks the whole submit when a cell reference cannot resolve"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:16421",
+          "testTitle": "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:4:394",
+          "testTitle": "Module blocks when the row Source payload is unusable"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:4:1165",
+          "testTitle": "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:728",
+          "testTitle": "new Claim provenance alone cannot justify a contradictory same-reference display value"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:2516",
+          "testTitle": "Writer rejection does not report success or overwrite the prior Module"
+        },
+        {
+          "filePath": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:4376",
+          "testTitle": "different rows may retain different currencies and a changed column schema blocks for review"
+        },
+        {
+          "filePath": "tests\\validation\\codex-module-remaining-schema-deltas.test.ts:1:3030",
+          "testTitle": "composition is source-immutable, deterministic and idempotent"
+        },
+        {
+          "filePath": "tests\\validation\\codex-production-industry-schema-compatibility.test.ts:1:1402",
+          "testTitle": "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+        }
+      ],
+      "rawLog": "tmp/p0-19-node-dcfb144.log (ignored)"
+    },
+    "client": {
+      "command": "npm run client:test",
+      "baselineFailed": 5,
+      "currentFailed": 5,
+      "added": [],
+      "disappeared": [],
+      "failureIdentities": [
+        "src/App.test.tsx > Homepage shell > searches and filters server conversation titles and refreshes server-authoritative rename/archive state",
+        "src/App.test.tsx > Homepage shell > keeps rename open after a version conflict and retries with the refreshed version",
+        "src/App.test.tsx > Homepage shell > moves archived conversations into the archive view and restores them to active history",
+        "src/app/report-navigation.test.tsx > Report navigation and original conversation artifacts > opens a no-report bundle from its durable original conversation Activity",
+        "src/app/report-navigation.test.tsx > Report navigation and original conversation artifacts > rejects another run returned to a conversation artifact request"
+      ],
+      "rawLog": "tmp/p0-19-client-dcfb144.log (ignored)"
+    }
+  },
+  "worktreeHandling": "Pre-existing tracked evidence modifications and ignored/local artifacts were preserved; none is staged by CLOSE-002.",
+  "endingSha": null
+}

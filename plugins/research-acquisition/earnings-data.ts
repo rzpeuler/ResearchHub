@@ -65,8 +65,9 @@ function publicationForSelectedFinancialRows(value: unknown, fiscalYear: number,
 
 function filterProjection(projection: EstimateProjectionResult, metric: 'eps' | 'net_profit', fiscalYear: number): EstimateProjectionResult {
   const estimates = projection.estimates.filter((estimate) => estimate.metric === metric && estimate.fiscalPeriod === `${fiscalYear}-FY`)
+  const estimateIds = new Set(estimates.map((estimate) => estimate.estimateId))
   const sourceIds = new Set(estimates.flatMap((estimate) => estimate.sourceCandidateIds))
-  return { ...projection, estimates, sources: projection.sources.filter((source) => sourceIds.has(source.candidate.candidateId)) }
+  return { ...projection, estimates, pointProofs: projection.pointProofs?.filter((proof) => estimateIds.has(proof.estimateId)), sources: projection.sources.filter((source) => sourceIds.has(source.candidate.candidateId)) }
 }
 
 function latestPublication(projection: EstimateProjectionResult): string | undefined {
