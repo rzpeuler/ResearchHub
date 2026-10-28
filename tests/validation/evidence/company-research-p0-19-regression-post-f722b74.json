@@ -1,0 +1,28 @@
+{
+  "task": "RHL-CQR-P0-19-CLOSE-002",
+  "testedSourceSha": "f722b745791873bc45ebb63b973a823836d56fa4",
+  "baselineEvidence": "company-research-p0-19-close-002-gate0-baseline.json",
+  "baselineSha": "dcfb144b0a81f0f3995bf1f64c9371e98c487ad5",
+  "node": {
+    "command": "npm run test:node",
+    "result": "BASELINE_FAILURES_IDENTICAL",
+    "baseline": { "tests": 3189, "passed": 3168, "failed": 21 },
+    "current": { "tests": 3216, "passed": 3195, "failed": 21 },
+    "newFailures": 0,
+    "disappearedFailures": 0,
+    "changedFailures": 0,
+    "failureRecordSha256Baseline": "ea9456822eb399823da77ebb712d491ab8df59790e154dd1d6e857e3a75e0fa0",
+    "failureRecordSha256Current": "ea9456822eb399823da77ebb712d491ab8df59790e154dd1d6e857e3a75e0fa0"
+  },
+  "client": {
+    "command": "npm run client:test",
+    "result": "BASELINE_FAILURES_IDENTICAL",
+    "baseline": { "tests": 223, "passed": 218, "failed": 5 },
+    "current": { "tests": 223, "passed": 218, "failed": 5 },
+    "newFailures": 0,
+    "disappearedFailures": 0,
+    "changedFailures": 0,
+    "failureIdentitiesSource": "baselineEvidence.regressionBaseline.client.failureIdentities"
+  },
+  "interpretation": "Full suites have inherited failures and are not passing. Node current failure records are byte-stable after path/elapsed-time normalization; client (filePath, testTitle) identities match the baseline list."
+}
