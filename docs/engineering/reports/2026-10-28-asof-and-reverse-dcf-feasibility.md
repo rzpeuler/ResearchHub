@@ -6,8 +6,9 @@
 
 ## 结论
 
-- 已确认并修复两项私有 Workflow 语义缺陷：当前运行中的来源抓取时间晚于运行开始，不再单独使已在 `asOf` 前公开且逐点证明完整的预期失效；历史 `asOf` 仍拒绝截止后抓取。市场收盘价须有与上海日收盘规则相符的 `observationAvailableAt`，且该时点不晚于 `asOf`。
-- Reverse DCF / Price-implied Expectation 在保存证据下对两家公司都**不可行**。目前只有部分可用输入，缺少股数、完整净债务口径，以及经独立复核的前瞻 FCFF、WACC 和终值假设。没有实施替代预期面。
+- 已修复当前动态来源快照的私有 Workflow 校验：来源原文哈希和原始预测行须与点证明一致；采集、快照捕获、封存必须按 `retrievedAt <= snapshotCapturedAt <= snapshotSealedAt <= asOf` 排序。迟到获取后伪造较早封存会被拒绝。当前实现没有可独立信任的不可变历史版本验证器，因此历史模式一律拒绝把 `valueVersionId`、状态字符串或非空哈希当作已验证版本。
+- 合并旧字段盘点及 Recovery 003 官方披露复核后的结论是：Reverse DCF / Price-implied Expectation 在现有保存数据下对两家公司都**不可行**。BYD 的 A/H 股数有部分官方披露支持，但无同截止 H 股价格及完整 EV 桥；东山截止时 H 股尚未挂牌，禁止使用截止后价格，HKD 86.80 IPO 发行价也不是可交易报价。两家公司均缺同截止完整 EV 桥和经独立复核的前瞻 FCFF、WACC 与终值输入。没有实施替代预期面。
+- 之前“单凭已保存数据无法判断股数”的概括已被官方 CNINFO 披露复核细化：BYD A/H 股数、东山 A 股基数/回购及 IPO 条款有来源定位；这不消除市场价格、稀释和 EV 桥缺口。
 - 本审计不改变 19/19 核心章节和独立语义复核标准。现有对应运行仍为 17/19、`blocked`；不能把本地规则测试视为真实公司验收。
 
 ## 按字段的可行性判断
@@ -16,8 +17,8 @@
 
 | 字段 | BYD 002594 | 东山精密 002384 | 判断与使用边界 |
 |---|---|---|---|
-| 价格 | CNY 82.01/股；未复权；2026-10-27 收盘候选 | CNY 101.09/股；未复权；2026-10-27 收盘候选 | 保存来源是 AKShare/Tencent 历史行情。日线可用时点应按交易日上海收盘时间核验；同日日期本身不证明盘中已收盘。足以做受时间门控的价格输入，不证明企业价值或市场隐含增长率。 |
-| 稀释股数及股份类别 | 未保存可绑定截止日的股数 | 未保存可绑定截止日的股数 | **缺失**。年报文本中的历史股本或 EPS 不等于截至截止日的稀释股数；无法计算同截止市值、每股企业价值，或处理 A/H 类别。 |
+| 价格 | CNY 82.01/A 股；未复权；2026-10-27 收盘候选 | CNY 101.09/A 股；未复权；2026-10-27 收盘候选 | 保存来源是 AKShare/Tencent 历史行情。日线可用时点须按交易日收盘规则核验。东山 cutoff 为 2026-10-28 04:26 Shanghai，H 股当时尚未挂牌；任何挂牌后报价均晚于 `asOf`，不得使用。截止前公开的 HKD 86.80 是发行价，不是可交易报价。 |
+| 稀释股数及股份类别 | H1/月报可定位 A/H 已发行股数，但缺完整 cutoff 稀释审计 | H1 可定位 A 股基数，另有 H 股 IPO 条款；最终配发及 cutoff 后状态不构成截止前可用报价 | **不完整**。BYD 缺 H 股同截止市场价和全部稀释核对；东山缺最终配发数及可交易 H 股价格。 |
 | 现金 | CNY 58.738bn（2026-06-30） | CNY 8.793bn（2026-06-30） | 有上半年资产负债表时点值；受限现金及可用于 EV 桥接的现金定义未证明，且非截止日余额。仅作字段存在性和旧期间拒绝测试。 |
 | 债务范围 | 短借 CNY 37.646bn；长借 CNY 61.201bn；应付债券 CNY 14.994bn；一年内到期非流动负债 CNY 3.453bn | 短借 CNY 9.630bn；长借 CNY 9.441bn；应付债券字段缺失；一年内到期非流动负债 CNY 2.975bn | **不具备完整净债务桥**。一年内到期非流动负债可能包含非债务项目，是否与已列借款重叠、租赁负债及受限现金均未核实；不得直接求和或构造净债务。 |
 | 现金流 / 资本开支 | H1 CFO CNY 37.335bn；资本开支映射 CNY 44.703bn；同期差额 **−CNY 7.368bn** | H1 CFO CNY 2.384bn；资本开支映射 CNY 5.253bn；同期差额 **−CNY 2.869bn** | 正向测试仅限同期间减法及 YTD 标签。该值不是完整 FCFF；税、利息/债务处理、非现金项、营运资本标准化及少数股东口径未形成桥接。不得年化。 |
@@ -35,7 +36,7 @@
 
 | 面 | 正向测试 | 反向测试 | 结论 |
 |---|---|---|---|
-| 当前预期采集时间 | `publishedAt <= asOf`、逐点绑定/版本/修订证明及来源权利有效；本轮 `retrievedAt` 晚于开始时间仍可进入当前预期面 | 同一条预期在 `HISTORICAL` 模式下若 `retrievedAt > asOf` 必须拒绝；任何模式的 `publishedAt > asOf` 仍拒绝 | 已新增确定性 Workflow 单测；不改变预期来源的版本验证门。 |
+| 动态快照时间及内容 | 来源正文哈希匹配，原始行/预测点字段、期间、机构、发布日期和行哈希/指纹一致，且 `retrievedAt <= capturedAt <= sealedAt <= asOf` | 将晚获取来源配上伪造的 cutoff 前 seal；篡改正文但保留旧哈希；单独伪造非空 row hash/fingerprint | 三项反例均拒绝；当前快照不升级为历史版本证明。 |
 | 市场收盘可用时间 | 同日收盘且 `observationAvailableAt = dailyCloseAvailableAt(priceDate) <= asOf` 可用 | 截止早于上海 15:00 收盘、缺失/伪造可用时点、或可用时间晚于截止时拒绝，即使日期相同且旧质量标记为 safe | 已新增确定性 Workflow 单测。 |
 | CFO 减资本开支 | 仅当两项同币种、同期间、均为 YTD 时复算上述差额并明确标为“CFO 减资本开支” | 把半年 YTD 年化、命名为完整 FCFF，或漏掉任一输入时拒绝估值使用 | 当前保留输入盘点；未实现 Reverse DCF 算法。 |
 | EV 与每股价值 | 只有同截止的价格、适用稀释股数/类别换算、现金和明确债务范围都可追溯时，才允许按定义做确定性桥接 | 股数缺失/过期、现金受限范围不明、债务重复或口径缺失、财务期间与价格截止不一致时拒绝 | 两家公司均无法通过正向条件。 |
@@ -54,7 +55,7 @@
 
 ## 验证
 
-- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：11/11 通过。
+- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：本次修订后 15/15 通过。
 - `npm test -- --run tests/workflows/company-valuation-sections.test.ts`：客户端测试阶段先行执行全套 Vitest，15 个文件通过、2 个文件失败（5 项与本次 Workflow 无关的会话重命名/归档导航断言）；npm 脚本因此未运行 Node 测试。此命令不是有效的单文件过滤方式。
 - 未运行模型、公司研究重试、外部数据采集或 Knowledge 写入。
 
@@ -64,21 +65,23 @@
 
 ### Gate A — 逐点时间语义
 
-之前的校验把 `source.retrievedAt` 近似当成来源快照时间，导致迟到获取的旧版本被错误排除；反过来，CURRENT 模式也没有证明迟到获取的动态行在运行开始时已存在。本次私有 Workflow 判定现要求精确点证据提供独立的 `versionAvailableAt`、`valueVersionId` 和版本类型；CURRENT 模式允许在固定 cutoff 前已封存、内容哈希绑定的快照，HISTORICAL 仍要求截止前可用的具名数值版本。两种模式都不把发布日期或检索时间当作版本可用时间。当前 THS / EastMoney 适配器仍将版本、依据和修订状态标为 `UNVERIFIED`，因此生产预期仍被挡住；未把测试夹具的验证状态升级到适配器。
+之前的规则一度把“发布时间/版本元数据”误当成可以自证历史版本；该结论已撤回。当前明确区分：`publishedAt` 表示供应商报告日期，`retrievedAt` 是本次响应获取时间，`snapshotCapturedAt` 记录响应捕获，`snapshotSealedAt` 记录捕获内容及哈希被封存的时间，`versionAvailableAt` 只应来自独立可信的不可变版本记录。动态快照必须满足 `retrievedAt <= snapshotCapturedAt <= snapshotSealedAt <= asOf`，否则拒绝。内容哈希须重新计算并匹配 `source.content`；行哈希和点指纹也从正文中重解析出的原始行重算，并核验字段/值/期间/机构/发布日期与选中预测一致。故“晚获取 + 伪造早封存”及篡改正文拒绝。`valueVersionId`、`IMMUTABLE_DOCUMENT`、`VERIFIED` 字符串和非空哈希均为输入数据，不能建立信任。
+
+**信任边界：** 当前可信绑定路径是 Workflow 对已配置 THS/EastMoney acquisition adapter 交入的 normalized provider response 做正文 SHA-256 重算、provider envelope 检查及原始行字段匹配。SHA-256 证明进入 Workflow 的字节未被后续改写，不是供应商签名或真实性证明；provider 标签本身也不是独立来源认证。现有 adapter 没有历史修订归档、签名或独立的 value-version resolver，因此历史 `asOf` 不接受这些预期点，并继续输出 `UNVERIFIED`。不得将测试 fixture 当作生产来源可信度。
 
 新增正反例覆盖如下：
 
 | 情形 | 结果 | 定向测试 |
 |---|---|---|
-| 截止后获取、但绑定截止前已可用的不可变版本 | CURRENT 与 HISTORICAL 均接受 | `late retrieval can use the exact immutable value version available by cutoff in either mode` |
-| 只有早期报告发布日期/晚期检索时间，没有版本可用时点和版本标识 | 拒绝 | `retrieval time and publication time cannot substitute...` |
-| 截止后版本、更正状态未知、版本字段缺失 | 拒绝 | `version proof requires independent availability...` |
-| 截止前封存的动态快照 | CURRENT 接受；HISTORICAL 拒绝回填 | `a cutoff-sealed current snapshot may qualify current-only...` |
-| cutoff 后才封存的动态快照 | 拒绝 | `a current row retrieved after the sealed asOf...` |
+| 截止前获取并封存、逐点绑定原文的动态快照 | CURRENT 接受为当前快照；HISTORICAL 拒绝回填 | `cutoff sealed content-bound snapshots render a current comparison...` |
+| `retrievedAt > snapshotCapturedAt` 或封存早于捕获（晚获取 + 伪造早封存） | 拒绝 `SNAPSHOT_TIME_ORDER_INVALID` | `late retrieval with a forged early seal...` |
+| 对来源正文追加字节但保留原 `contentHash` | 拒绝 `SOURCE_CONTENT_HASH_MISMATCH` | `source content hash must match...` |
+| 仅提供任意 ID、VERIFIED 状态和非空 hash 字段 | 历史拒绝 `IMMUTABLE_VERSION_TRUST_UNAVAILABLE`；篡改 row/hash 当前亦拒绝 | `self-asserted immutable IDs...`; `nonempty hashes alone...` |
+| `retrievedAt`、capture 或 seal 晚于 `asOf` | 拒绝 | `retrieval time and publication time cannot substitute...` |
 | 上海同日收盘前 / 收盘后 | 收盘前拒绝；对应收盘可用时点后接受 | `same-day market close is rejected before...` |
 | 多条机构/期间 EPS 逐点绑定及被篡改值 | 缺证据或绑定不一致的点被拒绝，其他有效点保留 | `expectation surfaces reject missing proof...`、`point proofs reject...` |
 
-这覆盖了八类要求的测试边界；现实中哪些历史供应商能出具版本更正证明仍未得到证实。历史更正文档若不能说明替代关系，保持 `UNVERIFIED`。没有 Data 公共契约、Knowledge、Skill 方法或适配器资格状态改动。
+这覆盖当前状态机关键正反路径；现有供应商是否提供可认证的版本和更正关系仍无证据。没有改 Data 公共契约、Knowledge、Skill 方法或适配器的资格状态。
 
 ### Gate B — 两家公司逐字段可行性
 
@@ -96,6 +99,18 @@
 | 前瞻收入/FCFF | 无经授权并独立复核的逐年收入、利润率、税、折旧、资本开支、营运资本和 FCFF 桥。 | 同左。另需纳入 H 股新发股份及所得款项带来的后续资本结构变化。 | **不可作为已审计操作数**。有依据、可复算、明确标为研究假设的预测可能构成后续输入，但本次不造数、不年化历史 CFO−capex。 |
 | WACC / 终值 | 无截止适用的无风险利率、ERP、Beta、股权/债务成本、税盾和资本权重来源；无预测年限、稳定期再投资/利润率、终值增长依据。 | 同左；多类别股权及 IPO 后资本权重更未定。 | 不计算 Reverse DCF。现有 `calculateReverseDcf` 是纯算术核，无时点、来源或假设资格验证；现有 Skill 应明确“拒绝无来源合成值”，并区分允许被审计的未来研究假设。Gate B 已阻断，本轮不改 Skill 方法、不运行计算。 |
 
+### Reverse DCF 原子 Skill 契约审查
+
+审查对象为 [`skills/reverse_dcf_expectation_decode/SKILL.md`](../../skills/reverse_dcf_expectation_decode/SKILL.md) 及算术实现 [`skills/valuation/calculations/dcf.ts`](../../skills/valuation/calculations/dcf.ts) 的 `calculateReverseDcf`。契约要求当前 EV/价格、股数、债务/现金桥、明确 FCFF、折现率、终值增长率、估值日和来源引用；收入 CAGR 还要求当前收入及正的稳定期 FCFF margin。缺任一必需输入应为 unavailable，不能补零或推断。计算器只做数值与数学约束检查（有限值、正终值、discount > terminal growth、正的稳定期 margin），本身不校验来源、PIT、单位、责任人或假设资格；这些须由 Workflow 交接和独立语义复核保证。
+
+契约文字“Future observations and synthetic assumptions are rejected”对“无来源编造参数”与“有来源/明确登记并可反证的研究假设”边界表述含糊；这次只记录为契约澄清项，没有改 Skill、调用计算器或生成数值。未来的替代预期面必须先证明 EV 桥及每项预测/折现/终值输入可定位、带责任人、可复算且经独立审核。现状下两家公司均不满足输入契约，所以不能以纯算术函数可执行作为数据可行的证明。
+
+### 官方来源定位摘要
+
+本报告正文只记录字段、定位及哈希，不存放原始 PDF 或 CNINFO 全文。定位规则：BYD H1 报告 `official-c19c34dd239b2e9c`，披露 2026-08-28 16:00Z，SHA-256 `c521306221e896b4cbfbdf18a84d18fadf409db5bea7a8d3ef70a08c4f366ca6`；A/H 股数 p.57（千股表 p.80）、现金 p.65、债项 p.66、限制/定期存款 p.135、永续证券 p.83。BYD H 股月报 `official-aae298506d8e3fce` / 公告 1225595406，文本 SHA-256 `ed22804ac7a7d2dff12e4eed39ea6e5004dc06d13c7feb6eb49820c890eb175c`，表格段落 55–71、99–115、128–130。
+
+东山 H1 报告 `official-296fff2b2889c26f`，披露 2026-08-21 16:00Z，SHA-256 `6500c4e7c05ab455ebbbfc5eba1fa7ede7a48d6be171c53c4edc87c4682f707a`；股本 p.37、员工持股及 EPS p.47、现金 p.41、借款/少数权益 p.42–43、限制现金 p.97、到期项拆分 p.100。回购公告 `official-f5baf98acbff1fd0` / 1225600029，文本 SHA-256 `ca5d9fff6f62a30494d0ae126d079d97ad7c8d17a1a9a16a96eee733f892bae0`，段落 7、15。H 股发行范围通知 `official-594d5acb2ae76fb0` / 1225611578，披露 2026-10-19 23:40:10Z，文本 SHA-256 `97f2d3452f83b9b8d3660254a12236ef15fd19252d60d951bad17dfc22cf3f43`，段落 31、33、35。最终发行价/预计挂牌通知 `official-c99ce248ea972a56` / 1225621945，披露 2026-10-25 23:46:08Z，文本 SHA-256 `b0d79f92118225acdebad09909a37c3cfe849562f71d67f95a171dc37bd5c9f9`，段落 13、15–17。东山 `asOf=2026-10-27T20:26:46.347Z`（2026-10-28 04:26:46 Shanghai）早于当日港股挂牌/开市，因此任何上市后市场价格明确属于截止后数据并禁止使用；HKD 86.80 只作为事前公布的 IPO 发行价记录。
+
 **权利与来源边界：** CNINFO 发布的东山公告内容说明完整 H 股招股书在联交所刊发，CNINFO 公告仅为境内投资者提供信息，并不是购买/认购要约；本审计只使用 CNINFO 公告公开重复的发行范围、价格和预定上市日，没有抓取或提交完整 H 股招股书。BYD H 股月报和两家公司 H1 报告是官方公司披露；原始 PDF 不在 Git 中。CNINFO 披露不可再分发，因此报告保留字段、定位及哈希，不携带原文正文。
 
 ### Gate C/D — 结论与最小授权点
@@ -112,7 +127,9 @@
 
 ## 本次代码与验证
 
-- 修改仅在 `workflows/company-deep-research/valuation-sections.ts` 的 Workflow 私有判定和 `tests/workflows/company-valuation-sections.test.ts` 的定向夹具；没有改公共 Data contract、Skill、Knowledge、公司数据或报告运行产物。
-- `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：14/14 通过。
-- `npm run typecheck`：通过。
-- 未运行全量测试；此前全客户端测试的 5 个既有会话导航断言失败仍与本任务无关。本次未调用新 provider 或付费来源，只对现有 CNINFO 路径做了公告列表和公告正文只读核验；没有模型运行、公司研究重跑或 Knowledge 写入。
+- 改动限于 valuation Workflow 私有判定、相关 acquisition adapter 点证明/正文哈希、定向测试和本审计报告；没有改公共 Data contract、Reverse DCF Skill、Knowledge、公司运行产物或来源政策。
+- 定向测试 `node --import tsx --test tests/workflows/company-valuation-sections.test.ts`：15/15 通过，覆盖晚获取伪造早封存、原文哈希错配、伪造非空 row hash/fingerprint，以及任意版本 ID / `VERIFIED` 状态不能证明不可变历史版本。
+- 完整 Node 回归 `npm run test:node`：3,201/3,222 通过、21 失败；干净 detached 基线 `ea27034f4f949cc7f028f8a80e5a71025a8aa8cb` 为 3,200/3,221 通过、21 失败（新增 1 项测试）。仓库 failure comparator 判为 `BASELINE_FAILURES_IDENTICAL`；21 个归一化失败项 SHA-256 两侧均为 `ea9456822eb399823da77ebb712d491ab8df59790e154dd1d6e857e3a75e0fa0`，新增失败为 0。
+- 完整客户端回归 `npm run client:test`：当前和干净 detached 基线均为 17 个测试文件中 15 通过、2 失败；总计 218 通过、5 失败。五项完全相同：3 项 `src/App.test.tsx` 的会话重命名/归档交互，2 项 `src/app/report-navigation.test.tsx` 的原对话导航。
+- `npm run typecheck`、`npm run client:typecheck`、`npm run client:build` 均通过；构建保留既有大 bundle advisory。完整 Node/客户端日志和比较 JSON 存于仓库外 `ResearchHub_worktrees/asof-regression-logs/`，不纳入提交。
+- 本轮未增加或调用数据源、付费来源、研究模型、公司研究重跑或 Knowledge 写入。两家公司已保存运行仍为 17/19、`blocked`；19/19 和独立语义复核验收标准均未放宽，也未宣称真实验收通过。

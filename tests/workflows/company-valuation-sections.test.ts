@@ -4,6 +4,7 @@ import { buildCompanyValuationSections, extractFilingBasicEps } from '../../work
 import type { CompanyReadOnlyAcquisition } from '../../workflows/company-deep-research/contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import { createEarningsEstimatePointProof } from '../../plugins/research-acquisition/earnings-expectation-point-proof.ts'
 import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 
 const asOf = '2026-10-26T08:00:00.000Z'
@@ -21,8 +22,8 @@ const expectationSource = (candidateId: string, provider: string, publisher: str
   title: candidateId, content: JSON.stringify({ candidateId }), contentHash: `${candidateId}-hash`, retrievedAt: asOf,
   publisher, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
 } as any)
-const thsSources = [expectationSource('ths-1', 'akshare-ths-institution-forecast', '同花顺', 20), expectationSource('ths-2', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-3', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-future', 'akshare-ths-institution-forecast', '同花顺', 27)]
-const emSources = [expectationSource('eastmoney-1', 'akshare-eastmoney-research-report', 'EastMoney', 22), expectationSource('eastmoney-2', 'akshare-eastmoney-research-report', 'EastMoney', 21), expectationSource('eastmoney-3', 'akshare-eastmoney-research-report', 'EastMoney', 21)]
+const thsSourceCandidates = [expectationSource('ths-1', 'akshare-ths-institution-forecast', '同花顺', 20), expectationSource('ths-2', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-3', 'akshare-ths-institution-forecast', '同花顺', 21), expectationSource('ths-future', 'akshare-ths-institution-forecast', '同花顺', 27)]
+const emSourceCandidates = [expectationSource('eastmoney-1', 'akshare-eastmoney-research-report', 'EastMoney', 22), expectationSource('eastmoney-2', 'akshare-eastmoney-research-report', 'EastMoney', 21), expectationSource('eastmoney-3', 'akshare-eastmoney-research-report', 'EastMoney', 21)]
 const thsEstimates = [
   { estimateId: 'ths-e1', metric: 'eps', fiscalPeriod: '2026-FY', value: 4, unit: 'CNY_per_share', institutionKey: '东吴证券', publishedAt: '2026-10-20T00:00:00.000Z', sourceCandidateIds: ['ths-1'] },
   { estimateId: 'ths-e2', metric: 'eps', fiscalPeriod: '2026-FY', value: 5, unit: 'CNY_per_share', institutionKey: '华金证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['ths-2'] },
@@ -34,12 +35,27 @@ const emEstimates = [
   { estimateId: 'em-e2', metric: 'eps', fiscalPeriod: '2026-FY', value: 5.2, unit: 'CNY_per_share', institutionKey: '华金证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['eastmoney-2'] },
   { estimateId: 'em-e3', metric: 'eps', fiscalPeriod: '2026-FY', value: 5.5, unit: 'CNY_per_share', institutionKey: '中信证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['eastmoney-3'] },
 ]
-const proofFor = (estimate: EstimatePoint, provider: 'akshare-ths-institution-forecast' | 'akshare-eastmoney-research-report', sourceCandidateId = estimate.sourceCandidateIds[0]!, statuses = { basisStatus: 'VERIFIED', valueVersionStatus: 'VERIFIED', correctionStatus: 'VERIFIED' }) => ({
-  estimateId: estimate.estimateId, sourceCandidateId, provider, matchedField: 'fixture-row', matchedMetric: estimate.metric,
-  matchedValue: estimate.value, matchedUnit: estimate.unit, matchedPeriod: estimate.fiscalPeriod, matchedInstitutionKey: estimate.institutionKey,
-  matchedPublishedAt: estimate.publishedAt, observedRowHash: `row-${estimate.estimateId}`, pointFingerprint: `point-${estimate.estimateId}`,
-  versionAvailableAt: estimate.publishedAt, valueVersionId: `version:${estimate.estimateId}`, valueVersionKind: 'IMMUTABLE_DOCUMENT', ...statuses,
+const sourceRowFor = (estimate: EstimatePoint, provider: string): Record<string, unknown> => provider === 'akshare-ths-institution-forecast'
+  ? { '机构名称': estimate.institutionKey.replace(/^ths-org:/u, ''), '报告日期': estimate.publishedAt, [`预测年报每股收益${estimate.fiscalPeriod.slice(0, 4)}预测`]: estimate.value }
+  : { '机构': estimate.institutionKey.replace(/^eastmoney-org:/u, ''), '日期': estimate.publishedAt, [`${estimate.fiscalPeriod.slice(0, 4)}-盈利预测-收益`]: estimate.value }
+const bindEstimateSources = (candidates: readonly any[], estimates: readonly EstimatePoint[], provider: string) => candidates.map((source) => {
+  const estimate = estimates.find((point) => point.sourceCandidateIds.includes(source.candidate.candidateId))!
+  const row = sourceRowFor(estimate, provider)
+  const content = JSON.stringify({ provider, symbol: '002594', institution: estimate.institutionKey, publishedAt: estimate.publishedAt, row })
+  return { ...source, candidate: { ...source.candidate, publishedAt: estimate.publishedAt }, content, contentHash: sha256(content) }
 })
+const thsSources = bindEstimateSources(thsSourceCandidates, thsEstimates, 'akshare-ths-institution-forecast')
+const emSources = bindEstimateSources(emSourceCandidates, emEstimates, 'akshare-eastmoney-research-report')
+const proofFor = (estimate: EstimatePoint, provider: 'akshare-ths-institution-forecast' | 'akshare-eastmoney-research-report', sourceCandidateId = estimate.sourceCandidateIds[0]!) => {
+  const source = [...thsSources, ...emSources].find((item) => item.candidate.candidateId === sourceCandidateId)!
+  const row = sourceRowFor(estimate, provider)
+  const providerField = provider === 'akshare-ths-institution-forecast' ? `预测年报每股收益${estimate.fiscalPeriod.slice(0, 4)}预测` : `${estimate.fiscalPeriod.slice(0, 4)}-盈利预测-收益`
+  return createEarningsEstimatePointProof({
+    estimateId: estimate.estimateId, sourceCandidateId, provider, matchedField: providerField, matchedMetric: estimate.metric,
+    matchedValue: estimate.value, matchedUnit: estimate.unit, matchedPeriod: estimate.fiscalPeriod, matchedInstitutionKey: estimate.institutionKey,
+    matchedPublishedAt: estimate.publishedAt, observedRow: row, snapshotCapturedAt: source.retrievedAt, snapshotSealedAt: source.retrievedAt,
+  })
+}
 const acquisition = {
   expectationTargetFiscalYear: 2026,
   valuationBasisFiscalYear: 2025,
@@ -47,8 +63,8 @@ const acquisition = {
   earningsExpectationItems: [{ metricId: 'earnings_expectation_eps', status: 'PARTIAL', quality: { pointInTimeSafe: true, valueVersionStatus: 'UNVERIFIED' }, attempts: [{ sourceId: 'ths-institution-forecast', fallbackLevel: 'PRIMARY', status: 'SUCCESS' }, { sourceId: 'eastmoney-individual-research-report', fallbackLevel: 'FALLBACK_1', status: 'SUCCESS' }], value: { kind: 'expectation', projection: { sources: thsSources, estimates: thsEstimates, pointProofs: thsEstimates.filter(estimate => estimate.estimateId !== 'ths-future-eps').map(estimate => proofFor(estimate, 'akshare-ths-institution-forecast')), institutions: [] } }, acquisition: { observations: [{ data: { kind: 'expectation', projection: { sources: emSources, estimates: emEstimates, pointProofs: emEstimates.map(estimate => proofFor(estimate, 'akshare-eastmoney-research-report')), institutions: [] } }, source: { valueVersion: { status: 'UNVERIFIED', reason: 'fixture does not prove historical revisions' } } }] } }],
 } as unknown as CompanyReadOnlyAcquisition
 
-test('valuation builder uses exact verified point proofs and blocks unsupported scenario math', () => {
-  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing] })
+test('cutoff sealed content-bound snapshots render a current comparison without claiming historical verification', () => {
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition, sources: [filing] })
   assert.deepEqual(result.sections.map(section => section.id), ['valuation', 'bull-base-bear', 'variant-perception'])
   assert.match(result.sections[0]!.markdown, /3\.58 CNY\/share/)
   assert.match(result.sections[0]!.markdown, /PE/)
@@ -67,9 +83,9 @@ test('valuation builder uses exact verified point proofs and blocks unsupported 
   assert.match(result.sections[2]!.markdown, /同花顺去重归属样本 2 家，中位数为 4\.40/)
   assert.match(result.sections[2]!.markdown, /EastMoney 去重归属样本 2 家，中位数为 4\.85/)
   assert.doesNotMatch(result.sections[2]!.markdown, /4\.8499999999999996|4\.3999999999999995/)
-  assert.match(result.sections[2]!.markdown, /历史数值版本状态为 VERIFIED/)
-  assert.doesNotMatch(result.sections[2]!.markdown, /^研究缺口：机构预测的历史数值版本未核验/)
-  assert.ok(!result.diagnostics.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
+  assert.match(result.sections[2]!.markdown, /历史数值版本状态为 UNVERIFIED/)
+  assert.match(result.sections[2]!.markdown, /^研究缺口：机构预测的历史数值版本未核验/)
+  assert.ok(result.diagnostics.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
   assert.match(result.sections[2]!.markdown, /该渠道差仅作来源渠道对照，不构成已通过的独立预期面/)
   assert.match(result.sections[2]!.markdown, /2 家重叠机构/)
   assert.match(result.sections[2]!.markdown, /同花顺 \| 华金证券 \| 2026-FY \| 5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[ths-2@paragraph:1\]/)
@@ -80,7 +96,7 @@ test('valuation builder uses exact verified point proofs and blocks unsupported 
   assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:EastMoney:eligible=3/3'))
 })
 
-test('expectation surfaces reject missing proof, tampered joined values, and any UNVERIFIED proof status', () => {
+test('expectation surfaces reject missing proof and tampered joined values', () => {
   const baseItem = acquisition.earningsExpectationItems[0]!
   const originalValue = baseItem.value!
   const thsProjection = originalValue.kind === 'expectation' ? originalValue.projection : undefined
@@ -96,11 +112,6 @@ test('expectation surfaces reject missing proof, tampered joined values, and any
       projection: { ...thsProjection, estimates: thsProjection.estimates.map(estimate => estimate.estimateId === 'ths-e1' ? { ...estimate, value: estimate.value + 0.1 } : estimate) },
       expected: 'PROOF_BINDING_MISMATCH',
     },
-    {
-      name: 'unverified correction status',
-      projection: { ...thsProjection, pointProofs: thsProjection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? { ...proof, correctionStatus: 'UNVERIFIED' } : proof) },
-      expected: 'PROOF_NOT_VERIFIED:basis=VERIFIED,valueVersion=VERIFIED,correction=UNVERIFIED',
-    },
   ]
   for (const scenario of cases) {
     const altered = {
@@ -111,14 +122,14 @@ test('expectation surfaces reject missing proof, tampered joined values, and any
         acquisition: { observations: [] },
       }],
     } as unknown as CompanyReadOnlyAcquisition
-    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: altered, sources: [filing] })
+    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: altered, sources: [filing] })
     assert.ok(result.diagnostics.some(item => item.includes(`EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:${scenario.expected}`)), scenario.name)
     assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'), scenario.name)
     assert.doesNotMatch(result.sections[2]!.markdown, /同花顺去重归属样本 3 家|中位数为 4\.00/, scenario.name)
   }
 })
 
-test('all currently UNVERIFIED provider proofs are excluded and no channel median is calculated', () => {
+test('UNVERIFIED historical status is not promoted by snapshot integrity; current samples remain labeled current-only', () => {
   const unverified = {
     ...acquisition,
     earningsExpectationItems: acquisition.earningsExpectationItems.map(item => ({
@@ -127,16 +138,15 @@ test('all currently UNVERIFIED provider proofs are excluded and no channel media
       acquisition: { observations: (item.acquisition.observations ?? []).map(observation => ({ ...observation, data: observation.data?.kind === 'expectation' ? { kind: 'expectation', projection: { ...observation.data.projection, pointProofs: (observation.data.projection.pointProofs ?? []).map(proof => ({ ...proof, basisStatus: 'UNVERIFIED', valueVersionStatus: 'UNVERIFIED', correctionStatus: 'UNVERIFIED' })) } } : observation.data })) },
     })),
   } as unknown as CompanyReadOnlyAcquisition
-  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: unverified, sources: [filing] })
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=0/3'))
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:EastMoney:eligible=0/3'))
-  assert.ok(result.diagnostics.some(item => item.startsWith('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:PROOF_NOT_VERIFIED:')))
-  assert.ok(result.diagnostics.includes('VARIANT_PERCEPTION_REQUIRES_TWO_COMPARABLE_UNIQUE_PROVIDER_SURFACES'))
-  assert.doesNotMatch(result.sections[2]!.markdown, /中位数|贡献机构|同花顺去重归属样本|EastMoney 去重归属样本/)
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: unverified, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:EastMoney:eligible=3/3'))
+  assert.ok(result.diagnostics.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
+  assert.match(result.sections[2]!.markdown, /历史数值版本状态为 UNVERIFIED/)
   assert.match(result.sections[2]!.markdown, /^研究缺口：/)
 })
 
-test('a current row retrieved after the sealed asOf is excluded even when its point proof is complete', () => {
+test('late retrieval with a forged early seal is rejected by capture-seal-retrieval ordering', () => {
   const baseItem = acquisition.earningsExpectationItems[0]!
   const original = baseItem.value!
   assert.equal(original.kind, 'expectation')
@@ -144,55 +154,58 @@ test('a current row retrieved after the sealed asOf is excluded even when its po
   const delayedProjection = {
     ...original.projection,
     sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T08:00:01.000Z' } : source),
-    pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
-      ...proof, valueVersionId: 'version:ths-e1:current', valueVersionKind: 'MUTABLE_SNAPSHOT', snapshotSealedAt: '2026-10-26T08:00:01.000Z',
-    } : proof),
-  }
-  const delayed = {
-    ...acquisition,
-    earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection: delayedProjection }, acquisition: { observations: [] } }],
-  } as unknown as CompanyReadOnlyAcquisition
-  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: delayed, sources: [filing] })
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'))
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
-})
-
-test('late retrieval can use the exact immutable value version available by cutoff in either mode', () => {
-  const baseItem = acquisition.earningsExpectationItems[0]!
-  const original = baseItem.value!
-  assert.equal(original.kind, 'expectation')
-  if (original.kind !== 'expectation') return
-  const delayedProjection = {
-    ...original.projection,
-    sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, retrievedAt: '2026-10-26T08:00:01.000Z' } : source),
+    pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? { ...proof, snapshotCapturedAt: '2026-10-26T08:00:01.000Z', snapshotSealedAt: asOf } : proof),
   }
   const delayed = {
     ...acquisition,
     earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection: delayedProjection }, acquisition: { observations: [] } }],
   } as unknown as CompanyReadOnlyAcquisition
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: delayed, sources: [filing] })
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
-  assert.doesNotMatch(result.sections[2]!.markdown, /同花顺 .*eligible=0/)
-  const historical = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: delayed, sources: [filing] })
-  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:SNAPSHOT_TIME_ORDER_INVALID'))
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
 })
 
-test('version proof requires independent availability, immutable identity, and verified correction status', () => {
+test('self-asserted immutable IDs and VERIFIED statuses do not establish a trusted version path', () => {
   const baseItem = acquisition.earningsExpectationItems[0]!
   const original = baseItem.value!
   assert.equal(original.kind, 'expectation')
   if (original.kind !== 'expectation') return
-  const scenarios = [
-    { proof: { valueVersionId: undefined }, expected: 'VALUE_VERSION_METADATA_INCOMPLETE' },
-    { proof: { versionAvailableAt: '2026-10-26T08:00:00.001Z' }, expected: 'VALUE_VERSION_NOT_AVAILABLE_BY_AS_OF' },
-    { proof: { correctionStatus: 'UNVERIFIED' }, expected: 'PROOF_NOT_VERIFIED:basis=VERIFIED,valueVersion=VERIFIED,correction=UNVERIFIED' },
-  ]
-  for (const scenario of scenarios) {
-    const projection = { ...original.projection, pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? { ...proof, ...scenario.proof } : proof) }
-    const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
-    const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: altered, sources: [filing] })
-    assert.ok(result.diagnostics.includes(`EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:${scenario.expected}`), scenario.expected)
-  }
+  const delayedProjection = { ...original.projection, pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
+    ...proof, valueVersionId: 'claimed:immutable-version', valueVersionKind: 'IMMUTABLE_DOCUMENT', versionAvailableAt: asOf,
+    basisStatus: 'VERIFIED', valueVersionStatus: 'VERIFIED', correctionStatus: 'VERIFIED',
+  } : proof) }
+  const delayed = {
+    ...acquisition,
+    earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection: delayedProjection }, acquisition: { observations: [] } }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const historical = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: delayed, sources: [filing] })
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:IMMUTABLE_VERSION_TRUST_UNAVAILABLE'))
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=0/3'))
+})
+
+test('nonempty hashes alone do not bind a point to its source content', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const projection = { ...original.projection, pointProofs: original.projection.pointProofs?.map(proof => proof.estimateId === 'ths-e1' ? {
+    ...proof, valueVersionId: 'arbitrary-id', valueVersionKind: 'IMMUTABLE_DOCUMENT', versionAvailableAt: asOf,
+    basisStatus: 'VERIFIED', valueVersionStatus: 'VERIFIED', correctionStatus: 'VERIFIED', observedRowHash: 'not-a-real-row-hash', pointFingerprint: 'nonempty-is-not-proof',
+  } : proof) }
+  const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: altered, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:POINT_NOT_BOUND_TO_SOURCE_CONTENT'))
+})
+
+test('source content hash must match the captured raw provider envelope', () => {
+  const baseItem = acquisition.earningsExpectationItems[0]!
+  const original = baseItem.value!
+  assert.equal(original.kind, 'expectation')
+  if (original.kind !== 'expectation') return
+  const projection = { ...original.projection, sources: original.projection.sources.map(source => source.candidate.candidateId === 'ths-1' ? { ...source, content: `${source.content} ` } : source) }
+  const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: altered, sources: [filing] })
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:SOURCE_CONTENT_HASH_MISMATCH'))
 })
 
 test('retrieval time and publication time cannot substitute for a sealed dynamic snapshot or version availability', () => {
@@ -209,7 +222,7 @@ test('retrieval time and publication time cannot substitute for a sealed dynamic
   }
   const altered = { ...acquisition, earningsExpectationItems: [{ ...baseItem, value: { kind: 'expectation', projection }, acquisition: { observations: [] } }] } as unknown as CompanyReadOnlyAcquisition
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: altered, sources: [filing] })
-  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:VALUE_VERSION_METADATA_INCOMPLETE'))
+  assert.ok(result.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:IMMUTABLE_VERSION_TRUST_UNAVAILABLE'))
 })
 
 test('a cutoff-sealed current snapshot may qualify current-only but cannot be backcast as historical', () => {
@@ -228,8 +241,8 @@ test('a cutoff-sealed current snapshot may qualify current-only but cannot be ba
   const current = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'CURRENT_VALUE_ONLY', acquisition: snapshot, sources: [filing] })
   assert.ok(current.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=3/3'))
   const historical = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: snapshot, sources: [filing] })
-  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:VALUE_VERSION_METADATA_INCOMPLETE'))
-  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=2/3'))
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_REJECTED:Tonghuashun / 同花顺:ths-e1:IMMUTABLE_VERSION_TRUST_UNAVAILABLE'))
+  assert.ok(historical.diagnostics.includes('EXPECTATION_POINT_PROOF_COVERAGE:Tonghuashun / 同花顺:eligible=0/3'))
 })
 
 test('same-day market close is rejected before the Shanghai session close and accepted after availability', () => {

@@ -140,6 +140,8 @@ export function projectThsInstitutionForecasts(input: ThsProjectionInput): Estim
         matchedInstitutionKey: point.institutionKey,
         matchedPublishedAt: point.publishedAt,
         observedRow: row,
+        snapshotCapturedAt: source.retrievedAt,
+        snapshotSealedAt: source.retrievedAt,
       }))
       acceptedForRow += 1
     }

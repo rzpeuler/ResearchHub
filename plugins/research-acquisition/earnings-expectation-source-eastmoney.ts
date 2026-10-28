@@ -80,6 +80,8 @@ export function projectEastmoneyEstimatePoints(input: { readonly acquisition: Ea
         matchedInstitutionKey: point.institutionKey,
         matchedPublishedAt: point.publishedAt,
         observedRow: record,
+        snapshotCapturedAt: input.acquisition.sources.find((source) => source.candidate.candidateId === candidateId)!.retrievedAt,
+        snapshotSealedAt: input.acquisition.sources.find((source) => source.candidate.candidateId === candidateId)!.retrievedAt,
       }))
       institutions.set(point.institutionKey, { institutionKey: point.institutionKey, name: institutionName(record), providerCode: record.orgCode })
     }

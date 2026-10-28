@@ -18,6 +18,9 @@ export interface EarningsEstimatePointProof {
   readonly matchedPublishedAt: string
   readonly observedRowHash: string
   readonly pointFingerprint: string
+  /** Acquisition-clock timestamps for a content-hash-bound live response snapshot. */
+  readonly snapshotCapturedAt: string
+  readonly snapshotSealedAt: string
   readonly basisStatus: 'UNVERIFIED'
   readonly valueVersionStatus: 'UNVERIFIED'
   readonly correctionStatus: 'UNVERIFIED'
@@ -55,6 +58,8 @@ export function createEarningsEstimatePointProof(input: Omit<EarningsEstimatePoi
     matchedPublishedAt: input.matchedPublishedAt,
     observedRowHash,
     pointFingerprint,
+    snapshotCapturedAt: input.snapshotCapturedAt,
+    snapshotSealedAt: input.snapshotSealedAt,
     basisStatus: 'UNVERIFIED',
     valueVersionStatus: 'UNVERIFIED',
     correctionStatus: 'UNVERIFIED',

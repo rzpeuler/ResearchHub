@@ -268,7 +268,7 @@ export function renderCompanyScenarioCandidate(plan: CompanyScenarioAssumptionsP
   }
 }
 
-type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
+type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly evidenceMode: 'CUTOFF_SEALED_SNAPSHOT' | 'IMMUTABLE_VERSION'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
 type ExpectationSurfaceSelection = { readonly surfaces: readonly ExpectationSurface[]; readonly diagnostics: readonly string[] }
 // The acquisition payload crosses into Workflow as data. Keep this local
 // structural view here so Workflow does not depend on a Plugin module.
@@ -282,17 +282,86 @@ type ExpectationPointProofForSelection = {
   readonly matchedPeriod: string
   readonly matchedInstitutionKey: string
   readonly matchedPublishedAt: string
+  readonly matchedField: string
+  readonly providerObjectId?: string
   readonly observedRowHash: string
   readonly pointFingerprint: string
   readonly basisStatus: string
   readonly valueVersionStatus: string
   readonly correctionStatus: string
-  /** Exact value version availability, independent of source publication and retrieval times. */
+  /** A value version must be independently verified by a trusted source path. */
   readonly versionAvailableAt?: string
   readonly valueVersionId?: string
   readonly valueVersionKind?: 'IMMUTABLE_DOCUMENT' | 'MUTABLE_SNAPSHOT'
-  /** Present for mutable snapshots; it must be sealed no later than the run cutoff. */
+  readonly snapshotCapturedAt?: string
   readonly snapshotSealedAt?: string
+}
+
+function stableProofValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableProofValue).join(',')}]`
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableProofValue(record[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function proofRow(source: NormalizedResearchSource, proof: ExpectationPointProofForSelection): Record<string, unknown> | undefined {
+  if (source.contentHash !== sha256(source.content)) return undefined
+  let envelope: Record<string, unknown>
+  try {
+    const parsed: unknown = JSON.parse(source.content)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+    envelope = parsed as Record<string, unknown>
+  } catch { return undefined }
+  if (envelope.provider !== proof.provider) return undefined
+  const row = proof.provider === 'eastmoney-reportapi' ? envelope.proofRow
+    : proof.provider === 'akshare-ths-institution-forecast' || proof.provider === 'akshare-eastmoney-research-report' ? envelope.row
+      : undefined
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return undefined
+  return row as Record<string, unknown>
+}
+
+function sourceRowBindsEstimate(proof: ExpectationPointProofForSelection, estimate: EstimatePoint, row: Record<string, unknown>): boolean {
+  if (sha256(stableProofValue(row)) !== proof.observedRowHash) return false
+  const expectedFingerprint = sha256(stableProofValue({
+    estimateId: proof.estimateId,
+    sourceCandidateId: proof.sourceCandidateId,
+    provider: proof.provider,
+    providerObjectId: proof.providerObjectId ?? null,
+    matchedField: proof.matchedField,
+    matchedValue: proof.matchedValue,
+    matchedPeriod: proof.matchedPeriod,
+    matchedInstitutionKey: proof.matchedInstitutionKey,
+    matchedPublishedAt: proof.matchedPublishedAt,
+    metric: proof.matchedMetric,
+    unit: proof.matchedUnit,
+    observedRowHash: proof.observedRowHash,
+  }))
+  if (expectedFingerprint !== proof.pointFingerprint) return false
+  if (proof.provider === 'eastmoney-reportapi') {
+    const forecasts = Array.isArray(row.epsForecasts) ? row.epsForecasts as unknown[] : []
+    const forecast = forecasts.find((item) => typeof item === 'object' && item !== null && !Array.isArray(item)
+      && (item as Record<string, unknown>).providerField === proof.matchedField
+      && (item as Record<string, unknown>).fiscalYear === Number(estimate.fiscalPeriod.slice(0, 4))) as Record<string, unknown> | undefined
+    return row.infoCode === proof.providerObjectId
+      && row.orgCode !== undefined && proof.matchedInstitutionKey === `eastmoney-org:${String(row.orgCode)}`
+      && Number.isFinite(Date.parse(String(row.publishedAt))) && Date.parse(String(row.publishedAt)) === Date.parse(estimate.publishedAt)
+      && forecast?.value === estimate.value && proof.matchedMetric === 'eps'
+  }
+  const rawInstitution = row['机构名称'] ?? row['机构'] ?? row.institution ?? row.institutionName ?? row.orgName
+  const institutionPrefix = proof.provider === 'akshare-ths-institution-forecast' ? 'ths-org:' : 'eastmoney-org:'
+  const institutionKey = estimate.institutionKey.startsWith(institutionPrefix) ? `${institutionPrefix}${String(rawInstitution ?? '')}` : String(rawInstitution ?? '')
+  const rawPublication = row['报告日期'] ?? row['日期'] ?? row.reportDate ?? row.publishDate ?? row.publishedAt
+  const rawValue = row[proof.matchedField]
+  const numericValue = typeof rawValue === 'number' ? rawValue : typeof rawValue === 'string' ? Number(rawValue.normalize('NFKC').replace(/,/g, '').trim()) : Number.NaN
+  const fieldPeriod = proof.provider === 'akshare-ths-institution-forecast'
+    ? /^预测年报每股收益(\d{4})预测$/u.exec(proof.matchedField)?.[1]
+    : /^(\d{4})-(?:盈利预测-收益|预测每股收益|EPS)$/u.exec(proof.matchedField)?.[1]
+  return institutionKey === estimate.institutionKey
+    && Number.isFinite(Date.parse(String(rawPublication))) && Date.parse(String(rawPublication)) === Date.parse(estimate.publishedAt)
+    && numericValue === estimate.value && proof.matchedMetric === estimate.metric
+    && fieldPeriod !== undefined && `${fieldPeriod}-FY` === estimate.fiscalPeriod
 }
 
 function canonicalInstitutionName(value: string): string {
@@ -304,7 +373,7 @@ function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPoi
   if (matches.length !== 1) return matches.length === 0 ? 'PROOF_MISSING' : 'PROOF_AMBIGUOUS'
   const proof = matches[0]!
   const source = sources.get(proof.sourceCandidateId)
-  if (!proof.pointFingerprint || !proof.observedRowHash
+  if (!proof.pointFingerprint || !proof.observedRowHash || !proof.matchedField
     || !estimate.sourceCandidateIds.includes(proof.sourceCandidateId)
     || !source
     || proof.matchedMetric !== estimate.metric
@@ -315,30 +384,17 @@ function proofRejection(estimate: EstimatePoint, proofs: readonly ExpectationPoi
     || proof.matchedPublishedAt !== estimate.publishedAt
     || proof.provider !== source.candidate.provider
     || source.candidate.publishedAt !== estimate.publishedAt) return 'PROOF_BINDING_MISMATCH'
+  if (source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true) return 'SOURCE_RIGHTS_NOT_QUALIFIED'
+  const row = proofRow(source, proof)
+  if (!row || !sourceRowBindsEstimate(proof, estimate, row)) return source.contentHash === sha256(source.content) ? 'POINT_NOT_BOUND_TO_SOURCE_CONTENT' : 'SOURCE_CONTENT_HASH_MISMATCH'
+  if (asOfMode === 'HISTORICAL') return 'IMMUTABLE_VERSION_TRUST_UNAVAILABLE'
   const cutoff = Date.parse(asOf)
   const retrievedAt = Date.parse(source.retrievedAt)
-  if (!Number.isFinite(cutoff) || !Number.isFinite(retrievedAt)) return 'RETRIEVAL_TIME_INVALID'
-  if (source.rights.accessScope !== 'public' || source.rights.aiProcessingAllowed !== true || source.rights.retentionAllowed !== true) return 'SOURCE_RIGHTS_NOT_QUALIFIED'
-  const snapshotSealedAt = proof.snapshotSealedAt === undefined ? Number.NaN : Date.parse(proof.snapshotSealedAt)
-  if (proof.snapshotSealedAt !== undefined && (!Number.isFinite(snapshotSealedAt) || snapshotSealedAt > cutoff)) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
-  // Current-only runs may use a hash-bound snapshot sealed by their fixed cutoff.
-  // Historical runs need an independently identified value version instead.
-  if (asOfMode === 'CURRENT_VALUE_ONLY' && Number.isFinite(snapshotSealedAt)) {
-    if (proof.basisStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
-      return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
-    }
-    return undefined
-  }
-  const versionAvailableAt = Date.parse(proof.versionAvailableAt ?? '')
-  if (!Number.isFinite(cutoff) || !Number.isFinite(versionAvailableAt) || !proof.valueVersionId?.trim() || !proof.valueVersionKind) return 'VALUE_VERSION_METADATA_INCOMPLETE'
-  if (versionAvailableAt > cutoff) return 'VALUE_VERSION_NOT_AVAILABLE_BY_AS_OF'
-  if (retrievedAt > cutoff && proof.valueVersionKind !== 'IMMUTABLE_DOCUMENT') {
-    // A late read may qualify only when it binds to an identified immutable version.
-    return 'LATE_RETRIEVAL_WITHOUT_IMMUTABLE_VERSION'
-  }
-  if (proof.basisStatus !== 'VERIFIED' || proof.valueVersionStatus !== 'VERIFIED' || proof.correctionStatus !== 'VERIFIED') {
-    return `PROOF_NOT_VERIFIED:basis=${proof.basisStatus},valueVersion=${proof.valueVersionStatus},correction=${proof.correctionStatus}`
-  }
+  const capturedAt = Date.parse(proof.snapshotCapturedAt ?? '')
+  const sealedAt = Date.parse(proof.snapshotSealedAt ?? '')
+  if (![cutoff, retrievedAt, capturedAt, sealedAt].every(Number.isFinite)) return 'SNAPSHOT_TIME_METADATA_INVALID'
+  if (!(retrievedAt <= capturedAt && capturedAt <= sealedAt)) return 'SNAPSHOT_TIME_ORDER_INVALID'
+  if (retrievedAt > cutoff || capturedAt > cutoff || sealedAt > cutoff) return 'CURRENT_SNAPSHOT_NOT_AVAILABLE_BY_AS_OF'
   return undefined
 }
 
@@ -347,7 +403,7 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
   if (!item) return { surfaces: [], diagnostics: [] }
   const payloads = [item.value, ...(item.acquisition.observations ?? []).map(observation => observation.data)]
     .filter((value): value is NonNullable<typeof item.value> => value?.kind === 'expectation')
-  const grouped = new Map<ExpectationSurface['provider'], { estimates: EstimatePoint[]; sources: NormalizedResearchSource[] }>()
+  const grouped = new Map<ExpectationSurface['provider'], { estimates: EstimatePoint[]; sources: NormalizedResearchSource[]; evidenceMode: ExpectationSurface['evidenceMode'] }>()
   const diagnostics: string[] = []
   for (const payload of payloads) {
     if (payload.kind !== 'expectation') continue
@@ -376,13 +432,13 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
       })
     diagnostics.push(`EXPECTATION_POINT_PROOF_COVERAGE:${provider}:eligible=${estimates.length}/${candidates.length}`)
     if (estimates.length === 0) continue
-    const current = grouped.get(provider) ?? { estimates: [], sources: [] }
+    const current = grouped.get(provider) ?? { estimates: [], sources: [], evidenceMode: asOfMode === 'CURRENT_VALUE_ONLY' ? 'CUTOFF_SEALED_SNAPSHOT' : 'IMMUTABLE_VERSION' }
     current.estimates.push(...estimates)
     current.sources.push(...sources)
     grouped.set(provider, current)
   }
   return { surfaces: [...grouped.entries()].map(([provider, value]) => ({
-    provider,
+    provider, evidenceMode: value.evidenceMode,
     estimates: value.estimates,
     sources: [...new Map(value.sources.map(source => [source.candidate.candidateId, source])).values()],
   })), diagnostics }
@@ -535,15 +591,14 @@ export function buildCompanyValuationSections(input: {
         return `| ${provider} | ${estimate.institutionKey} | ${estimate.fiscalPeriod} | ${String(estimate.value)} ${estimate.unit} | ${estimate.publishedAt} | ${estimateCitations} |`
       }))
     const contributorTable = `\n\n| 预期面 | 机构 | 财年 | EPS / 单位 | 发布日期 | 原始样本来源 |\n|---|---|---|---:|---|---|\n${contributorRows.join('\n')}`
-    // The selected set contains only points whose run-scoped point proof
-    // independently verifies basis, revision history, and corrections.
-    // Acquisition-level source status may describe a different payload and
-    // must not override the evidence actually used in these surfaces.
-    const versionStatus = estimates.length > 0 ? 'VERIFIED' : 'UNVERIFIED'
-    if (versionStatus !== 'VERIFIED') diagnostics.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
-    const versionGap = versionStatus === 'VERIFIED'
-      ? ''
-      : `研究缺口：机构预测的历史数值版本未核验（本轮同花顺/EastMoney FY${input.acquisition.expectationTargetFiscalYear} EPS）；估计路由尝试及资格状态：${acquisitionAttemptSummary(input.acquisition.earningsExpectationItems)}。现有输出未提供可验证的公司指引或独立本方预测面。以下样本差异仅用于复核本轮可见数据，不构成符合 asOf 的预期差结论。\n\n`
+    // Current snapshots and historical immutable versions are distinct claims.
+    // A content-bound snapshot does not verify the source's historical revisions.
+    // No current provider path independently authenticates immutable revision
+    // history. Both the current snapshot and any unrecognized mode remain
+    // explicitly unverified as historical value versions.
+    const versionStatus = 'UNVERIFIED'
+    diagnostics.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
+    const versionGap = `研究缺口：机构预测的历史数值版本未核验（本轮同花顺/EastMoney FY${input.acquisition.expectationTargetFiscalYear} EPS）；当前样本仅由截止时点快照、来源正文哈希及逐点字段绑定支持，不能证明更早的修订历史。估计路由尝试及资格状态：${acquisitionAttemptSummary(input.acquisition.earningsExpectationItems)}。现有输出未提供可验证的公司指引或独立本方预测面。以下样本差异仅表示本轮封存的可见数据，不构成历史预期差结论。\n\n`
     const dedupeNote = dedupedExpectations.overlaps.length
       ? `两个渠道存在 ${dedupedExpectations.overlaps.length} 家重叠机构；同一机构只保留截至 asOf 发布时间较新的唯一预测，平局固定优先同花顺。`
       : '两个渠道没有识别到重叠机构。'

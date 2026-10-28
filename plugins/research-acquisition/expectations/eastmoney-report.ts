@@ -241,6 +241,7 @@ function reportSource(recordValue: EastmoneyResearchReportRecord, retrievedAt: s
   }
   const content = JSON.stringify({
     provider: EASTMONEY_REPORT_PROVIDER,
+    proofRow: recordValue,
     report: {
       infoCode: recordValue.infoCode,
       stockCode: recordValue.stockCode,

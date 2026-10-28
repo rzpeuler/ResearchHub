@@ -57,7 +57,7 @@ export function projectAkshareEastmoneyResearchReports(input: EastmoneyAksharePr
       retrievedAt: input.retrievedAt,
       title,
       content: JSON.stringify({ provider: EASTMONEY_AKSHARE_PROVIDER, symbol: input.company.symbol, institution, publishedAt, reportPdfUrl: pdfUrl, row }),
-      contentHash: sha256(JSON.stringify({ row, publishedAt, sourceId })),
+      contentHash: sha256(JSON.stringify({ provider: EASTMONEY_AKSHARE_PROVIDER, symbol: input.company.symbol, institution, publishedAt, reportPdfUrl: pdfUrl, row })),
       publisher: 'EastMoney',
       rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'personal_noncommercial_research' },
     }
@@ -68,7 +68,7 @@ export function projectAkshareEastmoneyResearchReports(input: EastmoneyAksharePr
       if (Date.parse(publishedAt) > Date.parse(input.asOf)) { futureCount += 1; continue }
       const point: EstimatePoint = { estimateId: `eastmoney-estimate-${sha256(`${sourceId}|${input.company.symbol}|${institution}|eps|${field.fiscalYear}-FY|${publishedAt}|${value}`)}`, metric: 'eps', fiscalPeriod: `${field.fiscalYear}-FY`, value, unit: EASTMONEY_AKSHARE_EPS_UNIT, institutionKey: `eastmoney-org:${institution}`, publishedAt, sourceCandidateIds: [sourceId] }
       estimates.push(point)
-      pointProofs.push(createEarningsEstimatePointProof({ estimateId: point.estimateId, sourceCandidateId: sourceId, provider: EASTMONEY_AKSHARE_PROVIDER, matchedField: field.key, matchedMetric: point.metric, matchedValue: value, matchedUnit: point.unit, matchedPeriod: point.fiscalPeriod, matchedInstitutionKey: point.institutionKey, matchedPublishedAt: point.publishedAt, observedRow: row }))
+      pointProofs.push(createEarningsEstimatePointProof({ estimateId: point.estimateId, sourceCandidateId: sourceId, provider: EASTMONEY_AKSHARE_PROVIDER, matchedField: field.key, matchedMetric: point.metric, matchedValue: value, matchedUnit: point.unit, matchedPeriod: point.fiscalPeriod, matchedInstitutionKey: point.institutionKey, matchedPublishedAt: point.publishedAt, observedRow: row, snapshotCapturedAt: source.retrievedAt, snapshotSealedAt: source.retrievedAt }))
       acceptedForRow += 1
     }
     if (acceptedForRow > 0) {
