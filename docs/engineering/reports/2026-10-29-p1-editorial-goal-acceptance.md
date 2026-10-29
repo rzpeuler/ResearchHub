@@ -159,3 +159,20 @@ These scores compare the archived baseline with the best continuation output for
 | Concision | Baseline thesis/checklist are 2,003/1,923 characters. | Candidate thesis/checklist are 1,949/1,501 characters. | `2→3`: it removes the full product list from thesis and trims duplicated monitoring while retaining material evidence. |
 
 Scores are editorial review judgments, not investment conclusions. Dongshan meets the three-improvement count; BYD does not have a factually and numerically accepted candidate, so the two-company P1 goal remains partial.
+
+## Final C3/C5 acceptance addendum — BYD review redline (2026-10-29)
+
+This addendum supersedes the earlier “no accepted BYD candidate” statement only for the post-call reviewed draft below. The raw model response, original numeric validator failure, M0–M4 evidence and all test-baseline failures remain preserved.
+
+The second BYD real model response contained the exact reported values but compressed operating profit and revenue into an ambiguous “两者分别” phrase and cited a structured financial JSON for both. A reviewer separated the metric claims and attached the already-allowed official half-year revenue row `official-c19c34dd239b2e9c@paragraph:698` to the 7.13% revenue decline. No value, source set, PIT/rights gate, numeric validator or model output record was altered. The existing `assembleCompanyResearch` path, replayed with the same archived input and reviewed output via a local stub executor, returned `reasoning_executor`, 0 diagnostics. This was a post-call redline validation, not a fifth model call.
+
+Reviewed output SHA-256: `8062dbb8e9bfe842505b7898b8e492083e1b30ec15f5e8c1a5a17472a4c8c075`; raw BYD call-2 record SHA-256 remains `572c1a7ce2b2e2d8e614486e423e3ca84ec2170783572cf76273a0076083860d`. The reviewed record is outside Git under `tmp/p1-goal-001-replay/continuation-calls/002594-reviewed-candidate-r2.json`.
+
+| Company | Reviewed score: thesis / causal chain / counterevidence / monitoring / consistency / concision | Three material improvements |
+| --- | --- | --- |
+| BYD 002594 | `4/4/4/4/4/3` | Quantifies automotive concentration and contrasts H1 automotive decline with electronics growth (`official-f7c8d23d2829a5e8@paragraph:821`; `official-c19c34dd239b2e9c@paragraph:706-708`); makes revenue/profit declines versus OCF and margin improvement the leading disconfirmer (`akshare-financial-002594@paragraph:1`, plus official revenue row p698); aligns distinct monitoring items to customers, working capital, cash/capex and commercialization. Exact quote observation date is 2026-10-27, separated from FY2025 EPS period. |
+| Dongshan Precision 002384 | `4/4/4/4/4/3` | Centers EML product maturity (`official-296fff2b2889c26f@paragraph:359-362`); qualifies precision-component growth for GMD/commissioning effects (`official-296fff2b2889c26f@paragraph:775`; `official-39e591fa149e4543@paragraph:933`); foregrounds customer concentration and cash/capex counterevidence with repeatable monitoring checks (`official-39e591fa149e4543@paragraph:965,969-970`; `akshare-financial-002384@paragraph:1`). |
+
+Both reviewed company drafts now have at least three traceable material improvements; neither promotes blocked valuation/scenario evidence, and existing validators remain intact. C3 used exactly four new actual calls (10 cumulative); no additional call was made. The focused suite, typechecks, build, full-suite baseline comparisons and protected-file check remain as documented in C4 above.
+
+Final result: **`READY_FOR_CTO_ACCEPTANCE`**. This does not change historical `17/19 BLOCKED`, either blocked section, P0-19 status, or Knowledge qualification. PR #10 remains open and unmerged for CTO review.
