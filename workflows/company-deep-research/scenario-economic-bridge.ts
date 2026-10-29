@@ -13,6 +13,7 @@ const FORMULA = 'economic-bridge-fixture-v1'
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0
 const isRecord = (v: unknown): v is AnyRecord => v !== null && typeof v === 'object' && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null)
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
+const evidenceRefsOf = (v: unknown): string[] => isRecord(v) && Array.isArray(v.evidenceRefs) ? v.evidenceRefs.filter(nonEmpty) : []
 
 function canonicalBridgeInput(raw: unknown): unknown {
   if (!isRecord(raw)) return raw
@@ -137,19 +138,26 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
   const revenueRefs: string[] = []
   for (const line of revenueLines) {
     if (!isRecord(line) || !nonEmpty(line.lineId) || !nonEmpty(line.economicLineKey) || line.bridgeId !== input.bridgeId || line.companySymbol !== input.companySymbol || line.scenario !== input.horizon?.scenario) { diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: String(line?.lineId ?? 'revenue-line'), reason: 'line identity/company/bridge/scenario mismatch' }); revenueValid = false; continue }
+    const lineRefsValid = Array.isArray(line.inputRefs) && line.inputRefs.length > 0 && line.inputRefs.every(nonEmpty) && Array.isArray(line.evidenceRefs) && line.evidenceRefs.length > 0 && line.evidenceRefs.every(nonEmpty) && nonEmpty(line.formulaVersion) && line.formulaVersion === input.formulaVersion
+    if (!lineRefsValid) { diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: line.lineId, reason: 'lineage refs and formulaVersion must be non-empty' }); revenueValid = false }
     if (lineIds.has(line.lineId) || (line.disposition === 'INCLUDED_ONCE' && economicKeys.has(line.economicLineKey))) { diagnostics.push({ code: 'DOUBLE_COUNTED_REVENUE_PATH', subjectId: line.lineId, reason: 'duplicate line ID or overlapping economic line key' }); revenueValid = false }
     lineIds.add(line.lineId); economicKeys.add(line.economicLineKey)
     if (line.periodStart !== input.horizon.periodStart || line.periodEnd !== input.horizon.periodEnd || line.periodBasis !== input.horizon.periodBasis) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: line.lineId, reason: 'revenue line does not match bridge horizon' }); revenueValid = false }
     if (line.financialScope !== input.revenue.reportedConsolidatedRevenue?.financialScope || line.economicScope !== input.revenue.reportedConsolidatedRevenue?.economicScope) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: line.lineId, reason: 'revenue line scope differs from reported total' }); revenueValid = false }
     if (line.currency !== input.revenue.reportedConsolidatedRevenue?.currency || line.unit !== input.revenue.reportedConsolidatedRevenue?.unit || line.dimension !== input.revenue.reportedConsolidatedRevenue?.dimension || line.shareBasis !== input.revenue.reportedConsolidatedRevenue?.shareBasis) { diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: line.lineId, reason: 'revenue line currency, native unit/scale, dimension, or share basis differs from reported total' }); revenueValid = false }
+    if (line.disposition === 'INCLUDED_ONCE' && (line.flowOrStock !== 'FLOW' || line.dimension !== 'CURRENCY_AMOUNT' || line.toMetric !== 'revenue' || line.operation !== 'ADD' || line.fromMetric !== 'segmentRevenue')) { diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: line.lineId, reason: 'included disclosed revenue must be a FLOW currency amount added from segmentRevenue to revenue' }); revenueValid = false }
     if (line.disposition === 'INCLUDED_ONCE' && line.originKind !== 'FACT' && line.originKind !== 'DERIVED') { diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: line.lineId, reason: 'revenue inclusion requires FACT or DERIVED identity; inference/assumption cannot become disclosed revenue' }); revenueValid = false }
     if (line.disposition === 'INCLUDED_ONCE' && input.revenue.selectedRoute !== 'DISCLOSED_SEGMENT_REVENUE') { diagnostics.push({ code: 'DOUBLE_COUNTED_REVENUE_PATH', subjectId: line.lineId, reason: 'segment amounts cannot be included on the volume-times-ASP route' }); revenueValid = false }
     if (line.disposition === 'INCLUDED_ONCE') {
       const amount = evidenceNumber(line.amount, line.lineId, diagnostics)
       if (amount === undefined) revenueValid = false
       else { const next = add(calculatedRevenue, amount); if (next === undefined) { diagnostics.push({ code: 'INVALID_NUMBER', subjectId: line.lineId, reason: 'revenue sum overflow' }); revenueValid = false } else calculatedRevenue = next }
-      revenueRefs.push(line.lineId)
+      revenueRefs.push(line.lineId, ...(line.inputRefs as string[]), ...(line.evidenceRefs as string[]), ...evidenceRefsOf(line.amount))
     }
+  }
+  if (input.revenue?.selectedRoute === 'DISCLOSED_SEGMENT_REVENUE' && !revenueLines.some((l) => l?.disposition === 'INCLUDED_ONCE')) {
+    diagnostics.push({ code: 'MISSING_REQUIRED_OPERAND', subjectId: 'revenue.lines', reason: 'disclosed segment route requires at least one evidenced included row; empty rows are not zero revenue' })
+    revenueValid = false
   }
   if (input.revenue?.selectedRoute === 'RECOGNIZED_VOLUME_TIMES_REALIZED_NET_ASP') {
     if (revenueLines.some((l) => l?.disposition === 'INCLUDED_ONCE')) { diagnostics.push({ code: 'DOUBLE_COUNTED_REVENUE_PATH', subjectId: 'revenue.route', reason: 'segment revenue rows cannot also be counted with volume times net ASP' }); revenueValid = false }
@@ -175,9 +183,15 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
     const n = scalar(adj.signedAmount, adj.adjustmentId, diagnostics)
     if (!validatePair(adj.signedAmount, input.revenue.reportedConsolidatedRevenue, `adjustment.${adj.adjustmentId}`, diagnostics)) revenueValid = false
     if (n === undefined) revenueValid = false
-    else { const next = add(calculatedRevenue, n); if (next === undefined) { diagnostics.push({ code: 'INVALID_NUMBER', subjectId: adj.adjustmentId, reason: 'adjusted revenue overflow' }); revenueValid = false } else calculatedRevenue = next; revenueRefs.push(adj.adjustmentId) }
+    else { const next = add(calculatedRevenue, n); if (next === undefined) { diagnostics.push({ code: 'INVALID_NUMBER', subjectId: adj.adjustmentId, reason: 'adjusted revenue overflow' }); revenueValid = false } else calculatedRevenue = next; revenueRefs.push(adj.adjustmentId, ...adj.evidenceRefs, ...evidenceRefsOf(adj.signedAmount.value)) }
   }
   const reported = scalar(input.revenue?.reportedConsolidatedRevenue, 'reportedConsolidatedRevenue', diagnostics)
+  const reportedInput = input.revenue?.reportedConsolidatedRevenue
+  const includedRevenueLine = input.revenue?.lines.find((l) => l?.disposition === 'INCLUDED_ONCE')
+  const revenueScopeReference = input.revenue?.selectedRoute === 'RECOGNIZED_VOLUME_TIMES_REALIZED_NET_ASP' ? input.revenue.volume : undefined
+  if (reportedInput?.companySymbol !== input.companySymbol || (includedRevenueLine && (reportedInput?.financialScope !== includedRevenueLine.financialScope || reportedInput?.economicScope !== includedRevenueLine.economicScope)) || (revenueScopeReference && !sameScope(reportedInput, revenueScopeReference))) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: 'reportedConsolidatedRevenue', reason: 'reported total company or scope differs from revenue inputs' }); revenueValid = false }
+  if (!reportedInput || reportedInput.periodStart !== input.horizon.periodStart || reportedInput.periodEnd !== input.horizon.periodEnd || reportedInput.periodBasis !== input.horizon.periodBasis) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: 'reportedConsolidatedRevenue', reason: 'reported total must match the bridge horizon' }); revenueValid = false }
+  if (!reportedInput || reportedInput.flowOrStock !== 'FLOW' || reportedInput.dimension !== 'CURRENCY_AMOUNT' || reportedInput.unit !== reportedInput.currency) { diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: 'reportedConsolidatedRevenue', reason: 'reported consolidated revenue must be a currency amount FLOW in its stated currency unit' }); revenueValid = false }
   if (reported === undefined) revenueValid = false
   components.revenue = revenueValid ? known(calculatedRevenue, input.formulaVersion || FORMULA, revenueRefs) : unavailable(input.formulaVersion || FORMULA, 'revenue route or operand failed closed', revenueRefs)
   let residual: EconomicBridgeComponent
@@ -227,45 +241,74 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
   components.operatingProfit = opValid && op !== undefined ? known(op, input.formulaVersion || FORMULA, ['grossProfit', ...(profit?.operatingExpenses ?? []).map((x) => x.sourceId), ...(profit?.otherOperatingIncome ?? []).map((x) => x.sourceId)]) : unavailable(input.formulaVersion || FORMULA, 'operating statement mapping or required input unavailable')
   if (profit?.ebit?.sourceId === profit?.signedNetFinanceItems?.sourceId || profit?.ebit?.accountId && profit?.ebit?.accountId === profit?.signedNetFinanceItems?.accountId) diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: 'ebit', reason: 'finance item is duplicated in EBIT and operating mapping' })
 
-  const finance = scalar(profit?.signedNetFinanceItems, 'signedNetFinanceItems', diagnostics), nonop = scalar(profit?.signedNonOperatingItems, 'signedNonOperatingItems', diagnostics), tax = scalar(profit?.incomeTaxExpense, 'incomeTaxExpense', diagnostics), nci = scalar(profit?.profitAttributableToNci, 'profitAttributableToNci', diagnostics)
-  for (const [id, value] of [['signedNetFinanceItems', profit?.signedNetFinanceItems], ['signedNonOperatingItems', profit?.signedNonOperatingItems], ['incomeTaxExpense', profit?.incomeTaxExpense], ['profitAttributableToNci', profit?.profitAttributableToNci]] as const) if (value && !validatePair(value, input.revenue.reportedConsolidatedRevenue, id, diagnostics)) diagnostics.push({ code: 'MISSING_REQUIRED_OPERAND', subjectId: id, reason: 'financial statement item is incompatible with revenue period/scope/measure' })
+  const financeScalar = profit?.signedNetFinanceItems
+  const nonopScalar = profit?.signedNonOperatingItems
+  const taxScalar = profit?.incomeTaxExpense
+  const nciScalar = profit?.profitAttributableToNci
+  const finance = scalar(financeScalar, 'signedNetFinanceItems', diagnostics)
+  const nonop = scalar(nonopScalar, 'signedNonOperatingItems', diagnostics)
+  const tax = scalar(taxScalar, 'incomeTaxExpense', diagnostics)
+  const nci = scalar(nciScalar, 'profitAttributableToNci', diagnostics)
+  const financeCompatible = Boolean(financeScalar && validatePair(financeScalar, input.revenue.reportedConsolidatedRevenue, 'signedNetFinanceItems', diagnostics) && financeScalar.signConvention === 'SIGNED_AMOUNT')
+  const nonopCompatible = Boolean(nonopScalar && validatePair(nonopScalar, input.revenue.reportedConsolidatedRevenue, 'signedNonOperatingItems', diagnostics) && nonopScalar.signConvention === 'SIGNED_AMOUNT')
+  const taxCompatible = Boolean(taxScalar && validatePair(taxScalar, input.revenue.reportedConsolidatedRevenue, 'incomeTaxExpense', diagnostics) && taxScalar.signConvention === 'POSITIVE_EXPENSE')
+  const nciCompatible = Boolean(nciScalar && validatePair(nciScalar, input.revenue.reportedConsolidatedRevenue, 'profitAttributableToNci', diagnostics) && nciScalar.signConvention === 'SIGNED_AMOUNT' && profit?.nciBasis === 'CONSOLIDATED_TO_PARENT')
+  if (financeScalar && !financeCompatible && financeScalar.signConvention !== 'SIGNED_AMOUNT') diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: 'signedNetFinanceItems', reason: 'net finance items must use signed amount convention' })
+  if (nonopScalar && !nonopCompatible && nonopScalar.signConvention !== 'SIGNED_AMOUNT') diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: 'signedNonOperatingItems', reason: 'non-operating items must use signed amount convention' })
+  if (taxScalar && !taxCompatible && taxScalar.signConvention !== 'POSITIVE_EXPENSE') diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: 'incomeTaxExpense', reason: 'income tax must use positive-expense convention' })
+  if (nciScalar && !nciCompatible && nciScalar.signConvention !== 'SIGNED_AMOUNT') diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: 'profitAttributableToNci', reason: 'NCI attribution must use signed amount convention' })
   const operating = components.operatingProfit.status === 'KNOWN' ? components.operatingProfit.value : undefined
   let pbt: number | undefined
-  if (operating !== undefined && finance !== undefined && nonop !== undefined) {
+  if (operating !== undefined && finance !== undefined && nonop !== undefined && financeCompatible && nonopCompatible && components.revenue.status === 'KNOWN') {
     const first = add(operating, finance)
     pbt = first === undefined ? undefined : add(first, nonop)
     if (pbt === undefined) diagnostics.push({ code: 'INVALID_NUMBER', subjectId: 'pbt', reason: 'PBT arithmetic overflow' })
   }
   components.pbt = pbt === undefined ? unavailable(input.formulaVersion || FORMULA, 'operating profit or signed finance/non-operating items unavailable') : known(pbt, input.formulaVersion || FORMULA, ['operatingProfit', profit?.signedNetFinanceItems?.sourceId ?? '', profit?.signedNonOperatingItems?.sourceId ?? ''])
-  const consolidated = pbt !== undefined && tax !== undefined && profit?.incomeTaxExpense?.signConvention === 'POSITIVE_EXPENSE' ? subtract(pbt, tax) : undefined
+  const consolidated = pbt !== undefined && tax !== undefined && taxCompatible ? subtract(pbt, tax) : undefined
   components.consolidatedNetProfit = consolidated === undefined ? unavailable(input.formulaVersion || FORMULA, 'PBT or positive-expense tax unavailable') : known(consolidated, input.formulaVersion || FORMULA, ['pbt', profit?.incomeTaxExpense?.sourceId ?? ''])
-  const parent = consolidated !== undefined && nci !== undefined && profit?.nciBasis === 'CONSOLIDATED_TO_PARENT' ? subtract(consolidated, nci) : undefined
+  const parent = consolidated !== undefined && nci !== undefined && nciCompatible ? subtract(consolidated, nci) : undefined
   if (profit?.nciBasis !== 'CONSOLIDATED_TO_PARENT') diagnostics.push({ code: 'NCI_SCOPE_MISSING', subjectId: 'profitAttributableToNci', reason: 'NCI must be explicitly mapped from consolidated to parent; missing/mixed is not zero' })
   components.parentNetProfit = parent === undefined ? unavailable(input.formulaVersion || FORMULA, 'consolidated NP or explicitly scoped NCI unavailable') : known(parent, input.formulaVersion || FORMULA, ['consolidatedNetProfit', profit?.profitAttributableToNci?.sourceId ?? ''])
 
   const fc = input.fcff
   const fcIds = [fc?.unleveredEbit?.sourceId, fc?.taxRate?.sourceId, fc?.da?.sourceId, fc?.capex?.sourceId].filter((x): x is string => Boolean(x))
   const ebit = scalar(fc?.unleveredEbit, 'fcff.ebit', diagnostics), rate = scalar(fc?.taxRate, 'fcff.taxRate', diagnostics), da = scalar(fc?.da, 'fcff.da', diagnostics), capex = scalar(fc?.capex, 'fcff.capex', diagnostics)
-  if (fc?.unleveredEbit && fc?.taxRate && (!samePeriod(fc.unleveredEbit, fc.taxRate) || !sameScope(fc.unleveredEbit, fc.taxRate))) diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate and unlevered EBIT must share period and scope' })
-  if (fc?.unleveredEbit && fc?.da && !validatePair(fc.unleveredEbit, fc.da, 'fcff.da', diagnostics)) diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.da', reason: 'D&A must match EBIT period, scope, currency, native unit, and dimension' })
-  if (fc?.unleveredEbit && fc?.capex && !validatePair(fc.unleveredEbit, fc.capex, 'fcff.capex', diagnostics)) diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.capex', reason: 'CapEx must match EBIT period, scope, currency, native unit, and dimension' })
-  if (fc?.unleveredEbit && fc?.taxRate && (fc.taxRate.dimension !== 'RATE' || fc.taxRate.unit !== 'fraction' || fc.taxRate.currency !== null)) diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must be an explicit dimensionless fraction' })
+  let fcffOperandsValid = ebit !== undefined && rate !== undefined && da !== undefined && capex !== undefined
+  const ebitInput = fc?.unleveredEbit, taxRateInput = fc?.taxRate, daInput = fc?.da, capexInput = fc?.capex
+  if (!ebitInput || ebitInput.companySymbol !== input.companySymbol || ebitInput.dimension !== 'CURRENCY_AMOUNT' || ebitInput.flowOrStock !== 'FLOW' || !ebitInput.currency) { diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.ebit', reason: 'unlevered EBIT must belong to bridge company and be a currency amount FLOW' }); fcffOperandsValid = false }
+  if (!taxRateInput || !ebitInput || !samePeriod(ebitInput, taxRateInput)) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must share EBIT period' }); fcffOperandsValid = false }
+  if (!taxRateInput || !ebitInput || !sameScope(ebitInput, taxRateInput)) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must share EBIT company and scope' }); fcffOperandsValid = false }
+  if (!taxRateInput || taxRateInput.dimension !== 'RATE' || taxRateInput.flowOrStock !== 'RATE' || taxRateInput.unit !== 'fraction' || taxRateInput.currency !== null || rate === undefined || rate < 0 || rate > 1) { diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must be a same-scope fraction in [0,1] with null currency' }); fcffOperandsValid = false }
+  if (!daInput || !ebitInput || !validatePair(ebitInput, daInput, 'fcff.da', diagnostics) || daInput.dimension !== 'CURRENCY_AMOUNT' || daInput.flowOrStock !== 'FLOW') { diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.da', reason: 'D&A must match EBIT period, company, scope, currency, native unit, dimension, and FLOW basis' }); fcffOperandsValid = false }
+  if (!capexInput || !ebitInput || !validatePair(ebitInput, capexInput, 'fcff.capex', diagnostics) || capexInput.dimension !== 'CURRENCY_AMOUNT' || capexInput.flowOrStock !== 'FLOW' || capexInput.signConvention !== 'POSITIVE_CASH_OUTFLOW' || capex === undefined || capex < 0) { diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.capex', reason: 'CapEx must be a compatible currency FLOW, non-negative, and use POSITIVE_CASH_OUTFLOW' }); fcffOperandsValid = false }
   let nwcDelta: number | undefined
-  let nwcGood = Boolean(fc?.nwcComplete) && Array.isArray(fc?.nwcStart) && Array.isArray(fc?.nwcEnd) && fc!.nwcStart.length > 0 && fc!.nwcStart.length === fc!.nwcEnd.length
+  let nwcGood = Boolean(fc?.nwcComplete) && Array.isArray(fc?.nwcStart) && Array.isArray(fc?.nwcEnd) && fc!.nwcStart.length > 0 && fc!.nwcEnd.length > 0
   if (!nwcGood) diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.nwc', reason: 'complete, paired operating NWC categories are required' })
   if (nwcGood) {
     const start = new Map<string, EconomicBridgeScalar>(), end = new Map<string, EconomicBridgeScalar>()
-    for (const item of fc!.nwcStart) { const key = item.accountId ?? item.sourceId; if (start.has(key) || item.mappingRole === 'CASH' || item.mappingRole === 'DEBT' || item.mappingRole === 'FINANCING') { diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: key, reason: 'NWC opening categories duplicate or include cash/debt/financing' }); nwcGood = false }; start.set(key, item) }
-    for (const item of fc!.nwcEnd) { const key = item.accountId ?? item.sourceId; if (end.has(key) || item.mappingRole === 'CASH' || item.mappingRole === 'DEBT' || item.mappingRole === 'FINANCING') { diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: key, reason: 'NWC closing categories duplicate or include cash/debt/financing' }); nwcGood = false }; end.set(key, item) }
+    const excluded = new Set(fc!.excludedOperatingCapitalIds)
+    const validNwcRole = (role: string | undefined): boolean => role === 'OPERATING_CURRENT_ASSET' || role === 'OPERATING_CURRENT_LIABILITY'
+    for (const item of fc!.nwcStart) {
+      const key = item.accountId ?? ''
+      if (!nonEmpty(key) || start.has(key) || !validNwcRole(item.mappingRole) || excluded.has(key)) { diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: key || 'nwc.start', reason: 'opening NWC requires a unique accountId, a permitted operating asset/liability role, and no exclusion conflict' }); nwcGood = false; continue }
+      start.set(key, item)
+    }
+    for (const item of fc!.nwcEnd) {
+      const key = item.accountId ?? ''
+      if (!nonEmpty(key) || end.has(key) || !validNwcRole(item.mappingRole) || excluded.has(key)) { diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: key || 'nwc.end', reason: 'closing NWC requires a unique accountId, a permitted operating asset/liability role, and no exclusion conflict' }); nwcGood = false; continue }
+      end.set(key, item)
+    }
     if ([...start.keys()].some((k) => !end.has(k)) || [...end.keys()].some((k) => !start.has(k))) { diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.nwc', reason: 'opening and closing operating categories do not pair' }); nwcGood = false }
     let s = 0, e = 0
     for (const [key, a] of [...start.entries()].sort(([x], [y]) => compare(x, y))) {
       const b = end.get(key)
       if (!b) { nwcGood = false; continue }
+      if (a.mappingRole !== b.mappingRole) { diagnostics.push({ code: 'ACCOUNT_MAPPING_OVERLAP', subjectId: `nwc.${key}`, reason: 'opening and closing mappingRole must remain identical for an account' }); nwcGood = false }
       if (!sameScope(a, b)) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: `nwc.${key}`, reason: 'opening and closing NWC scopes differ' }); nwcGood = false }
       if (!sameCurrency(a, b)) { diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: `nwc.${key}`, reason: 'opening and closing NWC native units differ' }); nwcGood = false }
       if (fc!.unleveredEbit && (!sameScope(a, fc!.unleveredEbit) || !sameCurrency(a, fc!.unleveredEbit))) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: `nwc.${key}`, reason: 'operating NWC must match unlevered EBIT company, scopes, currency, unit, and dimension' }); nwcGood = false }
-      if (a.flowOrStock !== 'STOCK' || b.flowOrStock !== 'STOCK' || Date.parse(a.periodEnd) >= Date.parse(b.periodEnd) || b.periodEnd !== input.horizon.periodEnd) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: `nwc.${key}`, reason: 'NWC requires earlier opening stock and closing stock at horizon end' }); nwcGood = false }
+      if (a.flowOrStock !== 'STOCK' || b.flowOrStock !== 'STOCK' || Date.parse(a.periodEnd) > Date.parse(b.periodEnd) || b.periodEnd !== input.horizon.periodEnd) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: `nwc.${key}`, reason: 'NWC requires opening stock no later than closing stock, with closing stock at horizon end' }); nwcGood = false }
       if (!nwcGood) continue
       const av = scalar(a, `nwc.start.${key}`, diagnostics), bv = scalar(b, `nwc.end.${key}`, diagnostics)
       if (av === undefined || bv === undefined) { nwcGood = false; continue }
@@ -273,10 +316,14 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
       const ev = b.mappingRole === 'OPERATING_CURRENT_LIABILITY' ? -bv : bv
       const ns = add(s, sv), ne = add(e, ev); if (ns === undefined || ne === undefined) { nwcGood = false; diagnostics.push({ code: 'INVALID_NUMBER', subjectId: key, reason: 'NWC sum overflow' }) } else { s = ns; e = ne }
     }
-    if (nwcGood) nwcDelta = subtract(e, s)
+    if (nwcGood) {
+      nwcDelta = subtract(e, s)
+      if (nwcDelta === undefined) { diagnostics.push({ code: 'INVALID_NUMBER', subjectId: 'fcff.nwc', reason: 'NWC delta overflow' }); nwcGood = false }
+    }
   }
-  const fcffReady = ebit !== undefined && rate !== undefined && rate >= 0 && rate <= 1 && da !== undefined && capex !== undefined && capex >= 0 && nwcDelta !== undefined && Boolean(fc?.taxConvention && fc?.taxTreatment && fc?.leaseTreatment && fc?.acquisitionTreatment) && [ebit, rate, da, capex].every(Number.isFinite)
-  if (fc?.capex?.signConvention !== 'POSITIVE_CASH_OUTFLOW') diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.capex', reason: 'CapEx must be an explicit positive cash outflow amount' })
+  if (!nwcGood) nwcDelta = undefined
+  const treatmentsValid = nonEmpty(fc?.taxConvention) && nonEmpty(fc?.taxTreatment) && nonEmpty(fc?.leaseTreatment) && nonEmpty(fc?.acquisitionTreatment)
+  const fcffReady = fcffOperandsValid && ebit !== undefined && rate !== undefined && da !== undefined && capex !== undefined && nwcDelta !== undefined && treatmentsValid && [ebit, rate, da, capex, nwcDelta].every(Number.isFinite)
   if (!fcffReady) diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff', reason: 'FCFF needs same-period unlevered EBIT, tax, D&A, positive CapEx, complete paired NWC, and explicit treatments' })
   const fcffValue = fcffReady ? ebit! * (1 - rate!) + da! - capex! - nwcDelta! : undefined
   components.deltaNwc = nwcDelta === undefined ? unavailable(input.formulaVersion || FORMULA, 'complete operating NWC unavailable') : known(nwcDelta, input.formulaVersion || FORMULA, [...(fc?.nwcStart ?? []).map((x) => x.sourceId), ...(fc?.nwcEnd ?? []).map((x) => x.sourceId)])
@@ -301,7 +348,7 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
   const diagnosticsSorted = diagnostics.sort((a, b) => compare(a.code, b.code) || compare(a.subjectId, b.subjectId) || compare(a.reason, b.reason))
   let bridgeHash = 'UNAVAILABLE'
   try { bridgeHash = hashCanonicalScenarioValue({ inputHash, formula: FORMULA, components, residual, cashFlowDifference, diagnostics: diagnosticsSorted }) } catch { diagnosticsSorted.push({ code: 'INVALID_STRUCTURE', subjectId: 'bridgeHash', reason: 'result could not be canonically hashed' }) }
-  const fatal = diagnosticsSorted.some((d) => ['INVALID_STRUCTURE', 'INVALID_NUMBER', 'NEGATIVE_PHYSICAL_QUANTITY', 'DOUBLE_COUNTED_REVENUE_PATH', 'SCOPE_MISMATCH', 'PERIOD_MISMATCH', 'UNIT_MISMATCH', 'ACCOUNT_MAPPING_OVERLAP', 'DUPLICATE_ADJUSTMENT'].includes(d.code))
+  const fatal = diagnosticsSorted.some((d) => ['INVALID_STRUCTURE', 'INVALID_NUMBER', 'NEGATIVE_PHYSICAL_QUANTITY', 'DOUBLE_COUNTED_REVENUE_PATH', 'SCOPE_MISMATCH', 'PERIOD_MISMATCH', 'UNIT_MISMATCH', 'ACCOUNT_MAPPING_OVERLAP', 'DUPLICATE_ADJUSTMENT', 'MISSING_REQUIRED_OPERAND', 'NCI_SCOPE_MISSING', 'FCFF_INPUTS_MISSING', 'NON_RECURRING_UNRESOLVED'].includes(d.code))
   return { status: fatal ? 'UNAVAILABLE' : 'STRUCTURALLY_VALID_FIXTURE_ONLY', reportEligible: false, inputHash, bridgeHash, components, residual, cashFlowDifference, assumptionReviewStatus: 'REVIEW_REQUIRED', diagnostics: diagnosticsSorted }
 }
 

@@ -11,7 +11,7 @@ const s = (sourceId: string, value: number, fields: Partial<EconomicBridgeScalar
 })
 const line = (lineId: string, amount: number, patch: Partial<EconomicBridgeLine> = {}): EconomicBridgeLine => ({
   lineId, economicLineKey: lineId, bridgeId: 'bridge-fixture', companySymbol: 'FIXTURE', scenario: 'BASE', fromMetric: 'segmentRevenue', toMetric: 'revenue', operation: 'ADD', inputRefs: [`obs-${lineId}`], amount: ev(amount),
-  dimension: 'CURRENCY_AMOUNT', unit: 'CNY', currency: 'CNY', periodStart: '2026-01-01', periodEnd: '2026-06-30', periodBasis: 'H1_YTD', flowOrStock: 'FLOW', financialScope: 'CONSOLIDATED', economicScope: 'core', originKind: 'FACT', formulaVersion: 'test-v1', evidenceRefs: [`ref-${lineId}`], adjustmentRefs: [], disposition: 'INCLUDED_ONCE', ...patch,
+  dimension: 'CURRENCY_AMOUNT', unit: 'CNY', currency: 'CNY', periodStart: '2026-01-01', periodEnd: '2026-06-30', periodBasis: 'H1_YTD', flowOrStock: 'FLOW', financialScope: 'CONSOLIDATED', economicScope: 'core', originKind: 'FACT', formulaVersion: 'economic-bridge-fixture-v1', evidenceRefs: [`ref-${lineId}`], adjustmentRefs: [], disposition: 'INCLUDED_ONCE', ...patch,
 })
 const proposal = (scenario: 'BEAR' | 'BASE' | 'BULL', patch: Partial<EconomicBridgeInput['calibrationProposals'][number]> = {}) => ({
   scenario, driverId: 'margin', baseline: 'current margin', proposedValue: 0.2, mechanism: 'process mix',
@@ -30,11 +30,17 @@ function input(overrides: Partial<EconomicBridgeInput> = {}): EconomicBridgeInpu
     sourceTimeClaims: { sourcePublishedAt: '2026-06-30T00:00:00Z', retrievedAt: '2026-07-02T00:00:00Z', valueVersionAvailableAt: '2026-06-30T00:00:00Z', snapshotCapturedAt: null, snapshotSealedAt: null },
     revenue: { lines: [line('seg-a', 100)], selectedRoute: 'DISCLOSED_SEGMENT_REVENUE', volume: null, realizedNetAsp: null, reportedConsolidatedRevenue: revenue, adjustments: [] },
     profit: { cogs: current, operatingExpenses: [expense], otherOperatingIncome: [other], signedNetFinanceItems: s('finance', -2), signedNonOperatingItems: s('nonop', 0), incomeTaxExpense: s('tax', 5, { signConvention: 'POSITIVE_EXPENSE' }), profitAttributableToNci: s('nci', 3), nciBasis: 'CONSOLIDATED_TO_PARENT', ebit: s('ebit', 30), nonRecurringItems: [] },
-    fcff: { unleveredEbit: s('fcff-ebit', 30), taxRate: s('tax-rate', 0.25, { dimension: 'RATE', unit: 'fraction', currency: null }), taxConvention: 'unlevered rate fixture', da: s('da', 4), capex: s('capex', 6, { signConvention: 'POSITIVE_CASH_OUTFLOW' }), nwcStart: [nwc('inventory', 10, '2025-12-31', 'OPERATING_CURRENT_ASSET'), nwc('payables', 4, '2025-12-31', 'OPERATING_CURRENT_LIABILITY')], nwcEnd: [nwc('inventory', 12, '2026-06-30', 'OPERATING_CURRENT_ASSET'), nwc('payables', 5, '2026-06-30', 'OPERATING_CURRENT_LIABILITY')], nwcComplete: true, excludedOperatingCapitalIds: ['cash', 'debt'], leaseTreatment: 'explicit fixture exclusion', acquisitionTreatment: 'none in fixture', taxTreatment: 'H1_YTD unchanged', cfo: null, purchasesOfLongTermAssets: null },
+    fcff: { unleveredEbit: s('fcff-ebit', 30), taxRate: s('tax-rate', 0.25, { dimension: 'RATE', flowOrStock: 'RATE', unit: 'fraction', currency: null }), taxConvention: 'unlevered rate fixture', da: s('da', 4), capex: s('capex', 6, { signConvention: 'POSITIVE_CASH_OUTFLOW' }), nwcStart: [nwc('inventory', 10, '2025-12-31', 'OPERATING_CURRENT_ASSET'), nwc('payables', 4, '2025-12-31', 'OPERATING_CURRENT_LIABILITY')], nwcEnd: [nwc('inventory', 12, '2026-06-30', 'OPERATING_CURRENT_ASSET'), nwc('payables', 5, '2026-06-30', 'OPERATING_CURRENT_LIABILITY')], nwcComplete: true, excludedOperatingCapitalIds: ['cash', 'debt'], leaseTreatment: 'explicit fixture exclusion', acquisitionTreatment: 'none in fixture', taxTreatment: 'H1_YTD unchanged', cfo: null, purchasesOfLongTermAssets: null },
     calibrationProposals: [proposal('BEAR'), proposal('BASE'), proposal('BULL')], ...overrides,
   }
 }
 const has = (result: ReturnType<typeof calculateEconomicBridge>, code: string) => result.diagnostics.some((d) => d.code === code)
+function assertUnavailable(result: ReturnType<typeof calculateEconomicBridge>, componentId: string): void {
+  const component = componentId === 'residual' ? result.residual : componentId === 'cashFlowDifference' ? result.cashFlowDifference : result.components[componentId]
+  assert.ok(component, `${componentId} exists`)
+  assert.equal(component.status, 'UNAVAILABLE', `${componentId} status`)
+  assert.equal(Object.hasOwn(component, 'value'), false, `${componentId} must not carry a value`)
+}
 
 test('F25 segment and recognized volume times net ASP routes are separately calculable; overlap rejects', () => {
   const segment = calculateEconomicBridge(input())
@@ -106,6 +112,126 @@ test('F30 computes FCFF with EBIT, tax, D&A, CapEx and paired operating NWC', ()
   assert.ok(has(missing, 'FCFF_INPUTS_MISSING'))
 })
 
+test('FIX-001 P1: every CapEx, D&A, tax-rate compatibility failure blocks FCFF without value', () => {
+  const base = input()
+  const cases: readonly { name: string; patch: Partial<EconomicBridgeInput['fcff']>; code: string }[] = [
+    { name: 'CapEx sign convention', patch: { capex: { ...base.fcff.capex, signConvention: 'SIGNED_AMOUNT' } }, code: 'FCFF_INPUTS_MISSING' },
+    { name: 'CapEx period', patch: { capex: { ...base.fcff.capex, periodBasis: 'FY' } }, code: 'PERIOD_MISMATCH' },
+    { name: 'CapEx currency', patch: { capex: { ...base.fcff.capex, currency: 'USD' } }, code: 'UNIT_MISMATCH' },
+    { name: 'CapEx native unit', patch: { capex: { ...base.fcff.capex, unit: 'CNY-thousand' } }, code: 'UNIT_MISMATCH' },
+    { name: 'CapEx flow-stock', patch: { capex: { ...base.fcff.capex, flowOrStock: 'STOCK' } }, code: 'PERIOD_MISMATCH' },
+    { name: 'CapEx negative amount', patch: { capex: s('negative-capex', -1, { signConvention: 'POSITIVE_CASH_OUTFLOW' }) }, code: 'FCFF_INPUTS_MISSING' },
+    { name: 'D&A period', patch: { da: { ...base.fcff.da, periodBasis: 'FY' } }, code: 'PERIOD_MISMATCH' },
+    { name: 'D&A scope', patch: { da: { ...base.fcff.da, financialScope: 'PARENT' } }, code: 'SCOPE_MISMATCH' },
+    { name: 'tax unit', patch: { taxRate: { ...base.fcff.taxRate, unit: 'percent' } }, code: 'UNIT_MISMATCH' },
+    { name: 'tax currency', patch: { taxRate: { ...base.fcff.taxRate, currency: 'CNY' } }, code: 'UNIT_MISMATCH' },
+    { name: 'tax scope', patch: { taxRate: { ...base.fcff.taxRate, economicScope: 'subsidiary' } }, code: 'SCOPE_MISMATCH' },
+    { name: 'tax period', patch: { taxRate: { ...base.fcff.taxRate, periodBasis: 'FY' } }, code: 'PERIOD_MISMATCH' },
+    { name: 'tax rate outside fraction bounds', patch: { taxRate: { ...base.fcff.taxRate, value: ev(1.1) } }, code: 'UNIT_MISMATCH' },
+  ]
+  for (const item of cases) {
+    const result = calculateEconomicBridge(input({ fcff: { ...base.fcff, ...item.patch } }))
+    assert.ok(has(result, item.code), item.name)
+    assert.equal(result.status, 'UNAVAILABLE', `${item.name}: result summary`)
+    assertUnavailable(result, 'fcff')
+    assert.equal(result.components.grossProfit?.status, 'KNOWN', `${item.name}: independent gross profit remains known`)
+  }
+  assert.equal(calculateEconomicBridge(base).components.deltaNwc?.value, 1)
+  assert.equal(calculateEconomicBridge(base).components.fcff?.value, 19.5)
+})
+
+test('FIX-001 P2: profit-statement period, scope, unit, flow and sign failures cut only dependent profit chain', () => {
+  const base = input()
+  const p = base.profit
+  const pbtFailures: readonly { name: string; patch: Partial<EconomicBridgeInput['profit']>; code: string }[] = [
+    { name: 'finance period', patch: { signedNetFinanceItems: { ...p.signedNetFinanceItems, periodBasis: 'FY' } }, code: 'PERIOD_MISMATCH' },
+    { name: 'finance scope', patch: { signedNetFinanceItems: { ...p.signedNetFinanceItems, financialScope: 'PARENT' } }, code: 'SCOPE_MISMATCH' },
+    { name: 'finance currency', patch: { signedNetFinanceItems: { ...p.signedNetFinanceItems, currency: 'USD' } }, code: 'UNIT_MISMATCH' },
+    { name: 'non-operating flow-stock', patch: { signedNonOperatingItems: { ...p.signedNonOperatingItems, flowOrStock: 'STOCK' } }, code: 'PERIOD_MISMATCH' },
+  ]
+  for (const item of pbtFailures) {
+    const result = calculateEconomicBridge(input({ profit: { ...p, ...item.patch } }))
+    assert.ok(has(result, item.code), item.name)
+    assert.equal(result.status, 'UNAVAILABLE', `${item.name}: result summary`)
+    assertUnavailable(result, 'pbt'); assertUnavailable(result, 'consolidatedNetProfit'); assertUnavailable(result, 'parentNetProfit')
+    assert.equal(result.components.grossProfit?.status, 'KNOWN', `${item.name}: gross profit is independent`)
+    assert.equal(result.components.operatingProfit?.status, 'KNOWN', `${item.name}: operating profit is independent`)
+  }
+  const taxFailures = [
+    { incomeTaxExpense: { ...p.incomeTaxExpense, signConvention: 'SIGNED_AMOUNT' } },
+    { incomeTaxExpense: { ...p.incomeTaxExpense, periodBasis: 'FY' } },
+  ] as const
+  for (const patch of taxFailures) {
+    const result = calculateEconomicBridge(input({ profit: { ...p, ...patch } }))
+    assert.equal(result.status, 'UNAVAILABLE')
+    assert.equal(result.components.pbt?.status, 'KNOWN')
+    assertUnavailable(result, 'consolidatedNetProfit'); assertUnavailable(result, 'parentNetProfit')
+  }
+  for (const patch of [
+    { profitAttributableToNci: { ...p.profitAttributableToNci, unit: 'CNY-thousand' } },
+    { profitAttributableToNci: { ...p.profitAttributableToNci, financialScope: 'PARENT' } },
+  ]) {
+    const result = calculateEconomicBridge(input({ profit: { ...p, ...patch } }))
+    assert.equal(result.status, 'UNAVAILABLE')
+    assert.equal(result.components.consolidatedNetProfit?.value, 25)
+    assertUnavailable(result, 'parentNetProfit')
+  }
+  assert.equal(calculateEconomicBridge(base).components.pbt?.value, 30)
+  assert.equal(calculateEconomicBridge(base).components.consolidatedNetProfit?.value, 25)
+  assert.equal(calculateEconomicBridge(base).components.parentNetProfit?.value, 22)
+})
+
+test('FIX-001 P3: malformed included revenue rows and empty segment routes block revenue and all profit descendants', () => {
+  const base = input()
+  const badLines: readonly { name: string; patch: Partial<EconomicBridgeLine>; code: string }[] = [
+    { name: 'stock line', patch: { flowOrStock: 'STOCK' }, code: 'INVALID_STRUCTURE' },
+    { name: 'multiply operation', patch: { operation: 'MULTIPLY' }, code: 'INVALID_STRUCTURE' },
+    { name: 'reclassify operation', patch: { operation: 'RECLASSIFY' }, code: 'INVALID_STRUCTURE' },
+    { name: 'wrong destination', patch: { toMetric: 'operatingProfit' }, code: 'INVALID_STRUCTURE' },
+    { name: 'empty input refs', patch: { inputRefs: [] }, code: 'INVALID_STRUCTURE' },
+    { name: 'empty evidence refs', patch: { evidenceRefs: [] }, code: 'INVALID_STRUCTURE' },
+    { name: 'empty formula version', patch: { formulaVersion: '' }, code: 'INVALID_STRUCTURE' },
+  ]
+  for (const item of badLines) {
+    const result = calculateEconomicBridge(input({ revenue: { ...base.revenue, lines: [line(item.name, 100, item.patch)] } }))
+    assert.ok(has(result, item.code), item.name)
+    assert.equal(result.status, 'UNAVAILABLE', item.name)
+    assertUnavailable(result, 'revenue'); assertUnavailable(result, 'grossProfit'); assertUnavailable(result, 'operatingProfit'); assertUnavailable(result, 'pbt'); assertUnavailable(result, 'consolidatedNetProfit'); assertUnavailable(result, 'parentNetProfit')
+  }
+  const empty = calculateEconomicBridge(input({ revenue: { ...base.revenue, lines: [] } }))
+  assert.ok(has(empty, 'MISSING_REQUIRED_OPERAND'))
+  assert.equal(empty.status, 'UNAVAILABLE')
+  assertUnavailable(empty, 'revenue'); assertUnavailable(empty, 'grossProfit'); assertUnavailable(empty, 'operatingProfit'); assertUnavailable(empty, 'pbt')
+  const valid = calculateEconomicBridge(base)
+  assert.equal(valid.components.revenue?.value, 100)
+  assert.equal(valid.components.grossProfit?.value, 40)
+  assert.equal(valid.components.operatingProfit?.value, 32)
+})
+
+test('FIX-001 P4: NWC rejects unstable, excluded, unknown, incomplete or mismatched operating accounts', () => {
+  const base = input(), fc = base.fcff
+  const cases: readonly { name: string; start: readonly EconomicBridgeScalar[]; end: readonly EconomicBridgeScalar[]; excluded?: readonly string[]; code: string }[] = [
+    { name: 'role changed', start: fc.nwcStart, end: fc.nwcEnd.map((x) => x.accountId === 'inventory' ? { ...x, mappingRole: 'OPERATING_CURRENT_LIABILITY' } : x), code: 'ACCOUNT_MAPPING_OVERLAP' },
+    { name: 'unknown role', start: fc.nwcStart.map((x) => x.accountId === 'inventory' ? { ...x, mappingRole: 'OTHER' } : x), end: fc.nwcEnd, code: 'ACCOUNT_MAPPING_OVERLAP' },
+    { name: 'empty role', start: fc.nwcStart.map((x) => x.accountId === 'inventory' ? { ...x, mappingRole: '' } : x), end: fc.nwcEnd, code: 'ACCOUNT_MAPPING_OVERLAP' },
+    { name: 'excluded cash account', start: fc.nwcStart.map((x) => x.accountId === 'inventory' ? { ...x, accountId: 'cash', sourceId: 'cash' } : x), end: fc.nwcEnd.map((x) => x.accountId === 'inventory' ? { ...x, accountId: 'cash', sourceId: 'cash' } : x), code: 'ACCOUNT_MAPPING_OVERLAP' },
+    { name: 'duplicate account', start: [...fc.nwcStart, { ...fc.nwcStart[0]!, sourceId: 'inventory-duplicate' }], end: fc.nwcEnd, code: 'ACCOUNT_MAPPING_OVERLAP' },
+    { name: 'missing closing account', start: fc.nwcStart, end: fc.nwcEnd.filter((x) => x.accountId !== 'inventory'), code: 'FCFF_INPUTS_MISSING' },
+    { name: 'closing flow measure', start: fc.nwcStart, end: fc.nwcEnd.map((x) => x.accountId === 'inventory' ? { ...x, flowOrStock: 'FLOW' as const } : x), code: 'PERIOD_MISMATCH' },
+    { name: 'closing currency', start: fc.nwcStart, end: fc.nwcEnd.map((x) => x.accountId === 'inventory' ? { ...x, currency: 'USD' } : x), code: 'UNIT_MISMATCH' },
+  ]
+  for (const item of cases) {
+    const result = calculateEconomicBridge(input({ fcff: { ...fc, nwcStart: item.start, nwcEnd: item.end, excludedOperatingCapitalIds: item.excluded ?? fc.excludedOperatingCapitalIds } }))
+    assert.ok(has(result, item.code), item.name)
+    assert.equal(result.status, 'UNAVAILABLE', item.name)
+    assertUnavailable(result, 'deltaNwc'); assertUnavailable(result, 'fcff')
+    assert.equal(result.components.grossProfit?.status, 'KNOWN', `${item.name}: gross profit is independent`)
+  }
+  const valid = calculateEconomicBridge(base)
+  assert.equal(valid.components.deltaNwc?.value, 1)
+  assert.equal(valid.components.fcff?.value, 19.5)
+})
+
 test('F31 CFO less long-term purchases is separate from unavailable FCFF', () => {
   const fc = input().fcff
   const r = calculateEconomicBridge(input({ fcff: { ...fc, unleveredEbit: { ...fc.unleveredEbit, value: unavailable }, cfo: s('cfo', 12), purchasesOfLongTermAssets: s('lt-purchases', 7, { signConvention: 'POSITIVE_CASH_OUTFLOW' }) } }))
@@ -159,6 +285,12 @@ test('extra regressions: non-finite, negative volume, zero gross margin denomina
   assert.ok(has(zeroRevenue, 'MISSING_REQUIRED_OPERAND'))
   const overflow = calculateEconomicBridge(input({ revenue: { ...input().revenue, lines: [line('huge-a', Number.MAX_VALUE), line('huge-b', Number.MAX_VALUE)] } }))
   assert.ok(has(overflow, 'INVALID_NUMBER'))
+  const infinity = calculateEconomicBridge(input({ revenue: { ...input().revenue, lines: [line('infinite', Number.POSITIVE_INFINITY)] } }))
+  assert.equal(infinity.status, 'UNAVAILABLE')
+  assertUnavailable(infinity, 'revenue')
+  const malformedRow = calculateEconomicBridge(input({ revenue: { ...input().revenue, lines: [{} as EconomicBridgeLine] } }))
+  assert.equal(malformedRow.status, 'UNAVAILABLE')
+  assertUnavailable(malformedRow, 'revenue')
   const base = input({ revenue: { ...input().revenue, lines: [line('a', 40), line('b', 60)] } })
   const stable = calculateEconomicBridge(base)
   const reordered = calculateEconomicBridge({ ...base, revenue: { ...base.revenue, lines: [...base.revenue.lines].reverse() } })
@@ -168,9 +300,16 @@ test('extra regressions: non-finite, negative volume, zero gross margin denomina
   assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, rightsVersionClaim: 'changed' }).inputHash)
   assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, valueVersionClaim: 'changed' }).inputHash)
   assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, analysisAsOf: '2026-07-03T00:00:00Z' }).inputHash)
+  const reorderedKeys = Object.fromEntries(Object.entries(base).reverse()) as unknown as EconomicBridgeInput
+  assert.equal(stable.inputHash, calculateEconomicBridge(reorderedKeys).inputHash)
+  assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, horizon: { ...base.horizon, periodBasis: 'FY' } }).inputHash)
+  assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, revenue: { ...base.revenue, lines: base.revenue.lines.map((x) => ({ ...x, economicScope: 'changed-scope' })) } }).inputHash)
+  assert.notEqual(stable.inputHash, calculateEconomicBridge({ ...base, revenue: { ...base.revenue, lines: base.revenue.lines.map((x, i) => i === 0 ? { ...x, amount: ev(41) } : x) } }).inputHash)
   const untouched = structuredClone(base)
   calculateEconomicBridge(base)
   assert.deepEqual(base, untouched)
   const malformed = calculateEconomicBridge(null as unknown as EconomicBridgeInput)
   assert.equal(malformed.status, 'UNAVAILABLE')
+  assert.equal(malformed.reportEligible, false)
+  assert.equal(malformed.assumptionReviewStatus, 'REVIEW_REQUIRED')
 })

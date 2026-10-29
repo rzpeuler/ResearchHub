@@ -122,3 +122,93 @@ git diff --check
 ```
 
 下游停机点为 `READY_FOR_ARCHITECTURE_REVIEW`。002-C 的独立审阅交接和资格治理尚未授权；不得将本桥接入生产研究或解释为公司估值能力。
+
+## FIX-001：组件级 Fail-Closed 修复
+
+**任务：** `RHL-CQR-P0-19-S4-007B-002-B-FIX-001`
+**冻结/父提交：** `2e2d5e5c7667de3bb621654b49cc711063d1c980`
+**允许文件：** 上述计算器、其合成测试、本报告；本次未修改 `scenario-method-contracts.ts`，所以没有新增或改变契约。
+
+本节追加保留 002-B 的实施记录。002-B 曾因诊断与组件 KNOWN 值脱节被判 `NOT_ACCEPTED`；本修复只处理计算器的组件验证/依赖传播，不提升任何来源或公司研究资格。
+
+### P1 — FCFF 所有必需输入都进入同一有效性门
+
+先前的 period/scope/unit/sign 诊断没有都参与 `fcffReady`。现在将 EBIT、税率、D&A、CapEx 的 scalar 结果及各自兼容性布尔值合并进 FCFF 门：金额必须是同公司、同期间、同 scope、同原生单位/币种/量纲的 FLOW；税率必须为同期间和 scope 的 `RATE` fraction、null currency、值在 `[0,1]`；CapEx 必须非负并标为 `POSITIVE_CASH_OUTFLOW`。全部兼容检查通过且完整 NWC、税/租赁/并购处理声明存在后才计算 FCFF。任一失败时 FCFF 为 `UNAVAILABLE`，无 `value` 属性；独立毛利仍保持 KNOWN。税率不与 EBIT 做同量纲比较，只比较公司/期间/scope。
+
+测试 `FIX-001 P1: every CapEx, D&A, tax-rate compatibility failure blocks FCFF without value` 对 CapEx 符号、FY 期间、USD 币种、CNY-thousand 单位、STOCK、负额，D&A 期间/scope，以及 tax rate 单位/currency/scope/period/越界分别断言定位诊断、整体状态和组件状态，且无 FCFF value。原正例仍断言 ΔNWC `1`、FCFF `19.5`。
+
+### P2 — 财务项错误切断其下游
+
+先前 finance、non-operating、tax、NCI 项的 `validatePair()` 结果只产生日志，没有可靠控制算式。现在分别保存兼容状态：Finance/non-operating 项只有在同期间、scope、FLOW、单位、币种、share basis 和 `SIGNED_AMOUNT` 有效时参与 PBT；任一失败，PBT/合并净利/归母净利均无 value，合法毛利和营业利润仍可用。税项必须符合上述财务口径和 `POSITIVE_EXPENSE`，失败时 PBT 保留、两种净利不可用。NCI 必须同口径且为 `CONSOLIDATED_TO_PARENT` 与 signed amount；失败时合并净利保留、归母净利不可用。缺失 NCI 不会当成零，EPS 不能被接受为金额。
+
+测试 `FIX-001 P2: profit-statement period, scope, unit, flow and sign failures cut only dependent profit chain` 覆盖 Finance 期间/scope/币种、non-operating FLOW/STOCK、税符号/期间、NCI 单位/scope。每例直接断言受影响组件 `UNAVAILABLE` 且无 value、独立组件状态；H1 正例仍为 PBT `30`、合并净利 `25`、归母净利 `22`。
+
+### P3 — 分部收入行语义、引用与下游传播
+
+先前仅验证了部分身份和金额。现在被计入的行必须有完整非空 line/economic key/company/bridge/scenario、非空 input/evidence refs、与输入一致的 formulaVersion、期间和 scope；金额必须是 `FLOW`/`CURRENCY_AMOUNT`，且唯一允许 `segmentRevenue --ADD--> revenue`。只允许 `FACT`/`DERIVED` 行，金额证据仍须是有效 `KNOWN`/有引用的 `KNOWN_ZERO`。空的 disclosed-segment 行集不是零收入。`CROSS_CHECK_ONLY` 行保持允许且不加总。
+
+测试 `FIX-001 P3: malformed included revenue rows and empty segment routes block revenue and all profit descendants` 逐例覆盖 STOCK、MULTIPLY、RECLASSIFY、错误 toMetric、空 refs、空 formulaVersion、空行集。每例断言定位诊断、overall `UNAVAILABLE`，revenue、gross/operating profit、PBT、合并/归母净利组件均 `UNAVAILABLE` 且无 value。合法分部收入与 volume×ASP 正例保留，收入均为 `100`。
+
+### P4 — ΔNWC 只接受可配对且角色稳定的经营科目
+
+先前未知角色会按经营资产处理，且资产/负债角色可在期初期末改变。现在期初和期末都要求唯一且非空 `accountId`，角色严格为 `OPERATING_CURRENT_ASSET` 或 `OPERATING_CURRENT_LIABILITY`；不接受空/未知角色、排除列表中的账户、重复/未配对账户或角色变更。每对科目须为同公司、scope、币种/单位/量纲的存量，期初不晚于期末，期末等于 horizon end；负债仍以负号计算。任何失败使 ΔNWC 与 FCFF 都不可用，但不传染到独立毛利。
+
+测试 `FIX-001 P4: NWC rejects unstable, excluded, unknown, incomplete or mismatched operating accounts` 覆盖角色变化、OTHER/空角色、被排除的 cash、重复 accountId、缺期末账户、期末 FLOW、币种不符。每例断言具体诊断、overall 状态、ΔNWC/FCFF 均 `UNAVAILABLE` 且无 value，同时毛利仍 KNOWN。原正例 ΔNWC `1`、FCFF `19.5` 不变。
+
+新增断言还覆盖无序行与对象键顺序的 hash 稳定，以及期间、scope、金额、formula、rights/version、asOf 变化的 hash 更新；Infinity/null/malformed row 不抛出异常；全部结果仍 `reportEligible:false` 且 `assumptionReviewStatus:'REVIEW_REQUIRED'`。
+
+### FIX-001 验证命令与结果
+
+| 命令 | 最终 exit code / 统计 |
+|---|---|
+| `node --import tsx --test tests/workflows/company-scenario-economic-bridge.test.ts` | `0`；16 通过、0 失败。原 12 个 F25–F35 保留并通过，新增 P1–P4 四项通过。 |
+| `node --import tsx --test tests/workflows/company-scenario-method-contracts.test.ts` | `0`；19 通过、0 失败。 |
+| `npm run typecheck -- --pretty false` | 最终 `0`；通过。开发中曾因 lineage 引用 narrowing 报 TypeScript 错误，修正后复验。 |
+| `git diff --check` | 最终 `0`；通过。 |
+| `npm run test:node` | 未运行。 |
+| `npm run client:test` | 未运行。 |
+
+开发阶段曾有失败的聚焦试跑：P4 首次未定位到重复账户，因为数组长度门提前跳过账户扫描（该失败促成扫描逻辑调整）；随后测试 fixture 的行 formulaVersion 与新契约不一致导致一轮失败，fixture 修正后上述最终命令全部通过。最终结论仅针对聚焦验证，不代表完整 Node/client 套件通过。既有 Node 21 / client 5 个已知失败身份未在本批重跑或重新比较。
+
+### FIX-001 受保护文件 SHA-256 复核
+
+以下五份既有 dirty JSON 与 15 个冻结公司运行 sidecar，在最终验证前后都只计算 SHA-256，未读取正文。20 个文件的前后哈希逐个相等：
+
+| 路径 | 前 SHA-256 | 后 SHA-256 |
+|---|---|---|
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-thesis-authorized.json` | `7252fd35dec70403fd6bb8b3edc6ffadd25211fd158461a1dde30458bf07f442` | `7252fd35dec70403fd6bb8b3edc6ffadd25211fd158461a1dde30458bf07f442` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-event-readonly.json` | `ef0e7475e0464ca1e3950feb348b0d3ed6dc7383e32200faa3fc413207bc641a` | `ef0e7475e0464ca1e3950feb348b0d3ed6dc7383e32200faa3fc413207bc641a` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-industry-readonly.json` | `12c951be5ca88fb35b155187055b0a15a50d212133c9b68088c0d1674500c0fa` | `12c951be5ca88fb35b155187055b0a15a50d212133c9b68088c0d1674500c0fa` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-thesis-references.json` | `61cd5cf5b24a7f0fc10746e0269a845d6e29464614c43738d7585ec075fb4670` | `61cd5cf5b24a7f0fc10746e0269a845d6e29464614c43738d7585ec075fb4670` |
+| `tests/validation/evidence/company-quality-pi-default-deny.json` | `4c02302a5b31cec6d93b9298e06a76bd0b834b4bacc914670c7fd06aa6300038` | `4c02302a5b31cec6d93b9298e06a76bd0b834b4bacc914670c7fd06aa6300038` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-analysis.json` | `72588193faff4c2e75fb2e07c0b07197619b8c23b9fa49f843e7f05ae34e98b3` | `72588193faff4c2e75fb2e07c0b07197619b8c23b9fa49f843e7f05ae34e98b3` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-bundle.json` | `691f3f561b02523f00865f574f6fd373b202c9dad98502abbd61fa3b5958067f` | `691f3f561b02523f00865f574f6fd373b202c9dad98502abbd61fa3b5958067f` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-company-research-002384-860916a8-4958-4d29-8da1-56ad5dd1c2c6.md` | `3c14d4fbb29aee31bc434b9c99b98de3e79f6897581c4519a46aa87f236eb91f` | `3c14d4fbb29aee31bc434b9c99b98de3e79f6897581c4519a46aa87f236eb91f` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-kb-integrity.json` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-report.json` | `6fa63686b889150551b42eab66b3ce32f4246871f5a3d4be99117d0e0d8917d4` | `6fa63686b889150551b42eab66b3ce32f4246871f5a3d4be99117d0e0d8917d4` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-started.json` | `716537e8348f69818ffdc128970e509ed77b367443dc1d4a12292e2d972f87df` | `716537e8348f69818ffdc128970e509ed77b367443dc1d4a12292e2d972f87df` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-workflow.json` | `0cf91dfa99a0ca0b1daff3b8711e5e29ab1f07c1d693cfa7f986999adc718ebd` | `0cf91dfa99a0ca0b1daff3b8711e5e29ab1f07c1d693cfa7f986999adc718ebd` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-analysis.json` | `60c877932829d114eb02af13304402ec5599b4410df5bc63926f4f646489de35` | `60c877932829d114eb02af13304402ec5599b4410df5bc63926f4f646489de35` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-bundle.json` | `1fd11c5f5e7764d23bd4950712faf056efeff09436dd983635b24c156a7a8739` | `1fd11c5f5e7764d23bd4950712faf056efeff09436dd983635b24c156a7a8739` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-company-research-002594-82bcc425-d48d-4e55-bc45-111aa8c28ba4.md` | `0f83c1cd96f5962402eae69503e2c53cdf76e16f01a6acf2f0324e986a036604` | `0f83c1cd96f5962402eae69503e2c53cdf76e16f01a6acf2f0324e986a036604` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-kb-integrity.json` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-report.json` | `2867b270318b21e334c28246935326dab19fa734c094253bb80637b2c32390c1` | `2867b270318b21e334c28246935326dab19fa734c094253bb80637b2c32390c1` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-started.json` | `7f1b87714dea542920e07235206af7db367abfc9f58cb4d043328c49dcb6fef1` | `7f1b87714dea542920e07235206af7db367abfc9f58cb4d043328c49dcb6fef1` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-workflow.json` | `43316166217675df70473ed86cf646fa988dd3dfc53be6c4e75f7f32bf6ff7f6` | `43316166217675df70473ed86cf646fa988dd3dfc53be6c4e75f7f32bf6ff7f6` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/summary.json` | `e9999cf1ff2173c1ce5d87387abb0c65d9473426b5334547285499f0f51f9228` | `e9999cf1ff2173c1ce5d87387abb0c65d9473426b5334547285499f0f51f9228` |
+
+### FIX-001 Gate 复核与停机
+
+| Gate | 状态 | 本轮证据 |
+|---|---|---|
+| B0 Git/scope | PASS | 父提交是冻结 SHA；本轮只修改四个授权文件；用户原有 dirty 项未暂存或触碰。 |
+| B1 Contracts | PASS | 没有修改类型或 Phase 1 / 公共契约；无资格提升。 |
+| B2 Revenue | PASS | 每个非法行/空路由都阻断 revenue 和利润下游；合法分部与量价正例保留。 |
+| B3 Profit | PASS | 财务项、税、NCI 按依赖层切断；不相关组件保留。 |
+| B4 FCFF | PASS | 任一必需金额/税率/符号/scope/期间/单位/NWC 角色失败均无 FCFF value。 |
+| B5 Fail-Closed | PASS | 诊断失败与受影响组件 UNAVAILABLE 一致；测试另断言 `value` 属性不存在，并验证无关组件可用。 |
+| B6 Determinism | PASS | 原有和新增 hash/不可变性断言通过。 |
+| B7 Tests | PASS | 新测试 16/16、Phase 1 19/19、typecheck 与 diff-check 通过；全量 Node/client 未运行。 |
+| B8 Governance | PASS | Fixture-only、reportEligible false、Reviewer/Data/Model/Knowledge/生产接线均未触及；双公司 T0 仍 17/19 BLOCKED，P0-19 NOT_ACCEPTED。 |
+
+最高交付状态仍为 `S4-007B-002-B-FIX-001 READY_FOR_ARCHITECTURE_REVIEW`，未自签 ACCEPTED。公司研究、估值、19/19、M1/M2 与 002-C 仍未获准。
