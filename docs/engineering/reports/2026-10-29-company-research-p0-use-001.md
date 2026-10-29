@@ -11,7 +11,7 @@
 
 `/reports` 的 React 页面消费 JSON 报告，原有顶部只显示“研究尚未完成”和章节覆盖率；失败章节名称及原因只在折叠的原始 issues 中。此前 Markdown exporter 的改进不等于 React 页面已展示具名缺口。本轮只在有 `researchQuality` 的 `company_research` 报告顶部按失败 `sectionChecks` 显示短摘要：章节标题来自已存在的 section ID/title；限制说明只翻译已存在的已知 reason code，其他原因使用“本节未通过完整研究验收，原因见审计明细”。原始 `quality.issues` 原样保留在原折叠区，质量结果、正文、证据、数据与运行身份均未修改。
 
-修改文件仅限（相对冻结基线：3 files changed, 203 insertions, 1 deletion）：
+修改文件仅限（相对冻结基线：3 files changed, 204 insertions, 1 deletion）：
 
 - `client/src/components/ResearchReportBody.tsx`
 - `client/src/components/ResearchReportBody.test.tsx`
@@ -34,7 +34,7 @@
 
 ## Gate D — 真实归档身份与阅读记录
 
-两份归档 JSON 与上次登记的 SHA-256 一致；均含 19 个章节且顺序相同。原始响应未改写。`summary.json` 将两次 run 标为 `blocked`，Knowledge integrity 为 readonly 且记录 `knowledgeUnchanged=true`。
+两份归档 JSON 与上次登记的 SHA-256 一致；均含 19 个章节且顺序相同。原始响应未改写。另用系统临时目录中的 Vite SSR harness 将两份原始 JSON 直接传入当前 `ResearchReportBody`，分别渲染成功；断言了原始 reportId/runId、17/19、`研究尚未完成`、两处具名失败和 19 个章节节点。该验证证明实际归档数据符合组件 Report 结构并能由 React 组件输出；它不是有浏览器 DOM、点击或截图的 UI E2E。`summary.json` 将两次 run 标为 `blocked`，Knowledge integrity 为 readonly 且记录 `knowledgeUnchanged=true`。
 
 | 公司 / 身份 | runId / reportId / asOf | 结论、驱动与反证（均来自原报告） | 跟踪项与两处缺口 | 旧估值与 PIT 限制 |
 |---|---|---|---|---|
@@ -50,6 +50,7 @@
 | `npm run client:test -- src/components/ResearchReportBody.test.tsx` | 0；12/12 通过，包含 17/19 双失败章节、19/19 通过、未知章节 18/19、旧报告兼容、非公司报告兼容；已有引用、章节与偏好测试通过。 |
 | `npm run client:test -- src/app/report-navigation.test.tsx` | 1；4 个用例中 2 通过、2 失败：`opens a no-report bundle from its durable original conversation Activity` 与 `rejects another run returned to a conversation artifact request` 均找不到 `View Research Bundle`。冻结基线 `bdae675c1bc506ab067c2e5279a69984b107f00c` 上以原组件重跑得到完全相同的 2 个失败、2 个通过；不是本次差异。 |
 | `node --import tsx --test tests/app/services/research-report.test.ts` | 0；17/17 通过。 |
+| 临时 Vite SSR harness：原始两份归档 JSON → `ResearchReportBody` | 0；两份真实归档均渲染成功，核对 reportId/runId、17/19、具名缺口和 19 节节点；不是浏览器 E2E。 |
 | `npm run client:typecheck` | 0。 |
 | `npm run typecheck -- --pretty false` | 0。 |
 | `npm run client:build -- --outDir <系统临时目录>` | 0；Vite 生产构建成功，只有既有大 chunk 提示。产物未写回仓库。 |
