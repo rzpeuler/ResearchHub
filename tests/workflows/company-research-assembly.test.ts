@@ -1649,6 +1649,8 @@ test('final synthesis instruction keeps R&D measures separate and prevents broad
   const executor: ReasoningExecutor = { capabilities, execute: async (request) => {
     assert.match(request.instruction, /按“核心判断→决定性经营驱动→最强支持证据与反证→失效条件”组织/)
     assert.match(request.instruction, /只有指标及观察对象实质相同才合并/)
+    assert.match(request.instruction, /综合两节不得复抄方法章节的金额、比例或日期，除引用定位符本身外不得增加数值/)
+    assert.match(request.instruction, /完整数值留在其原属方法章节/)
     assert.match(request.instruction, /研发投入金额.*研发费用.*不同指标与期间/)
     assert.match(request.instruction, /不能笼统称“完整管理层分工缺失”/)
     assert.match(request.instruction, /具体新任高管履历、具体职责分工或任职后绩效/)

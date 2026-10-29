@@ -11,7 +11,7 @@ import { companyCitedSplitDateText } from '../../skills/company-research/evidenc
 
 const idFor = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')
 const finalIds = ['investment-thesis','monitoring-checklist']
-const P1_EDITORIAL_PRIORITY = '编辑优先级：investment-thesis 按“核心判断→决定性经营驱动→最强支持证据与反证→失效条件”组织，明确区分已证实事实与推断；monitoring-checklist 按同一驱动的可验证支持信号与反证排序。压缩已在方法章节充分展开的事实和重复限制，不删除事实、反证、范围边界、直接引用或触发信号；只有指标及观察对象实质相同才合并。'
+const P1_EDITORIAL_PRIORITY = '编辑优先级：investment-thesis 按“核心判断→决定性经营驱动→最强支持证据与反证→失效条件”组织，明确区分已证实事实与推断；monitoring-checklist 按同一驱动的可验证支持信号与反证排序。严格遵守本指令的定性要求：综合两节不得复抄方法章节的金额、比例或日期，除引用定位符本身外不得增加数值；用简短的分类事实和因果关系说明驱动，完整数值留在其原属方法章节。压缩已在方法章节充分展开的事实和重复限制，不删除关键事实、反证、范围边界、直接引用或触发信号；只有指标及观察对象实质相同才合并。'
 
 export interface SynthesisEvidenceLedgerEntry {
   readonly ownerSkill?: CompanyResearchMethodResult['skillId']

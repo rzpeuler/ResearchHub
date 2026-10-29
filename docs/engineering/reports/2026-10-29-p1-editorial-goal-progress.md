@@ -1,14 +1,14 @@
 # P1-GOAL-001 — 长程执行进度
 
-**CURRENT_MILESTONE:** M3 partial; blocked before M4 same-input model replay
+**CURRENT_MILESTONE:** M5 partial; M4 real same-input synthesis replay complete, P1 quality gate not met after two editorial iterations
 **BASELINE_SHA:** `6989b5f010d596e7436f1f4d49841ad8845ce64c`
 **WORKTREE_BRANCH:** `codex/p1-editorial-synthesis`
-**MODEL_CALLS_USED/MAX:** 0/12
-**BYD_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → NOT_AVAILABLE
-**DONGSHAN_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → NOT_AVAILABLE
+**MODEL_CALLS_USED/MAX:** 6/12 P1 synthesis calls; 1 separate live Runtime connection probe
+**BYD_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → 3/3/3/3/3/2 (candidate remains nonconforming)
+**DONGSHAN_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → 3/3/3/3/3/3 (provisional; candidate remains nonconforming)
 **REGRESSION_DELTA:** no new failures versus clean-main matched failing tests; 21 Node and 5 Client full-suite failures persist on main
-**BLOCKER:** Runtime catalog reports the selected model candidate available, but `openai-codex` provider auth is unconfigured and direct Pi `ModelRuntime` has no available snapshot
-**NEXT_STEP:** once the existing authorized Pi provider is configured, replay the archived inputs with the same model before assessing candidate quality
+**BLOCKER:** `gpt-6-luna` is callable, but both candidate iterations violate the existing no-numeric-values constraint in the two synthesis sections; no third iteration is authorized
+**NEXT_STEP:** complete partial acceptance evidence and Git delivery; do not claim READY_FOR_CTO_ACCEPTANCE
 
 ## M0 — preflight, protection, isolation
 
@@ -67,12 +67,20 @@ Two initial combined shell invocations accidentally ran `npm ci` from the dirty 
 - The normalized rights, `retrievedAt`, and source metadata/provenance fields are not retained in the archive. No values were reconstructed for them; this confirms the permitted same-content snapshot handoff, not the original acquisition event. Baseline and candidate still need to use the same reconstructed inputs if model auth is restored.
 - The archive's saved synthesis outputs passed the current assembly path once per company with no diagnostics. This checks reconstruction and existing validation only; the model call count remains 0/12.
 
-## Stop condition — direct Pi authentication unavailable
+## M4 — real archived synthesis comparison (PARTIAL_PRODUCT_QUALITY)
 
-- The user's runtime selection is `openai-codex/gpt-6-luna`, and `/api/settings` reports this catalog candidate `available=true`. The same response reports `modelProviders.openai-codex.configured=false`. A separate Pi `ModelRuntime` initialized from the standard Pi agent directory with model-network refresh disabled lists the candidate in its catalog but returns an empty available-model snapshot.
-- Catalog availability therefore does not establish that the permitted Pi synthesis executor can authenticate. No synthesis call, test-connection call, alternative provider, or data acquisition was made; model calls remain 0/12.
-- The minimum unlock is successful configuration of the existing OpenAI Codex Pi provider, after which the same-source replay can continue. No new provider, model, account, or paid source is requested.
-- Acceptance record: `docs/engineering/reports/2026-10-29-p1-editorial-goal-acceptance.md`, status `BLOCKED_MODEL_OR_EVIDENCE`.
-- Existing PR #10 is updated with this partial code/test evidence and block; it remains unmerged.
-- Documentation-only PR #10: `https://github.com/rzpeuler/ResearchHub/pull/10`; it contains the baseline/progress/acceptance records only.
-- M3 is partial. M4 same-input after-quality assessment, complete P1 implementation, final regression closure and CTO-ready acceptance are not claimed. No merge is authorized.
+- The live Runtime `POST /api/settings/model-test` returned success for `openai-codex/gpt-6-luna`. This was one separate connection probe; an initial request with the wrong local token header was rejected before reaching the model. No login/configuration mutation occurred.
+- Replayed only `company_research_synthesis` through the existing Pi `ModelRuntime` auth/model paths. No full Company Research run, acquisition, new source call, report persistence, or Knowledge write occurred. The six P1 calls were: BYD baseline/candidate iteration 1, Dongshan baseline/candidate iteration 1, then one candidate iteration 2 for each company. All used `openai-codex/gpt-6-luna`, one attempt per assembly, and the same archived input per company across conditions.
+- Frozen input details: BYD `asOf=2026-10-27T20:19:59.628Z`, 10 methods, 9 allowed source IDs, 304 allowed evidence locators; Dongshan `asOf=2026-10-27T20:26:46.347Z`, 10 methods, 6 allowed source IDs, 372 locators. The aggregate source-content hashes match M1: BYD `e341f61ea5a3d43be05e3b10e1e2d3597cf5d60e716847194c4514e5603fe2bd`; Dongshan `42b23c9e4f0be94534e42eeae1504ba42433ff153d58bfa4a2bd23c4f215b0c9`.
+- Canonical JSON SHA-256 over the actual synthesis `request.input` was identical across baseline/candidate and both candidate iterations: BYD `76d6e52dd6d0a6a25d016d24a0adba6b99c22c4b6c59f25d34466d26ad631158`; Dongshan `1fc05ffcece4e7b416d2fff4e9d24067a241b72959fb1d8a34a3bd47443aa8e0`. These differ from the earlier M4 mock-preflight hashes (`c8a3…` / `dcf1…`), which used a different serialization and are not claimed as equivalent hashes; the per-run same-input equality is the comparison evidence.
+- Calls completed in 24.039s, 36.608s, 28.071s, 45.392s, 30.603s, and 46.398s respectively (211.111s total wall time). The provider/executor did not expose token or charge usage. All six outputs passed the existing assembly validators with `synthesisMode=reasoning_executor` and zero synthesis diagnostics.
+- Candidate quality did not satisfy the existing qualitative-only instruction. Both iterations inserted source-backed amounts/percentages into `investment-thesis` and/or `monitoring-checklist`; the second, strengthened instruction did not prevent this. BYD thesis length grew from 1,498 baseline characters to 2,315 in iteration 2 and retained detailed product revenue figures; its concision score stays 2. Dongshan iteration 2 thesis was shorter (2,003 → 1,585 characters) and its operating-driver sequence is clearer, but it also inserted interim product figures; therefore it is not an acceptable P1 output. Candidate drafts remain isolated and untracked under `tmp/p1-goal-001-replay/real-calls/` with SHA-256 hashes recorded in the acceptance report.
+- Provisional engineering reading scores (thesis / causal chain / counterevidence / monitoring / cross-section consistency / concision): BYD `3/3/3/3/3/2`; Dongshan `3/3/3/3/3/3`. Scores do not override the qualitative instruction or establish D2. No candidate is promoted to a Report.
+- Stop rule: after two editorial iterations, the same output-contract breach remained. No third scheme or model call was made. Status is `PARTIAL_PRODUCT_QUALITY`, not `READY_FOR_CTO_ACCEPTANCE`.
+
+## M5 — regression and boundary status
+
+- Current focused assembly tests: 112/112 pass; `npm run typecheck`, `npm run client:typecheck`, and `npm run client:build` pass.
+- Full Node and Client baselines remain the previously matched results: Node 3,284/3,305 with the same 21 failures reproduced on clean `main`; Client 223/228 with the same 5 reproduced on clean `main`. This turn changed only the existing synthesis instruction and its assertions; no client files changed. Full suites were not rerun after this prompt-only edit.
+- Historical Report JSON, source archives, root checkout, Runtime configuration, and Knowledge were not changed by the replay. Browser E2E was not run. No output was persisted to runtime data.
+- Acceptance record: `docs/engineering/reports/2026-10-29-p1-editorial-goal-acceptance.md`. PR #10 remains unmerged and will receive this partial result; main merge is not authorized.
