@@ -1,14 +1,14 @@
 # P1-GOAL-001 — 长程执行进度
 
-**CURRENT_MILESTONE:** M1 complete; M2 decision recorded; blocked before M3
+**CURRENT_MILESTONE:** M3 partial; blocked before M4 same-input model replay
 **BASELINE_SHA:** `6989b5f010d596e7436f1f4d49841ad8845ce64c`
 **WORKTREE_BRANCH:** `codex/p1-editorial-synthesis`
 **MODEL_CALLS_USED/MAX:** 0/12
 **BYD_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → NOT_AVAILABLE
 **DONGSHAN_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → NOT_AVAILABLE
-**REGRESSION_DELTA:** NOT_RUN; no product code changed
-**BLOCKER:** no configured/authenticated Pi model provider; selected app model cannot run
-**NEXT_STEP:** resume the same-source replay after the existing authorized Pi model is available
+**REGRESSION_DELTA:** no new failures versus clean-main matched failing tests; 21 Node and 5 Client full-suite failures persist on main
+**BLOCKER:** Runtime catalog reports the selected model candidate available, but `openai-codex` provider auth is unconfigured and direct Pi `ModelRuntime` has no available snapshot
+**NEXT_STEP:** once the existing authorized Pi provider is configured, replay the archived inputs with the same model before assessing candidate quality
 
 ## M0 — preflight, protection, isolation
 
@@ -50,10 +50,21 @@ Two initial combined shell invocations accidentally ran `npm ci` from the dirty 
 | Monitoring starts with overlapping customer-concentration rows for Dongshan and has no enforced causal order across the list. | Ask for monitoring items to follow thesis drivers and consolidate only rows that monitor the same underlying mechanism; retain at most nine items. | Connects next checks to the thesis and frees space for commercialisation and cash-conversion checks. | Consolidation could hide distinct disclosed measures; tests require top-five and largest/second customer values/locators to remain distinct within a combined row. |
 
 
-## Stop condition — Pi model unavailable
+## M3 — bounded synthesis-priority change (partial)
 
-- The saved non-secret application selection is `openai-codex/gpt-6-luna`; local Pi provider-status inspection found zero configured providers. The root Runtime status returns no selected model. The configured primary production model is also unauthenticated.
-- No other provider/model was substituted. Model calls remain 0/12; provider/data acquisition calls remain zero.
+- Added one short priority to the existing `company_research_synthesis` instruction: lead with judgment → decisive operating driver → supporting evidence and disconfirmer → failure condition; order monitoring by the same causal chain; compress only repeated method detail and merge only genuinely duplicate monitored mechanisms.
+- Did not alter the 19 section IDs, method ownership, source/evidence allowlist, numeric/citation validators, quality gates, Workflow, Skill, Report contract, or Knowledge path.
+- Added assertions to the existing assembly test. The focused assembly suite passed 112/112. Root typecheck, Client typecheck, and Client build passed.
+- Full Node suite: 3,284 passed, 21 failed out of 3,305. The same 21 failure titles reproduced on clean `origin/main` at `6989b5f`; matched failing files are `research-skill-architecture.test.ts`, `theme-workspace-projection.test.ts`, `competition-module-gateway.test.ts`, `codex-module-remaining-schema-deltas.test.ts`, and `codex-production-industry-schema-compatibility.test.ts`.
+- Full Client suite: 223 passed, 5 failed out of 228. All five same titles reproduced on clean `origin/main` in `App.test.tsx` (3) and `report-navigation.test.tsx` (2).
+- The full suites regenerated five tracked validation evidence JSONs in the isolated worktree and a parser `__pycache__`; the tracked JSONs were restored because the worktree started clean. The remaining untracked cache is excluded from staging. Root checkout and its user files were not used for tests.
+
+## Stop condition — direct Pi authentication unavailable
+
+- The user's runtime selection is `openai-codex/gpt-6-luna`, and `/api/settings` reports this catalog candidate `available=true`. The same response reports `modelProviders.openai-codex.configured=false`. A separate Pi `ModelRuntime` initialized from the standard Pi agent directory with model-network refresh disabled lists the candidate in its catalog but returns an empty available-model snapshot.
+- Catalog availability therefore does not establish that the permitted Pi synthesis executor can authenticate. No synthesis call, test-connection call, alternative provider, or data acquisition was made; model calls remain 0/12.
+- The minimum unlock is successful configuration of the existing OpenAI Codex Pi provider, after which the same-source replay can continue. No new provider, model, account, or paid source is requested.
 - Acceptance record: `docs/engineering/reports/2026-10-29-p1-editorial-goal-acceptance.md`, status `BLOCKED_MODEL_OR_EVIDENCE`.
+- Existing PR #10 is updated with this partial code/test evidence and block; it remains unmerged.
 - Documentation-only PR #10: `https://github.com/rzpeuler/ResearchHub/pull/10`; it contains the baseline/progress/acceptance records only.
 - M3–M6 product implementation, after-quality assessment, code validation and CTO-ready PR are not claimed. No merge is authorized.
