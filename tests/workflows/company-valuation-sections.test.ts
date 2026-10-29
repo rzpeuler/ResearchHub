@@ -275,6 +275,8 @@ test('late current-value quote remains a reference PE with explicit retrieval-ti
   assert.match(result.sections[0]!.markdown, /实际取得时间为 2026-10-27T20:20:02\.952Z（研究起点 asOf=2026-10-27T20:19:59\.628Z）/)
   assert.match(result.sections[0]!.markdown, /不证明同一数值版本在历史 asOf 前已取得或不可变封存/)
   assert.ok(result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
+  const marketSource = result.evidenceSources.find(source => source.candidate.candidateId.startsWith('company-valuation-market-'))
+  assert.deepEqual(marketSource?.rights, { accessScope: 'unknown', providerTermsKnown: false, retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false, redistributionAllowed: false }, 'the synthetic quote source must not invent original publisher terms')
   assert.match(result.sections[1]!.markdown, /valuation_market_price=CURRENT_REFERENCE_ONLY\(retrievedAt=.*historicalVersion=UNVERIFIED\)/)
   assert.match(result.sections[1]!.markdown, /upstreamPIT=safe/)
 })
@@ -292,15 +294,37 @@ test('current-value mode accepts a close that becomes available after research s
   assert.ok(!result.diagnostics.includes('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE'))
 })
 
-test('a quote response retrieved by a historical cutoff remains eligible after exchange close', () => {
+test('historical quote stays blocked when the exact numeric value version is missing', () => {
   const asOf = '2026-10-27T20:19:59.628Z'
   const timelyQuote = { ...quote, observation: { ...quote.observation, priceDate: '2026-10-27' }, observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), retrievedAt: '2026-10-27T20:19:59.627Z' }
   const timelyAcquisition = { ...acquisition, valuationItems: [{ ...acquisition.valuationItems[0]!, value: timelyQuote }] } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: timelyAcquisition, sources: [filing] })
+  assert.ok(result.diagnostics.includes('VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF'))
+  assert.match(result.sections[0]!.markdown, /^研究缺口：/)
+  assert.ok(!result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
+  assert.doesNotMatch(result.sections[1]!.markdown, /valuation_market_price=HISTORICAL_ASOF_QUALIFIED/)
+})
+
+test('historical quote can qualify only with a cutoff-available verified source value version', () => {
+  const asOf = '2026-10-27T20:19:59.628Z'
+  const retrievedAt = '2026-10-27T20:19:59.627Z'
+  const timelyQuote = { ...quote, observation: { ...quote.observation, priceDate: '2026-10-27' }, observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), retrievedAt }
+  const baseItem = acquisition.valuationItems[0]!
+  const timelyItem = {
+    ...baseItem,
+    value: timelyQuote,
+    quality: { ...baseItem.quality, pointInTimeSafe: true, valueVersionStatus: 'VERIFIED' },
+    source: { sourceId: 'market-source', fallbackLevel: 'PRIMARY', originPublisher: 'Tencent', retrievalProvider: 'AKShare', retrievedAt, observedAt: '2026-10-27', observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), valueVersion: { status: 'VERIFIED', versionId: 'provider-vintage-2026-10-27', availableAt: '2026-10-27T07:00:00.000Z' }, marketFreshness: { status: 'FRESH' } },
+  }
+  const timelyAcquisition = { ...acquisition, valuationItems: [timelyItem] } as unknown as CompanyReadOnlyAcquisition
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: timelyAcquisition, sources: [filing] })
   assert.match(result.sections[0]!.markdown, /参考 PE/)
   assert.ok(result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
   assert.match(result.sections[1]!.markdown, /valuation_market_price=HISTORICAL_ASOF_QUALIFIED\(retrievedAt=.*<=asOf=/)
   assert.ok(!result.diagnostics.includes('VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF'))
+  const market = result.evidenceSources.find(source => source.candidate.candidateId.startsWith('company-valuation-market-'))!
+  assert.equal((market.candidate.metadata?.dataProvenance as any).pointInTimeStatus, 'within_cutoff')
+  assert.equal((JSON.parse(market.content) as any).valueVersion.versionId, 'provider-vintage-2026-10-27')
 })
 
 test('a historical quote response retrieved before exchange close availability fails closed', () => {
@@ -357,7 +381,7 @@ test('missing or invalid retrievedAt and invalid asOf fail closed with explicit 
   assert.match(invalidAsOf.sections[0]!.markdown, /^研究缺口：/)
 })
 
-test('same-day market close is rejected before the Shanghai session close and accepted after availability', () => {
+test('same-day market close is rejected before the Shanghai session close and remains blocked historically without a verified value version', () => {
   const beforeClose = '2026-10-26T06:59:59.999Z'
   const earlyQuote = { ...quote, observationAvailableAt: dailyCloseAvailableAt('2026-10-26') }
   const earlyAcquisition = {
@@ -369,7 +393,8 @@ test('same-day market close is rejected before the Shanghai session close and ac
   assert.match(rejected.sections[0]!.markdown, /^研究缺口：/)
 
   const accepted = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing] })
-  assert.match(accepted.sections[0]!.markdown, /3\.58 CNY\/share/)
+  assert.ok(accepted.diagnostics.includes('VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF'))
+  assert.match(accepted.sections[0]!.markdown, /^研究缺口：/)
 })
 
 test('point proofs reject source-provider mismatches and missing internal-use rights', () => {
@@ -461,7 +486,15 @@ function scenarioPlan() {
 
 test('renders FY2026 per-share conditional reference-PE sensitivity and recalculates monotonically', () => {
   const candidate = scenarioPlan()
-  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing, candidate.profitSource], scenarioCandidate: candidate.plan })
+  const quoteItem = acquisition.valuationItems[0]!
+  const qualifiedAcquisition = {
+    ...acquisition,
+    valuationItems: [{
+      ...quoteItem,
+      source: { sourceId: 'market-source', fallbackLevel: 'PRIMARY', originPublisher: 'Tencent', retrievalProvider: 'AKShare', retrievedAt: quote.retrievedAt, observedAt: quote.observation.priceDate, observationAvailableAt: quote.observationAvailableAt, valueVersion: { status: 'VERIFIED', versionId: 'provider-vintage-2026-10-26', availableAt: '2026-10-26T07:00:00.000Z' }, marketFreshness: { status: 'FRESH' } },
+    }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: qualifiedAcquisition, sources: [filing, candidate.profitSource], scenarioCandidate: candidate.plan })
   const section = result.sections[1]!
   assert.match(section.markdown, /FY2025 参考 PE 的 FY2026 条件敏感性（非价格预测）/)
   assert.match(section.markdown, /DERIVED 的条件研究敏感性/)

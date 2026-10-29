@@ -213,4 +213,18 @@ Provisional six-dimension score for the rejected raw retry is `3/4/4/4/2/3` (the
 - `node --import tsx --test tests/workflows/company-research-assembly.test.ts`: **112 passed, 0 failed**.
 - `npm run typecheck`: **exit 0**.
 - No full Company Research Workflow, data acquisition, Report/Knowledge persistence, model configuration change, new source, reviewer, skill, or architecture layer was used. The archive's 19-section contract, historical `17/19 BLOCKED` state, blocked `bull-base-bear` and `variant-perception` sections, and P0-19 `NOT_ACCEPTED` remain unchanged.
+
+
 - Only this acceptance report and the byte-exact response review copy are added for this closure. The PR remains open and unmerged; this result is not CTO acceptance.
+
+## P1-EVIDENCE-QUAL-001 historical evidence correction (append-only)
+
+Read-only source-lineage re-audit of the preserved second response found that its FY2025 EPS sentence cites `official-f7c8d23d2829a5e8@paragraph:231`, the actual annual-report row `基本每股收益（元/股） 3.58 4.61 -22.34% 3.44`. The equal `3.58` dividend is separately disclosed at paragraphs 43/98 as RMB 3.58 per 10 shares. The earlier prose above that described the model's cited EPS as a dividend is therefore not supported by the raw response; retain it as historical review text, but use this correction for future interpretation. The numeric-grounding diagnostic listed dividend paragraphs 43/98/1115 among same-number repair candidates; that does not mean the model cited those rows.
+
+This correction does not make the retry acceptable. Both archived synthesis attempts still failed numeric grounding; the archived `82.01` quote was retrieved at `2026-10-27T20:20:02.952Z`, after `asOf=2026-10-27T20:19:59.628Z`, and the protected archive contains no `observationAvailableAt` or immutable quote value-version proof. The defect under investigation is qualification handoff: resolvable valuation Markdown can become ledger `verified` without a structured PIT qualification. See the separate Gate A trace in `2026-10-29-p1-evidence-qual-001.md`. `P1-GOAL-001` remains `PARTIAL_PRODUCT_QUALITY / NOT_ACCEPTED`.
+
+## P1-EVIDENCE-QUAL-001 implementation and regression addendum
+
+The existing synthesis qualification handoff now rejects historical market-price conclusions unless the serialized quote carries structurally validated PIT/version evidence and a unique annual basic-EPS locator. The same quote check applies to ordinary-method evidence paths, not only the Workflow valuation ledger. Same-number dividend rows cannot qualify basic EPS. The generated quote evidence no longer invents original public rights; the archived BYD price therefore remains unqualified. No real model call, full research Workflow, new acquisition, Report write, or Knowledge write occurred.
+
+Validation: assembly **115/115**, valuation sections **24/24**, Node typecheck and client typecheck pass, client build passes with the existing large-chunk warning. Client regression remains **223/228** with the same five baseline failures. Node regression is **3,288/3,309** with the same 21 baseline failure titles as the frozen 3,284/3,305 run and no new failure. Test-generated validation JSON changes were restored. Protected root user state (39 files), P0 archive (15), Knowledge (6,552), and pre-existing isolated-worktree untracked files (27) all match their captured hashes. See the separate EVIDENCE-QUAL-001 Gate B-D report for commands and full comparison details. Status: `READY_FOR_CODE_REVIEW / P1_PRODUCT_NOT_ACCEPTED`; PR remains open and unmerged.

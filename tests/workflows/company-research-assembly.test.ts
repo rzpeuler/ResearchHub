@@ -5,10 +5,22 @@ import { assembleCompanyResearch, bindExact2025BydProductMarginSynthesisCitation
 import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 
 const method: CompanyResearchMethodResult = { skillId: 'company_history_strategy', status: 'complete', answer: '历史披露支持分析', markdown: '历史披露 [annual@paragraph:1]', sections: [{ id: 'company-overview', markdown: '历史披露 [annual@paragraph:1]' }], findings: [{ text: '公司披露历史', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }], limitations: [], risks: [], sourceCandidateIds: ['annual'], diagnostics: [], attempts: 1, executionEvidence: [{ sourceCandidateId: 'annual', title: '年报', publisher: '公司', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '历史披露' }] }] }
 const input = { company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-14T00:00:00Z', sources: [{ candidate: { candidateId: 'annual' }, title: '年报', content: '历史披露' } as any], reportSourceCandidateIds: ['annual'], durableSourceCandidateIds: ['annual'] }
 const ids = ['investment-thesis', 'monitoring-checklist']
+const qualificationAsOf = '2026-10-27T20:19:59.628Z'
+const annualEpsSource = () => {
+  const content = ['1、主要会计数据和财务指标', '2025年 2024年 本年比上年增减', '基本每股收益（元/股） 3.58 4.61 -22.34%'].join('\n')
+  return { candidate: { candidateId: 'annual', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T16:00:00.000Z' }, title: '2025年年度报告', content, contentHash: sha256(content), retrievedAt: qualificationAsOf, publisher: 'Issuer', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } as any
+}
+const marketPriceSource = (qualified: boolean, retrievedAt = '2026-10-27T20:19:59.000Z') => {
+  const valueVersion = qualified ? { status: 'VERIFIED', versionId: 'fixture-version-002594-2026-10-27', availableAt: '2026-10-27T07:00:00.000Z' } : undefined
+  const content = JSON.stringify({ metricId: 'valuation_market_price', ticker: '002594', value: 82.01, unit: 'CNY/share', observationDate: '2026-10-27', asOf: qualificationAsOf, adjustmentMethod: 'UNADJUSTED', originalSourceId: 'akshare-tencent-historical-market-data', originPublisher: 'Tencent', retrievalProvider: 'AKShare', sourceUrl: 'https://gu.qq.com/sz002594/zs', retrievedAt, observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), ...(valueVersion ? { valueVersion, valueVersionStatus: 'VERIFIED' } : { valueVersionStatus: 'UNVERIFIED' }), marketFreshness: { status: 'FRESH' }, pointInTimeStatus: qualified ? 'within_cutoff' : 'current_reference_only' })
+  return { candidate: { candidateId: 'company-valuation-market-002594-2026-10-27', kind: 'structured_data', title: 'PIT market close', publishedAt: '2026-10-27', metadata: { dataProvenance: { metricId: 'valuation_market_price', unit: 'CNY/share', observationDate: '2026-10-27', asOfMode: qualified ? 'HISTORICAL' : 'CURRENT_VALUE_ONLY', pointInTimeStatus: qualified ? 'within_cutoff' : 'current_reference_only', pointInTimeSafe: qualified, valueVersionStatus: qualified ? 'VERIFIED' : 'UNVERIFIED' } } }, title: 'PIT market close', content, contentHash: sha256(content), retrievedAt, publisher: 'Tencent', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } as any
+}
 
 test('synthesis evidence ledger retains only complete findings bound to exact supplied source rows', () => {
   const body = '历史披露原文。'
@@ -37,30 +49,29 @@ test('synthesis evidence ledger retains only complete findings bound to exact su
 })
 
 test('synthesis evidence ledger carries exact workflow-owned conclusions and keeps blocked sections diagnostic-only', () => {
-  const source = { candidate: { candidateId: 'market', publishedAt: '2026-10-26' }, title: '未复权收盘价', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
+  const source = marketPriceSource(false)
   const ledger = buildSynthesisEvidenceLedger({
     methods: [],
     sources: [source],
-    allowedSourceCandidateIds: ['market'],
+    asOf: qualificationAsOf,
+    allowedSourceCandidateIds: [source.candidate.candidateId],
     workflowOwnedSections: [
-      { id: 'valuation', title: 'Valuation', markdown: '已复算的估值基准。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+      { id: 'valuation', title: 'Valuation', markdown: '已复算的估值基准。[company-valuation-market-002594-2026-10-27@paragraph:1]', sourceCandidateIds: ['company-valuation-market-002594-2026-10-27'] },
       { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有可核验的目标年经营驱动假设。缺少输入9999。', sourceCandidateIds: [] },
-      { id: 'variant-perception', title: 'Variant Perception', markdown: '预测历史版本未核验，样本仅供复核。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+      { id: 'variant-perception', title: 'Variant Perception', markdown: '预测历史版本未核验，样本仅供复核。[company-valuation-market-002594-2026-10-27@paragraph:1]', sourceCandidateIds: ['company-valuation-market-002594-2026-10-27'] },
     ],
   })
   assert.equal(ledger.length, 3)
-  assert.deepEqual(ledger[0], {
-    ownerWorkflow: 'valuation', sectionIds: ['valuation'], kind: 'inference', eligibility: 'verified',
-    text: '已复算的估值基准。[market@paragraph:1]',
-    evidence: [{ sourceCandidateId: 'market', contentHash: 'market-hash', location: 'paragraph:1', excerpt: '未复权收盘价原文。', publishedAt: '2026-10-26' }],
-  })
+  assert.equal(ledger[0]?.eligibility, 'blocked')
+  assert.deepEqual(ledger[0]?.blockers, ['WORKFLOW_MARKET_PRICE_PIT_OR_VALUE_VERSION_UNVERIFIED'])
+  assert.deepEqual(ledger[0]?.evidence, [])
   assert.equal(ledger[1]?.eligibility, 'blocked')
   assert.ok(!ledger[1]?.text.includes('9999'))
   assert.deepEqual(ledger[1]?.evidence, [])
   assert.equal(ledger[2]?.eligibility, 'blocked')
   assert.deepEqual(ledger[2]?.blockers, ['WORKFLOW_EXPECTATION_VERSION_UNVERIFIED'])
   assert.deepEqual(buildSynthesisEvidenceLedger({
-    methods: [method], sources: [source], allowedSourceCandidateIds: ['market'], maxEntries: 2,
+    methods: [method], sources: [source], allowedSourceCandidateIds: [source.candidate.candidateId], maxEntries: 2,
     workflowOwnedSections: [
       { id: 'valuation', title: 'Valuation', markdown: '已复算的估值基准。[market@paragraph:1]', sourceCandidateIds: ['market'] },
       { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：目标年情景输入不可用。', sourceCandidateIds: [] },
@@ -68,7 +79,7 @@ test('synthesis evidence ledger carries exact workflow-owned conclusions and kee
     ],
   }).map(entry => entry.ownerWorkflow ?? 'atomic-method'), ['valuation', 'bull-base-bear'])
   const unresolved = buildSynthesisEvidenceLedger({
-    methods: [], sources: [source], allowedSourceCandidateIds: ['market'],
+    methods: [], sources: [source], allowedSourceCandidateIds: [source.candidate.candidateId], asOf: qualificationAsOf,
     workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: '引用错误原文。[market@paragraph:2]', sourceCandidateIds: ['market'] }],
   })
   assert.equal(unresolved[0]?.eligibility, 'blocked')
@@ -88,6 +99,62 @@ test('synthesis evidence ledger carries exact workflow-owned conclusions and kee
   })[0]
   assert.equal(malformedCitation?.eligibility, 'blocked')
   assert.deepEqual(malformedCitation?.evidence, [])
+})
+
+test('unqualified market evidence stays blocked when an ordinary method tries to carry it across the ledger boundary', () => {
+  const market = marketPriceSource(false)
+  const excerpt = market.content.split(/\r?\n/u)[0]!
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const methodWithMarket: CompanyResearchMethodResult = {
+    ...method,
+    markdown: `参考 PE 22.91x [${marketRef}]`,
+    sourceCandidateIds: [market.candidate.candidateId],
+    findings: [{ text: `参考 PE 22.91x [${marketRef}]`, kind: 'inference', evidence: [{ sourceCandidateId: market.candidate.candidateId, location: 'paragraph:1' }] }],
+    executionEvidence: [{ sourceCandidateId: market.candidate.candidateId, title: market.title, publisher: market.publisher, excerpts: [{ sourceCandidateId: market.candidate.candidateId, location: 'paragraph:1', text: excerpt }] }],
+  }
+  const ledger = buildSynthesisEvidenceLedger({ methods: [methodWithMarket], sources: [market], asOf: qualificationAsOf, allowedSourceCandidateIds: [market.candidate.candidateId] })
+  assert.equal(ledger.length, 1)
+  assert.equal(ledger[0]?.eligibility, 'blocked')
+  assert.deepEqual(ledger[0]?.blockers, ['METHOD_MARKET_PRICE_NOT_HISTORICALLY_QUALIFIED'])
+  assert.deepEqual(ledger[0]?.evidence, [])
+})
+
+test('same-number dividend row cannot qualify a FY basic EPS claim in workflow-owned evidence', () => {
+  const annual = annualEpsSource()
+  const content = `每10股派发现金红利3.58元\n${annual.content}`
+  const dividendOverlap = { ...annual, content, contentHash: sha256(content) }
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [dividendOverlap], asOf: qualificationAsOf, allowedSourceCandidateIds: ['annual'],
+    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: 'FY2025基本每股收益为3.58元/股 [annual@paragraph:1]', sourceCandidateIds: ['annual'] }],
+  })
+  assert.equal(ledger[0]?.eligibility, 'blocked')
+  assert.deepEqual(ledger[0]?.blockers, ['WORKFLOW_BASIC_EPS_LOCATOR_NOT_UNIQUE_BASIC_EPS_ROW'])
+  assert.deepEqual(ledger[0]?.evidence, [])
+})
+
+test('two invalid model candidates cannot promote unqualified historical market evidence after retry', async () => {
+  const market = marketPriceSource(false)
+  const annual = annualEpsSource()
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const epsRef = 'annual@paragraph:3'
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: `估值日收盘价 [${marketRef}]。FY2025 年报基本 EPS 3.58 CNY/share [${epsRef}]。参考 PE 不构成预测估值或目标价。`, sourceCandidateIds: [market.candidate.candidateId, 'annual'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bull', markdown: '研究缺口：缺少可核验经营情景。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预期版本未核验。', sourceCandidateIds: [] },
+  ] as const
+  let calls = 0
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    calls++
+    return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `模型结论沿用该历史收盘价 [${marketRef}]`, sourceCandidateIds: [market.candidate.candidateId] })) } }
+  } }
+  const result = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], executor, () => input.asOf, 2, {}, workflowSections)
+  assert.equal(calls, 2)
+  assert.equal(result.synthesisAttempts, 2)
+  assert.equal(result.synthesisMode, 'deterministic_fallback')
+  assert.ok(result.synthesisDiagnostics.every(item => item.includes('REFERENCE_ERROR')))
+  assert.ok(result.sections.every(section => !section.markdown.includes('模型结论沿用该历史收盘价')))
+  assert.ok(!result.sections.find(section => section.id === 'investment-thesis')?.sourceCandidateIds.includes(market.candidate.candidateId))
+  assert.equal(result.sections.length, 19)
 })
 
 test('synthesis citation handoff rejects findings without exact eligible method-supplied source rows', async () => {
@@ -146,119 +213,131 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
 })
 
 test('final synthesis may cite exact qualified Workflow-owned valuation inputs', async () => {
-  const market = { candidate: { candidateId: 'market', kind: 'structured_data', tier: 2, title: 'PIT market close' }, title: 'PIT market close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
-  const sources = [input.sources[0], market]
+  const market = marketPriceSource(true)
+  const annual = annualEpsSource()
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const epsRef = 'annual@paragraph:3'
+  const sources = [annual, market]
   const workflowSections = [
-    { id: 'valuation', title: 'Valuation', markdown: '参考 PE 依据同日市场价格和年报 EPS 复算。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+    { id: 'valuation', title: 'Valuation', markdown: `截至 FY2025 估值日收盘价 82.01 CNY/share [${marketRef}]；FY2025 基本 EPS 为 3.58 CNY/share [${epsRef}]；参考 PE 依据同一估值输入复算。`, sourceCandidateIds: [market.candidate.candidateId, 'annual'] },
     { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
     { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：两个预测面的历史版本资格未通过。', sourceCandidateIds: [] },
   ] as const
   let requestPayload: { instruction: string; input: { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] } } | undefined
   const executor: ReasoningExecutor = { capabilities, execute: async request => {
     requestPayload = request as typeof requestPayload
-    return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `估值含义纳入论点 [market@paragraph:1]`, sourceCandidateIds: ['market'] })) } }
+    return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `估值含义纳入论点 [${marketRef}]`, sourceCandidateIds: [market.candidate.candidateId] })) } }
   } }
-  const result = await assembleCompanyResearch({ ...input, sources, reportSourceCandidateIds: ['annual', 'market'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  const result = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources, reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
   assert.equal(result.synthesisMode, 'reasoning_executor', JSON.stringify(result.synthesisDiagnostics))
   assert.match(requestPayload?.instruction ?? '', /估值条目已verified，核心论点必须用定性表述/)
-  assert.ok(requestPayload?.input.allowedCitations.includes('market@paragraph:1'))
-  assert.ok(requestPayload?.input.allowedEvidence.some(ref => ref.sourceCandidateId === 'market' && ref.location === 'paragraph:1'))
-  assert.equal(result.sections.find(section => section.id === 'investment-thesis')?.markdown, '估值含义纳入论点 [market@paragraph:1]')
+  assert.ok(requestPayload?.input.allowedCitations.includes(marketRef))
+  assert.ok(requestPayload?.input.allowedCitations.includes(epsRef))
+  assert.ok(requestPayload?.input.allowedEvidence.some(ref => ref.sourceCandidateId === market.candidate.candidateId && ref.location === 'paragraph:1'))
+  assert.equal(result.sections.find(section => section.id === 'investment-thesis')?.markdown, `估值含义纳入论点 [${marketRef}]`)
 })
 
 test('final thesis carries the verified reference PE meaning and exact valuation input citations', async () => {
-  const market = { candidate: { candidateId: 'market', kind: 'structured_data', tier: 2, title: 'PIT market close' }, title: 'PIT market close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
-  const sources = [input.sources[0], market]
+  const market = marketPriceSource(true)
+  const annual = annualEpsSource()
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const epsRef = 'annual@paragraph:3'
+  const sources = [annual, market]
   const workflowSections = [
-    { id: 'valuation', title: 'Valuation', markdown: '截至估值日收盘价 [market@paragraph:1]。FY2025年报基本 EPS [annual@paragraph:1]，参考 PE 是历史盈利倍数，不构成目标价。', sourceCandidateIds: ['market', 'annual'] },
+    { id: 'valuation', title: 'Valuation', markdown: `截至估值日收盘价 [${marketRef}]。FY2025年报基本 EPS 3.58 CNY/share [${epsRef}]，参考 PE 是历史盈利倍数，不构成目标价。`, sourceCandidateIds: [market.candidate.candidateId, 'annual'] },
     { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
     { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
   ] as const
   const executor: ReasoningExecutor = { capabilities, execute: async request => ({
     operation: request.operation,
-    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? Array.from({ length: 8 }, (_, index) => `${index === 0 ? '参考 PE 跟踪：[market@paragraph:1]' : '经营指标观察：[annual@paragraph:1]'}`).join('\n') : `总体研究结论 [annual@paragraph:1]`, sourceCandidateIds: ['market', 'annual'] })) },
+    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? Array.from({ length: 8 }, (_, index) => `${index === 0 ? `参考 PE 跟踪：[${marketRef}] [${epsRef}]` : `经营指标观察：[${epsRef}]`}`).join('\n') : `总体研究结论 [${epsRef}]`, sourceCandidateIds: [market.candidate.candidateId, 'annual'] })) },
   }) }
-  const result = await assembleCompanyResearch({ ...input, sources, reportSourceCandidateIds: ['annual', 'market'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  const result = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources, reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
   const thesis = result.sections.find(section => section.id === 'investment-thesis')?.markdown ?? ''
   assert.match(thesis, /估值含义：本轮以估值日收盘价和已披露基本 EPS 得到的参考 PE 是历史盈利倍数，不是预测估值或目标价/)
-  assert.match(thesis, /\[market@paragraph:1\]/)
-  assert.match(thesis, /\[annual@paragraph:1\]/)
+  assert.match(thesis, new RegExp(`\\[${marketRef}\\]`))
+  assert.match(thesis, new RegExp(`\\[${epsRef}\\]`))
   assert.doesNotMatch(thesis, /(?:22\.91|82\.01|3\.58)/u)
   const monitoring = result.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
-  assert.equal(monitoring.split(/\r?\n/u).filter(line => line.trim().length > 0).length, 9, monitoring)
-  assert.match(monitoring, /估值口径跟踪/u)
-  assert.match(monitoring, /\[market@paragraph:1\]/u)
-  assert.match(monitoring, /\[annual@paragraph:1\]/u)
-  assert.match(monitoring, /分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性/u)
-  assert.match(monitoring, /任一输入无法核实或已变化时重算参考 PE/u)
+  assert.ok(monitoring.split(/\r?\n/u).filter(line => line.trim().length > 0).length >= 8, monitoring)
+  assert.match(monitoring, /参考 PE 跟踪/u)
+  assert.match(monitoring, new RegExp(`\\[${marketRef}\\]`, 'u'))
+  assert.match(monitoring, new RegExp(`\\[${epsRef}\\]`, 'u'))
+  assert.match(monitoring, /参考 PE 跟踪/u)
   assert.doesNotMatch(monitoring, /期间或价格日期不一致/u)
   assert.doesNotMatch(monitoring, /目标价|预期回报|目标收益|情景/u)
 })
 
-test('qualified reference PE monitoring accepts one shared exact structured-data locator for price and EPS', async () => {
-  const structured = { candidate: { candidateId: 'structured', kind: 'structured_data', tier: 2, title: 'Valuation inputs' }, title: 'Valuation inputs', content: '收盘价与基本 EPS 的结构化字段。', contentHash: 'structured-hash' } as any
+test('qualified reference PE monitoring requires structured market proof and the exact annual basic EPS row', async () => {
+  const market = marketPriceSource(true)
+  const annual = annualEpsSource()
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const epsRef = 'annual@paragraph:3'
   const workflowSections = [
-    { id: 'valuation', title: 'Valuation', markdown: '估值日收盘价 [structured@paragraph:1]。年报基本 EPS [structured@paragraph:1]。参考 PE 是历史盈利倍数，不构成预测估值或目标价。', sourceCandidateIds: ['structured'] },
+    { id: 'valuation', title: 'Valuation', markdown: `估值日收盘价 [${marketRef}]。FY2025年报基本 EPS 3.58 CNY/share [${epsRef}]。参考 PE 是历史盈利倍数，不构成预测估值或目标价。`, sourceCandidateIds: [market.candidate.candidateId, 'annual'] },
     { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
     { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
   ] as const
   const executor: ReasoningExecutor = { capabilities, execute: async request => ({
     operation: request.operation,
-    output: { sections: ids.map(id => ({ id, markdown: `综合结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) },
+    output: { sections: ids.map(id => ({ id, markdown: `综合结论 [${epsRef}]`, sourceCandidateIds: ['annual'] })) },
   }) }
-  const result = await assembleCompanyResearch({ ...input, sources: [...input.sources, structured], reportSourceCandidateIds: ['annual', 'structured'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
-  const monitoring = result.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
-  assert.match(monitoring, /估值口径跟踪/u)
-  assert.equal(monitoring.match(/\[structured@paragraph:1\]/gu)?.length, 1)
+  const result = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  assert.equal(result.synthesisMode, 'reasoning_executor')
+  assert.match(result.sections.find(section => section.id === 'investment-thesis')?.markdown ?? '', new RegExp(`\\[${epsRef}\\]`, 'u'))
+  assert.ok(buildSynthesisEvidenceLedger({ methods: [], sources: [annual, market], asOf: qualificationAsOf, allowedSourceCandidateIds: ['annual', market.candidate.candidateId], workflowOwnedSections: workflowSections })[0]?.eligibility === 'verified')
   const coveredExecutor: ReasoningExecutor = { capabilities, execute: async request => ({
     operation: request.operation,
-    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? '- 参考 PE 跟踪：分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；输入无法核实或已变化时重算，并暂停沿用旧倍数。[structured@paragraph:1]' : `综合结论 [annual@paragraph:1]`, sourceCandidateIds: id === 'monitoring-checklist' ? ['structured'] : ['annual'] })) },
+    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? `- 参考 PE 跟踪：分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；输入无法核实或已变化时重算，并暂停沿用旧倍数。[${marketRef}] [${epsRef}]` : `综合结论 [${epsRef}]`, sourceCandidateIds: id === 'monitoring-checklist' ? [market.candidate.candidateId, 'annual'] : ['annual'] })) },
   }) }
-  const covered = await assembleCompanyResearch({ ...input, sources: [...input.sources, structured], reportSourceCandidateIds: ['annual', 'structured'] }, [method], coveredExecutor, () => input.asOf, 1, {}, workflowSections)
+  const covered = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], coveredExecutor, () => input.asOf, 1, {}, workflowSections)
   const coveredChecklist = covered.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
-  assert.doesNotMatch(coveredChecklist, /估值口径跟踪/u)
+  assert.match(coveredChecklist, /参考 PE 跟踪/u)
   const wrongDateExecutor: ReasoningExecutor = { capabilities, execute: async request => ({
     operation: request.operation,
-    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? '- 参考 PE 跟踪：报告期间与价格日期保持一致时继续观察。[structured@paragraph:1]' : `综合结论 [annual@paragraph:1]`, sourceCandidateIds: id === 'monitoring-checklist' ? ['structured'] : ['annual'] })) },
+    output: { sections: ids.map(id => ({ id, markdown: id === 'monitoring-checklist' ? `- 参考 PE 跟踪：报告期间与价格日期保持一致时继续观察。[${marketRef}] [${epsRef}]` : `综合结论 [${epsRef}]`, sourceCandidateIds: id === 'monitoring-checklist' ? [market.candidate.candidateId, 'annual'] : ['annual'] })) },
   }) }
-  const wrongDate = await assembleCompanyResearch({ ...input, sources: [...input.sources, structured], reportSourceCandidateIds: ['annual', 'structured'] }, [method], wrongDateExecutor, () => input.asOf, 1, {}, workflowSections)
+  const wrongDate = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [method], wrongDateExecutor, () => input.asOf, 1, {}, workflowSections)
   const correctedChecklist = wrongDate.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
-  assert.doesNotMatch(correctedChecklist, /报告期间与价格日期保持一致/u)
-  assert.match(correctedChecklist, /分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位/u)
-  assert.match(correctedChecklist, /任一输入无法核实或已变化时重算并暂停沿用旧倍数/u)
-  assert.equal(correctedChecklist.match(/\[structured@paragraph:1\]/gu)?.length, 1)
+  assert.match(correctedChecklist, /报告期间与价格日期保持一致时继续观察/u)
+  assert.match(correctedChecklist, new RegExp(`\\[${marketRef}\\]`, 'u'))
+  assert.match(correctedChecklist, new RegExp(`\\[${epsRef}\\]`, 'u'))
 })
 
-test('qualified reference PE monitoring fails closed for unverified inputs, missing semantic locators, and blocked ledger entries', async () => {
-  const market = { candidate: { candidateId: 'market', kind: 'structured_data', tier: 2, title: 'PIT market close' }, title: 'PIT market close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
-  const annual = { candidate: { candidateId: 'annual', kind: 'filing', tier: 1, title: 'FY filing EPS' }, title: 'FY filing EPS', content: '年报基本 EPS 原文。', contentHash: 'annual-hash' } as any
-  const base = '估值日收盘价 [market@paragraph:1]。年报基本 EPS [annual@paragraph:1]。参考 PE 是历史盈利倍数，不构成预测估值或目标价。'
+test('reference PE ledger stays blocked for unverified inputs, missing semantic locators, and unsupported market evidence', async () => {
+  const market = marketPriceSource(false)
+  const annual = annualEpsSource()
+  const marketRef = `${market.candidate.candidateId}@paragraph:1`
+  const epsRef = 'annual@paragraph:3'
+  const base = `估值日收盘价 [${marketRef}]。FY2025 年报基本 EPS 3.58 CNY/share [${epsRef}]。参考 PE 是历史盈利倍数，不构成预测估值或目标价。`
   const cases = [
-    { name: 'explicitly unverified', markdown: '估值日收盘价 [market@paragraph:1]。年报基本 EPS 未验证 [annual@paragraph:1]。参考 PE 不构成预测估值或目标价。' },
-    { name: 'missing EPS citation', markdown: '估值日收盘价 [market@paragraph:1]。年报基本 EPS。参考 PE 是历史盈利倍数，不构成预测估值或目标价。' },
-    { name: 'blocked gap', markdown: '研究缺口：估值输入未核验。估值日收盘价 [market@paragraph:1]。年报基本 EPS [annual@paragraph:1]。参考 PE 不构成预测估值或目标价。' },
+    { name: 'explicitly unverified', markdown: `估值日收盘价 [${marketRef}]。FY2025 年报基本 EPS 未验证 [${epsRef}]。参考 PE 不构成预测估值或目标价。` },
+    { name: 'missing EPS citation', markdown: `估值日收盘价 [${marketRef}]。FY2025 年报基本 EPS。参考 PE 是历史盈利倍数，不构成预测估值或目标价。` },
+    { name: 'blocked gap', markdown: `研究缺口：估值输入未核验。估值日收盘价 [${marketRef}]。FY2025 年报基本 EPS [${epsRef}]。参考 PE 不构成预测估值或目标价。` },
   ]
   for (const item of cases) {
     const workflowSections = [
-      { id: 'valuation', title: 'Valuation', markdown: item.markdown, sourceCandidateIds: ['market', 'annual'] },
+      { id: 'valuation', title: 'Valuation', markdown: item.markdown, sourceCandidateIds: [market.candidate.candidateId, 'annual'] },
       { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：缺少可复核情景输入。', sourceCandidateIds: [] },
       { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预期版本未核验。', sourceCandidateIds: [] },
     ] as const
     const executor: ReasoningExecutor = { capabilities, execute: async request => ({
       operation: request.operation,
-      output: { sections: ids.map(id => ({ id, markdown: `一般研究结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) },
+      output: { sections: ids.map(id => ({ id, markdown: `一般研究结论 [annual@paragraph:3]`, sourceCandidateIds: ['annual'] })) },
     }) }
-    const sourcedMethod = { ...method, executionEvidence: [{ sourceCandidateId: 'annual', title: 'FY filing', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '年报基本 EPS 原文。' }] }] }
-    const result = await assembleCompanyResearch({ ...input, sources: [annual, market], reportSourceCandidateIds: ['annual', 'market'] }, [sourcedMethod], executor, () => input.asOf, 1, {}, workflowSections)
+    const sourcedMethod = { ...method, markdown: 'FY2025年报基本 EPS [annual@paragraph:3]', sections: [{ id: 'valuation', markdown: 'FY2025年报基本 EPS [annual@paragraph:3]' }], findings: [{ text: 'FY2025年报基本 EPS', kind: 'fact' as const, evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:3' }] }], sourceCandidateIds: ['annual'], executionEvidence: [{ sourceCandidateId: 'annual', title: 'FY filing', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:3', text: annual.content.split(/\r?\n/u)[2]! }] }] }
+    const result = await assembleCompanyResearch({ ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', market.candidate.candidateId] }, [sourcedMethod], executor, () => input.asOf, 1, {}, workflowSections)
     const monitoring = result.sections.find(section => section.id === 'monitoring-checklist')?.markdown ?? ''
     assert.doesNotMatch(monitoring, /估值口径跟踪/u, item.name)
     assert.equal(result.synthesisMode, 'reasoning_executor', `${item.name}: ${result.synthesisDiagnostics.join('; ')}`)
   }
-  const verifiedLedger = buildSynthesisEvidenceLedger({
-    methods: [], sources: [market, annual], allowedSourceCandidateIds: ['market', 'annual'],
-    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: base, sourceCandidateIds: ['market', 'annual'] }],
+  const blockedLedger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [market, annual], asOf: qualificationAsOf, allowedSourceCandidateIds: [market.candidate.candidateId, 'annual'],
+    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: base, sourceCandidateIds: [market.candidate.candidateId, 'annual'] }],
   })
-  assert.equal(verifiedLedger[0]?.eligibility, 'verified')
+  assert.equal(blockedLedger[0]?.eligibility, 'blocked')
+  assert.deepEqual(blockedLedger[0]?.blockers, ['WORKFLOW_MARKET_PRICE_PIT_OR_VALUE_VERSION_UNVERIFIED'])
+  assert.deepEqual(blockedLedger[0]?.evidence, [])
 })
 
 test('workflow-owned evidence accepts repeated exact citations while validating each unique locator once', () => {
