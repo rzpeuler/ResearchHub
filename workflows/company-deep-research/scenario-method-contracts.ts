@@ -696,6 +696,18 @@ export interface ScenarioEconomicReviewCasePacket {
   readonly residual: ScenarioEconomicReviewComponentSummary
   readonly cashFlowDifference: ScenarioEconomicReviewComponentSummary
   readonly calibrationProposals: readonly EconomicBridgeInput['calibrationProposals'][number][]
+  /** Deep-copied, reviewer-visible fixture bridge inputs; all claims remain untrusted. */
+  readonly economicInputSnapshot: EconomicBridgeInput
+  readonly sourceVersionRightsTimeClaimsTrusted: false
+  /** Explicit observation/calibration scope comparisons for each required driver. */
+  readonly scopeBindings: readonly {
+    readonly driverId: string
+    readonly calibrationEconomicScope: string | null
+    readonly inputObservationScopes: readonly { readonly observationId: string; readonly economicScope: string }[]
+    readonly calibrationObservationScopes: readonly { readonly observationId: string; readonly economicScope: string }[]
+    readonly counterEvidenceScopeDifferences: readonly { readonly observationId: string; readonly economicScope: string }[]
+    readonly relationshipStatus: 'FIXTURE_SCOPE_MATCH' | 'UNAVAILABLE'
+  }[]
   readonly proposals: readonly ScenarioEconomicReviewProposalSummary[]
   readonly adjustments: readonly BridgeAdjustment[]
 }

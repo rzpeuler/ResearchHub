@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type {
-  EconomicBridgeInput, EconomicDriverObservation, ResearchAssumptionProposal,
+  EconomicBridgeInput, EconomicDriverObservation, EconomicValueEvidence, ResearchAssumptionProposal,
   ScenarioEconomicReviewFinding, ScenarioEconomicReviewPacketBuildInput, ScenarioEconomicReviewReceipt,
   ScenarioMethodContractInput, ScenarioName, ValueVersionProof,
 } from '../../workflows/company-deep-research/scenario-method-contracts.ts'
@@ -21,6 +21,10 @@ const horizon = {
   requiredDriverIds: ['operating-cash'], sourceSnapshotHash: 'a'.repeat(64),
 }
 const known = (value: number) => ({ status: 'KNOWN' as const, value, evidenceRefs: ['fixture-synthetic-ref'] as const })
+const numericValue = (evidence: EconomicValueEvidence): number => {
+  if (evidence.status !== 'KNOWN' && evidence.status !== 'KNOWN_ZERO') throw new Error(`Expected a known fixture value, received ${evidence.status}`)
+  return evidence.value
+}
 const scalar = (id: string, value: number, options: Record<string, unknown> = {}) => ({
   value: known(value), companySymbol: 'FICTIONAL-CO', metricId: id, dimension: 'CURRENCY_AMOUNT', unit: 'CNY', currency: 'CNY',
   periodStart: '2028-01-01', periodEnd: '2028-12-31', periodBasis: 'FY', flowOrStock: 'FLOW',
@@ -439,4 +443,195 @@ test('C16 known synthetic FCFF arithmetic remains separate from reviewer, rights
   assert.equal(assessment.qualificationGranted, false); assert.equal(assessment.reportEligible, false)
   assert.equal(packet.dispatchAuthorized, false); assert.equal(packet.phase1MethodStatus, 'REVIEW_REQUIRED')
   assert.equal(packet.observations[0]?.sourceAndRightsClaimsTrusted, false)
+})
+
+test('P1-01 one driver with one economic scope is reviewable and remains unqualified', () => {
+  const built = fixture().packet
+  assert.equal(built.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY')
+  assert.deepEqual(built.packet?.cases.map((item) => item.scopeBindings[0]?.relationshipStatus), ['FIXTURE_SCOPE_MATCH', 'FIXTURE_SCOPE_MATCH', 'FIXTURE_SCOPE_MATCH'])
+  assert.equal(built.packet?.cases[1]?.scopeBindings[0]?.calibrationEconomicScope, 'fictional operations')
+  assert.equal(built.dispatchAuthorized, false); assert.equal(built.reportEligible, false)
+  assert.equal(validateScenarioEconomicReviewReceipt(built, receiptFor(built)).qualificationGranted, false)
+})
+
+test('P1-02 calibration scope alone fails at the explicit cross-layer scope gate', () => {
+  const base = fixture()
+  const bridges = base.bridges.map((pair, index) => {
+    if (index !== 1) return pair
+    const input = { ...pair.input, calibrationProposals: pair.input.calibrationProposals.map((item) => ({ ...item, calibration: { ...item.calibration!, economicScope: 'fictional product line B' } })) }
+    const result = calculateEconomicBridge(input)
+    assert.equal(result.status, 'STRUCTURALLY_VALID_FIXTURE_ONLY', 'bridge arithmetic remains independently valid')
+    return { input, result }
+  })
+  assert.equal(validateScenarioMethodContract(base.scenarioMethodInput).structuralStatus, 'STRUCTURALLY_VALID')
+  const rejected = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges })
+  assert.equal(rejected.packetStatus, 'UNAVAILABLE')
+  assert.ok(rejected.diagnostics.some((item) => item.code === 'CROSS_BINDING_MISMATCH' && item.subjectId === 'BASE.operating-cash.inputObservationRefs.obs-operating-cash' && item.reason.includes('fictional operations') && item.reason.includes('fictional product line B')))
+})
+
+test('P1-03 changing calibration and bridge numeric scopes together cannot bypass the Phase 1 observation scope', () => {
+  const base = fixture()
+  const bridges = base.bridges.map((pair, index) => {
+    if (index !== 1) return pair
+    const rewrite = <T extends { economicScope: string }>(item: T): T => ({ ...item, economicScope: 'fictional product line B' })
+    const input = {
+      ...pair.input,
+      revenue: { ...pair.input.revenue, lines: pair.input.revenue.lines.map(rewrite), reportedConsolidatedRevenue: rewrite(pair.input.revenue.reportedConsolidatedRevenue), adjustments: pair.input.revenue.adjustments.map((item) => ({ ...item, signedAmount: rewrite(item.signedAmount) })) },
+      profit: { ...pair.input.profit, cogs: rewrite(pair.input.profit.cogs), operatingExpenses: pair.input.profit.operatingExpenses.map(rewrite), otherOperatingIncome: pair.input.profit.otherOperatingIncome.map(rewrite), signedNetFinanceItems: rewrite(pair.input.profit.signedNetFinanceItems), signedNonOperatingItems: rewrite(pair.input.profit.signedNonOperatingItems), incomeTaxExpense: rewrite(pair.input.profit.incomeTaxExpense), profitAttributableToNci: rewrite(pair.input.profit.profitAttributableToNci), ebit: rewrite(pair.input.profit.ebit) },
+      fcff: { ...pair.input.fcff, unleveredEbit: rewrite(pair.input.fcff.unleveredEbit), taxRate: rewrite(pair.input.fcff.taxRate), da: rewrite(pair.input.fcff.da), capex: rewrite(pair.input.fcff.capex), nwcStart: pair.input.fcff.nwcStart.map(rewrite), nwcEnd: pair.input.fcff.nwcEnd.map(rewrite) },
+      calibrationProposals: pair.input.calibrationProposals.map((item) => ({ ...item, calibration: { ...item.calibration!, economicScope: 'fictional product line B' } })),
+    }
+    const result = calculateEconomicBridge(input)
+    assert.equal(result.status, 'STRUCTURALLY_VALID_FIXTURE_ONLY', 'all bridge amounts were consistently re-scoped')
+    return { input, result }
+  })
+  const rejected = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges })
+  assert.equal(rejected.packetStatus, 'UNAVAILABLE')
+  assert.ok(rejected.diagnostics.some((item) => item.code === 'CROSS_BINDING_MISMATCH' && item.subjectId.includes('BASE.operating-cash') && item.reason.includes('observation=fictional operations') && item.reason.includes('calibration=fictional product line B')))
+})
+
+test('P1-04 a re-frozen Phase 1 observation with changed scope conflicts with unchanged calibration', () => {
+  const base = fixture()
+  const changed = rebindMethodInput({ ...base.scenarioMethodInput, observations: base.scenarioMethodInput.observations.map((item) => ({ ...item, economicScope: 'fictional product line B' } as EconomicDriverObservation)) })
+  assert.equal(validateScenarioMethodContract(changed).structuralStatus, 'STRUCTURALLY_VALID')
+  const rejected = buildScenarioEconomicReviewPacket({ ...base.buildInput, scenarioMethodInput: changed })
+  assert.equal(rejected.packetStatus, 'UNAVAILABLE')
+  assert.ok(rejected.diagnostics.some((item) => item.code === 'CROSS_BINDING_MISMATCH' && item.subjectId.includes('operating-cash') && item.reason.includes('observation=fictional product line B') && item.reason.includes('calibration=fictional operations')))
+})
+
+test('P1-05 same driver with a different scope in one scenario is unavailable with localized diagnosis', () => {
+  const base = fixture()
+  const bridges = base.bridges.map((pair, index) => index === 0 ? pair : index === 1 ? (() => {
+    const input = { ...pair.input, calibrationProposals: pair.input.calibrationProposals.map((item) => ({ ...item, calibration: { ...item.calibration!, economicScope: 'fictional product line B' } })) }
+    return { input, result: calculateEconomicBridge(input) }
+  })() : pair)
+  const rejected = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges })
+  assert.equal(rejected.packetStatus, 'UNAVAILABLE')
+  assert.ok(rejected.diagnostics.some((item) => item.code === 'CROSS_BINDING_MISMATCH' && item.subjectId === 'BASE.operating-cash.calibration.economicScope'))
+})
+
+test('P1-06 distinct drivers may retain distinct scopes; driver-to-bridge ownership remains explicitly unverified', () => {
+  const base = fixture()
+  const secondObservation = { ...base.scenarioMethodInput.observations[0]!, observationId: 'obs-other-driver', driverId: 'other-driver', economicScope: 'fictional other product line' } as EconomicDriverObservation
+  const proposals = [...base.scenarioMethodInput.scenarioSet.proposals, ...cases.map((scenario) => ({
+    ...assumption(scenario, `${scenario.toLowerCase()}-other-author`), proposalId: `proposal-${scenario.toLowerCase()}-other-driver`, driverId: 'other-driver',
+    calibrationRefs: ['obs-other-driver'], inputObservationRefs: ['obs-other-driver'], counterEvidenceRefs: ['obs-operating-cash'],
+  }))]
+  const scenarioMethodInput = rebindMethodInput({ ...base.scenarioMethodInput,
+    observations: [...base.scenarioMethodInput.observations, secondObservation],
+    scenarioSet: { ...base.scenarioMethodInput.scenarioSet, requiredDriverIds: ['operating-cash', 'other-driver'], proposals,
+      scenarios: base.scenarioMethodInput.scenarioSet.scenarios.map((item) => ({ ...item, requiredDriverIds: ['operating-cash', 'other-driver'], driverObservationRefs: ['obs-operating-cash', 'obs-other-driver'], driverProposalRefs: [...item.driverProposalRefs, `proposal-${item.scenario.toLowerCase()}-other-driver`] })) as unknown as ScenarioMethodContractInput['scenarioSet']['scenarios'] },
+  })
+  const bridges = base.bridges.map((pair) => {
+    const source = pair.input.calibrationProposals[0]!
+    const other = { ...source, driverId: 'other-driver', author: `${pair.input.horizon.scenario.toLowerCase()}-other-author`, calibration: { ...source.calibration!, economicScope: 'fictional other product line' } }
+    const input = { ...pair.input, calibrationProposals: [...pair.input.calibrationProposals, other] }
+    return { input, result: calculateEconomicBridge(input) }
+  })
+  const built = buildScenarioEconomicReviewPacket({ ...base.buildInput, scenarioMethodInput, bridges })
+  assert.equal(built.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY', JSON.stringify(built.diagnostics))
+  assert.equal(built.packet?.cases[0]?.scopeBindings.find((item) => item.driverId === 'operating-cash')?.calibrationEconomicScope, 'fictional operations')
+  assert.equal(built.packet?.cases[0]?.scopeBindings.find((item) => item.driverId === 'other-driver')?.calibrationEconomicScope, 'fictional other product line')
+  assert.ok(built.packet?.adapterLimits.some((item) => item.includes('no explicit driverId-to-revenue-line/scalar ownership refs')))
+})
+
+test('P2-01 disclosed segment snapshot exposes the complete route, values, refs, residual and adjustments', () => {
+  const packetCase = fixture().packet.packet?.cases[1]!
+  const snapshot = packetCase.economicInputSnapshot
+  assert.equal(snapshot.revenue.selectedRoute, 'DISCLOSED_SEGMENT_REVENUE')
+  assert.equal(numericValue(snapshot.revenue.lines[0]!.amount), 100)
+  assert.deepEqual(snapshot.revenue.lines[0]?.evidenceRefs, ['synthetic-revenue-ref'])
+  assert.equal(numericValue(snapshot.revenue.reportedConsolidatedRevenue.value), 100)
+  assert.equal(packetCase.residual.value, 0)
+  assert.deepEqual(snapshot.revenue.adjustments, [])
+})
+
+test('P2-02 volume times realized net ASP snapshot preserves algebraic units and non-additive rows', () => {
+  const base = fixture()
+  const bridges = base.bridges.map((pair) => {
+    const volume = scalar('recognized-volume', 10, { dimension: 'COUNT', unit: 'unit', currency: null, flowOrStock: 'COUNT', mappingRole: 'RECOGNIZED_REVENUE_VOLUME' })
+    const asp = scalar('realized-net-asp', 10, { dimension: 'CURRENCY_PER_UNIT', unit: 'CNY/unit', flowOrStock: 'FLOW', mappingRole: 'REALIZED_NET_ASP' })
+    const line = { ...pair.input.revenue.lines[0]!, disposition: 'CROSS_CHECK_ONLY' as const }
+    const input = { ...pair.input, revenue: { ...pair.input.revenue, selectedRoute: 'RECOGNIZED_VOLUME_TIMES_REALIZED_NET_ASP' as const, lines: [line], volume, realizedNetAsp: asp } }
+    return { input, result: calculateEconomicBridge(input) }
+  })
+  const built = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges })
+  assert.equal(built.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY', JSON.stringify(built.diagnostics))
+  const revenue = built.packet?.cases[1]?.economicInputSnapshot.revenue
+  assert.equal(revenue?.volume?.dimension, 'COUNT'); assert.equal(revenue?.volume?.unit, 'unit')
+  assert.equal(revenue?.realizedNetAsp?.dimension, 'CURRENCY_PER_UNIT'); assert.equal(revenue?.realizedNetAsp?.unit, 'CNY/unit')
+  assert.equal(revenue?.selectedRoute, 'RECOGNIZED_VOLUME_TIMES_REALIZED_NET_ASP')
+  assert.equal(revenue?.lines[0]?.disposition, 'CROSS_CHECK_ONLY')
+})
+
+test('P2-03 revenue content changes are visible, hash-bound, and stale the previous receipt', () => {
+  const base = fixture(), pair = base.bridges[1]!
+  const input = { ...pair.input, revenue: { ...pair.input.revenue, reportedConsolidatedRevenue: { ...pair.input.revenue.reportedConsolidatedRevenue, value: known(105) } } }
+  const changed = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges: [base.bridges[0]!, { input, result: calculateEconomicBridge(input) }, base.bridges[2]!] })
+  assert.equal(changed.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY')
+  assert.equal(numericValue(changed.packet!.cases[1]!.economicInputSnapshot.revenue.reportedConsolidatedRevenue.value), 105)
+  assert.notEqual(changed.economicReviewPacketHash, base.packet.economicReviewPacketHash)
+  assert.equal(validateScenarioEconomicReviewReceipt(changed, receiptFor(base.packet)).reviewRecordStatus, 'STALE_REVIEW')
+})
+
+test('P2-04 profit, tax and NCI amounts and sign conventions remain inspectable and hash-bound', () => {
+  const base = fixture(), pair = base.bridges[1]!
+  const input = { ...pair.input, profit: { ...pair.input.profit,
+    cogs: { ...pair.input.profit.cogs, value: known(61) }, incomeTaxExpense: { ...pair.input.profit.incomeTaxExpense, value: known(6) },
+    profitAttributableToNci: { ...pair.input.profit.profitAttributableToNci, value: known(-3) },
+  } }
+  const changed = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges: [base.bridges[0]!, { input, result: calculateEconomicBridge(input) }, base.bridges[2]!] })
+  assert.equal(changed.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY')
+  const profit = changed.packet?.cases[1]?.economicInputSnapshot.profit
+  assert.equal(numericValue(profit!.cogs.value), 61); assert.equal(profit?.cogs.signConvention, 'SIGNED_AMOUNT')
+  assert.equal(numericValue(profit!.incomeTaxExpense.value), 6); assert.equal(profit?.incomeTaxExpense.signConvention, 'POSITIVE_EXPENSE')
+  assert.equal(numericValue(profit!.profitAttributableToNci.value), -3); assert.equal(profit?.nciBasis, 'CONSOLIDATED_TO_PARENT')
+  assert.notEqual(changed.economicReviewPacketHash, base.packet.economicReviewPacketHash)
+})
+
+test('P2-05 FCFF CapEx and paired NWC balances remain visible and independently hash-bound', () => {
+  const base = fixture(), pair = base.bridges[1]!
+  const input = { ...pair.input, fcff: { ...pair.input.fcff, capex: { ...pair.input.fcff.capex, value: known(7) }, nwcEnd: pair.input.fcff.nwcEnd.map((item) => item.accountId === 'inventory' ? { ...item, value: known(13) } : item) } }
+  const changed = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges: [base.bridges[0]!, { input, result: calculateEconomicBridge(input) }, base.bridges[2]!] })
+  assert.equal(changed.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY')
+  const fcff = changed.packet?.cases[1]?.economicInputSnapshot.fcff
+  assert.equal(numericValue(fcff!.capex.value), 7); assert.equal(numericValue(fcff!.nwcEnd.find((item) => item.accountId === 'inventory')!.value), 13)
+  assert.equal(fcff?.nwcComplete, true); assert.equal(fcff?.cfo, null); assert.equal(fcff?.purchasesOfLongTermAssets, null)
+  assert.notEqual(changed.economicReviewPacketHash, base.packet.economicReviewPacketHash)
+})
+
+test('P2-06 source, rights, version and time claims are visible, untrusted and hash-bound', () => {
+  const base = fixture()
+  const bridges = base.bridges.map((pair) => {
+    const input = { ...pair.input, rightsVersionClaim: 'changed fixture rights claim', valueVersionClaim: 'changed fixture value claim', sourceTimeClaims: { ...pair.input.sourceTimeClaims, sourcePublishedAt: '2026-06-29T00:00:00Z' } }
+    return { input, result: calculateEconomicBridge(input) }
+  })
+  const changed = buildScenarioEconomicReviewPacket({ ...base.buildInput, bridges })
+  assert.equal(changed.packetStatus, 'STRUCTURALLY_PREPARED_FIXTURE_ONLY')
+  const snapshot = changed.packet?.cases[1]?.economicInputSnapshot
+  assert.equal(snapshot?.rightsVersionClaim, 'changed fixture rights claim'); assert.equal(snapshot?.valueVersionClaim, 'changed fixture value claim')
+  assert.equal(snapshot?.sourceTimeClaims.sourcePublishedAt, '2026-06-29T00:00:00Z')
+  assert.notEqual(changed.economicReviewPacketHash, base.packet.economicReviewPacketHash)
+  assert.equal(validateScenarioEconomicReviewReceipt(changed, receiptFor(base.packet)).reviewRecordStatus, 'STALE_REVIEW')
+})
+
+test('P2-07 mutating caller bridge input after build cannot mutate the frozen packet snapshot', () => {
+  const base = fixture(), built = base.packet, frozen = structuredClone(built.packet?.cases[1]?.economicInputSnapshot)
+  const mutable = base.bridges[1]!.input as unknown as { revenue: { lines: { amount: { value: number } }[] }; fcff: { nwcEnd: { value: { value: number } }[] }; calibrationProposals: { calibration: { lower: { value: number } } }[] }
+  mutable.revenue.lines[0]!.amount.value = 999
+  mutable.fcff.nwcEnd[0]!.value.value = 999
+  mutable.calibrationProposals[0]!.calibration.lower.value = 999
+  assert.deepEqual(built.packet?.cases[1]?.economicInputSnapshot, frozen)
+  assert.equal(built.packet?.cases[1]?.calibrationProposals[0]?.calibration?.lower.status, 'KNOWN')
+  assert.equal(numericValue(built.packet!.cases[1]!.calibrationProposals[0]!.calibration!.lower), 10)
+  assert.equal(validateScenarioEconomicReviewReceipt(built, receiptFor(built)).reviewRecordStatus, 'REVIEW_REQUIRED')
+})
+
+test('P2-08 tampering with a reviewer-visible snapshot while retaining its old packet hash is unavailable', () => {
+  const built = fixture().packet, receipt = receiptFor(built)
+  const packet = built.packet!
+  const tampered = { ...built, packet: { ...packet, cases: packet.cases.map((item, index) => index === 1 ? { ...item, economicInputSnapshot: { ...item.economicInputSnapshot, revenue: { ...item.economicInputSnapshot.revenue, reportedConsolidatedRevenue: { ...item.economicInputSnapshot.revenue.reportedConsolidatedRevenue, value: known(999) } } } } : item) as unknown as typeof packet.cases } }
+  const assessment = validateScenarioEconomicReviewReceipt(tampered, receipt)
+  assert.equal(assessment.reviewRecordStatus, 'UNAVAILABLE')
+  assert.ok(assessment.diagnostics.some((item) => item.code === 'HASH_UNAVAILABLE'))
 })

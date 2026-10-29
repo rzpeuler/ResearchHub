@@ -141,6 +141,24 @@ function packetHash(packet: ScenarioEconomicReviewPacket): Sha256 | undefined {
   })
 }
 
+function snapshotBindingsValid(packet: ScenarioEconomicReviewPacket): boolean {
+  try {
+    return packet.cases.every((item) => {
+      const result = calculateEconomicBridge(item.economicInputSnapshot)
+      return result.inputHash === item.inputHash
+        && result.bridgeHash === item.bridgeHash
+        && result.status === item.bridgeStatus
+        && tryHash(result.components) === tryHash(item.components)
+        && tryHash(result.residual) === tryHash(item.residual)
+        && tryHash(result.cashFlowDifference) === tryHash(item.cashFlowDifference)
+        && tryHash(result.diagnostics) === tryHash(item.diagnostics)
+        && item.economicInputSnapshot.bridgeId === item.bridgeId
+        && item.economicInputSnapshot.formulaVersion === item.formulaVersion
+        && item.economicInputSnapshot.horizon.scenario === item.scenario
+    })
+  } catch { return false }
+}
+
 function canonicalEconomicInput(input: EconomicBridgeInput): EconomicBridgeInput {
   const byId = <T extends { readonly sourceId?: string; readonly accountId?: string; readonly adjustmentId?: string }>(a: T, b: T): number =>
     compare(a.adjustmentId ?? a.accountId ?? a.sourceId ?? '', b.adjustmentId ?? b.accountId ?? b.sourceId ?? '')
@@ -203,6 +221,7 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
 
   const observationById = new Map(methodInput.observations.map((item) => [item.observationId, item]))
   const cases: ScenarioEconomicReviewCasePacket[] = []
+  const scopeByDriverAndScenario = new Map<string, string>()
   const bridgeIds = new Set<string>()
   const expectedCompany = companyIds[0]
   const commonFormula = input.bridges[0]?.input?.formulaVersion
@@ -228,6 +247,7 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
     bridgeIds.add(bridgeId)
     const recalculated = calculateEconomicBridge(frozenInput)
     if (recalculated.status !== 'STRUCTURALLY_VALID_FIXTURE_ONLY' || recalculated.reportEligible !== false || recalculated.assumptionReviewStatus !== 'REVIEW_REQUIRED') errors.push(diagnostic('MISSING_REQUIRED_DRIVER', expectedScenario, 'Unavailable economic bridge (including incomplete FCFF/NWC) cannot enter a prepared review packet.'))
+    const economicInputSnapshot = structuredClone(frozenInput)
 
     const economicByDriver = new Map<string, EconomicBridgeInput['calibrationProposals'][number]>()
     for (const economicProposal of frozenInput.calibrationProposals) {
@@ -236,6 +256,7 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
     }
     if (!exactStringSet([...economicByDriver.keys()], required)) errors.push(diagnostic('MISSING_REQUIRED_DRIVER', expectedScenario, 'Economic calibration proposals must exactly cover the frozen required-driver set.'))
     const proposalSummaries: ScenarioEconomicReviewProposalSummary[] = []
+    const scopeBindings: NonNullable<ScenarioEconomicReviewCasePacket['scopeBindings']>[number][] = []
     for (const driverId of [...required].sort(compare)) {
       const proposal = proposalByCaseDriver.get(`${expectedScenario}|${driverId}`)
       const economicProposal = economicByDriver.get(driverId)
@@ -243,13 +264,51 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
       if (economicProposal.author !== proposal.authorId || economicProposal.proposedValue !== proposal.proposedValue || economicProposal.mechanism !== proposal.mechanism || economicProposal.trigger !== proposal.falsifiableTrigger || economicProposal.calibration?.unit !== proposal.unit || economicProposal.calibration?.currency !== proposal.currency || economicProposal.calibration?.financialScope !== proposal.financialScope || economicProposal.calibration?.periodBasis !== methodInput.horizon.targetPeriodBasis) {
         errors.push(diagnostic('CROSS_BINDING_MISMATCH', `${expectedScenario}.${driverId}`, 'Economic calibration author/value/mechanism/trigger/unit/currency/scope/basis does not bind to its Phase 1 proposal.'))
       }
-      if (proposal.inputObservationRefs.some((ref) => !observationById.has(ref))) errors.push(diagnostic('MISSING_REQUIRED_DRIVER', `${expectedScenario}.${driverId}`, 'Proposal observation refs must resolve to frozen Phase 1 observations.'))
+      const resolveRefs = (refs: readonly string[], kind: 'input/calibration' | 'counter-evidence') => {
+        const resolved: EconomicDriverObservation[] = []
+        for (const ref of refs) {
+          const observation = observationById.get(ref)
+          if (!observation) {
+            errors.push(diagnostic('MISSING_REQUIRED_DRIVER', `${expectedScenario}.${driverId}.${kind}.${ref}`, 'Proposal reference must resolve to an exact frozen Phase 1 observation.'))
+            continue
+          }
+          if (kind !== 'counter-evidence' && observation.driverId !== driverId) {
+            errors.push(diagnostic('CROSS_BINDING_MISMATCH', `${expectedScenario}.${driverId}.${kind}.${ref}`, `Observation driverId ${observation.driverId} does not match proposal driverId ${driverId}.`))
+            continue
+          }
+          resolved.push(observation)
+        }
+        return resolved
+      }
+      const inputObservations = resolveRefs(proposal.inputObservationRefs, 'input/calibration')
+      const calibrationObservations = resolveRefs(proposal.calibrationRefs, 'input/calibration')
+      const counterObservations = resolveRefs(proposal.counterEvidenceRefs, 'counter-evidence')
+      const calibrationScope = economicProposal.calibration?.economicScope ?? null
+      const compareScopes = (observations: readonly EconomicDriverObservation[], label: string) => {
+        for (const observation of observations) if (!calibrationScope || observation.economicScope !== calibrationScope) {
+          errors.push(diagnostic('CROSS_BINDING_MISMATCH', `${expectedScenario}.${driverId}.${label}.${observation.observationId}`, `economicScope mismatch: observation=${observation.economicScope}; calibration=${calibrationScope ?? 'MISSING'}.`))
+        }
+      }
+      compareScopes(inputObservations, 'inputObservationRefs')
+      compareScopes(calibrationObservations, 'calibrationRefs')
+      if (!inputObservations.length || !calibrationObservations.length) errors.push(diagnostic('CROSS_BINDING_MISMATCH', `${expectedScenario}.${driverId}.observationRefs`, 'At least one resolvable inputObservationRef and calibrationRef are required to bind the driver scope.'))
+      const scopeKey = driverId
+      const priorScope = scopeByDriverAndScenario.get(scopeKey)
+      if (priorScope && calibrationScope && priorScope !== calibrationScope) errors.push(diagnostic('CROSS_BINDING_MISMATCH', `${expectedScenario}.${driverId}.calibration.economicScope`, `Cross-scenario economicScope mismatch for driver ${driverId}: prior=${priorScope}; current=${calibrationScope}.`))
+      else if (calibrationScope) scopeByDriverAndScenario.set(scopeKey, calibrationScope)
+      scopeBindings.push({
+        driverId, calibrationEconomicScope: calibrationScope,
+        inputObservationScopes: inputObservations.map((item) => ({ observationId: item.observationId, economicScope: item.economicScope })).sort((a, b) => compare(a.observationId, b.observationId)),
+        calibrationObservationScopes: calibrationObservations.map((item) => ({ observationId: item.observationId, economicScope: item.economicScope })).sort((a, b) => compare(a.observationId, b.observationId)),
+        counterEvidenceScopeDifferences: counterObservations.filter((item) => calibrationScope !== item.economicScope).map((item) => ({ observationId: item.observationId, economicScope: item.economicScope })).sort((a, b) => compare(a.observationId, b.observationId)),
+        relationshipStatus: calibrationScope && inputObservations.every((item) => item.economicScope === calibrationScope) && calibrationObservations.every((item) => item.economicScope === calibrationScope) ? 'FIXTURE_SCOPE_MATCH' : 'UNAVAILABLE',
+      })
       proposalSummaries.push({
         proposalId: proposal.proposalId, driverId, authorId: proposal.authorId, originKind: proposal.originKind,
         proposalVersion: proposal.proposalVersion, proposedValue: proposal.proposedValue, unit: proposal.unit,
         currency: proposal.currency, financialScope: proposal.financialScope, mechanism: proposal.mechanism,
         calibrationRefs: [...proposal.calibrationRefs].sort(compare), counterEvidenceRefs: [...proposal.counterEvidenceRefs].sort(compare),
-        falsifiableTrigger: proposal.falsifiableTrigger, inputObservationRefs: [...proposal.inputObservationRefs].sort(compare), economicSummary: economicProposal,
+        falsifiableTrigger: proposal.falsifiableTrigger, inputObservationRefs: [...proposal.inputObservationRefs].sort(compare), economicSummary: economicInputSnapshot.calibrationProposals.find((item) => item.driverId === driverId) ?? null,
       })
     }
     const components: Record<string, ScenarioEconomicReviewComponentSummary> = {}
@@ -262,7 +321,8 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
       residualPolicy: methodCase.residualPolicy, residualDescription: methodCase.residualDescription, components,
       diagnostics: [...recalculated.diagnostics], residual: summarizeComponent(recalculated.residual),
       cashFlowDifference: summarizeComponent(recalculated.cashFlowDifference),
-      calibrationProposals: [...frozenInput.calibrationProposals],
+      calibrationProposals: economicInputSnapshot.calibrationProposals,
+      economicInputSnapshot, sourceVersionRightsTimeClaimsTrusted: false, scopeBindings,
       proposals: proposalSummaries, adjustments: [...methodInput.scenarioSet.scenarios[index]!.adjustments].sort((a, b) => compare(a.adjustmentId, b.adjustmentId)),
     })
   }
@@ -287,7 +347,11 @@ function buildUnsafe(input: ScenarioEconomicReviewPacketBuildInput): ScenarioEco
     phase1Hashes: { evidenceManifestHash: phase1.evidenceManifestHash, valueVersionProofSetHash: phase1.valueVersionProofSetHash, reviewPacketHash: phase1.reviewPacketHash },
     authorIds, authorSetHash, requiredDriverIds: [...required].sort(compare), observations,
     cases: cases as unknown as ScenarioEconomicReviewPacket['cases'],
-    adapterLimits: ['EconomicBridgeInput has formulaVersion but no methodId or atomic-skill ownership field; no method identity is inferred from formulaVersion.'],
+    adapterLimits: [
+      'EconomicBridgeInput has formulaVersion but no methodId or atomic-skill ownership field; no method identity is inferred from formulaVersion.',
+      'The current bridge contract has no explicit driverId-to-revenue-line/scalar ownership refs. The complete input is exposed in each snapshot, but individual bridge inputs are not attributed to a driver and no ownership relationship is claimed.',
+      'Scope matches are fixture structure checks only; source, rights, version, and time claims remain untrusted and are not qualified.',
+    ],
     dispatchAuthorized: false, reportEligible: false, reviewRequired: true,
   }
   const frozenHash = packetHash(packet)
@@ -333,7 +397,7 @@ function receiptAssessmentUnsafe(
   }
   const current = packetResult.economicReviewPacketHash
   const verifiedPayloadHash = packetHash(packet)
-  if (!verifiedPayloadHash || verifiedPayloadHash !== current || packet.dispatchAuthorized !== false || packet.reportEligible !== false || packetResult.dispatchAuthorized !== false || packetResult.reportEligible !== false) {
+  if (!verifiedPayloadHash || verifiedPayloadHash !== current || !snapshotBindingsValid(packet) || packet.dispatchAuthorized !== false || packet.reportEligible !== false || packetResult.dispatchAuthorized !== false || packetResult.reportEligible !== false) {
     return makeAssessment('UNAVAILABLE', current, isRecord(receipt) && typeof receipt.packetHash === 'string' ? receipt.packetHash : null, null, null, false,
       [diagnostic('HASH_UNAVAILABLE', 'packet', 'Frozen packet payload or permanent no-qualification guards failed integrity verification.')])
   }
