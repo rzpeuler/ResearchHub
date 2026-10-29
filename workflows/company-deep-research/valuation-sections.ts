@@ -542,6 +542,7 @@ export function buildCompanyValuationSections(input: {
   } else if (!(quoteItem?.quality?.pointInTimeSafe
     && potentialQuote.observation.priceDate <= input.asOf.slice(0, 10)
     && potentialQuote.observationAvailableAt === dailyCloseAvailableAt(potentialQuote.observation.priceDate)
+    && Date.parse(potentialQuote.retrievedAt) >= Date.parse(potentialQuote.observationAvailableAt)
     && Date.parse(potentialQuote.observationAvailableAt) <= Date.parse(asOfMode === 'CURRENT_VALUE_ONLY' ? potentialQuote.retrievedAt : input.asOf))) {
     quote = undefined
     quoteConsumption = 'REJECTED(MARKET_CLOSE_OR_UPSTREAM_PIT_GATE)'

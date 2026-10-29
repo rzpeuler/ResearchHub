@@ -303,6 +303,24 @@ test('a quote response retrieved by a historical cutoff remains eligible after e
   assert.ok(!result.diagnostics.includes('VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF'))
 })
 
+test('a historical quote response retrieved before exchange close availability fails closed', () => {
+  const asOf = '2026-10-27T08:00:00.000Z' // 16:00 Beijing
+  const preCloseQuote = {
+    ...quote,
+    observation: { ...quote.observation, priceDate: '2026-10-27' },
+    observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), // 15:00 Beijing
+    retrievedAt: '2026-10-27T06:30:00.000Z', // 14:30 Beijing
+  }
+  const preCloseAcquisition = { ...acquisition, valuationItems: [{ ...acquisition.valuationItems[0]!, value: preCloseQuote }] } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: preCloseAcquisition, sources: [filing] })
+  assert.ok(result.diagnostics.includes('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE'))
+  assert.match(result.sections[0]!.markdown, /^研究缺口：/)
+  assert.ok(!result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
+  assert.ok(!result.evidenceSources.some(source => source.candidate.candidateId.startsWith('company-valuation-market-')))
+  assert.match(result.sections[1]!.markdown, /valuation_market_price=REJECTED\(MARKET_CLOSE_OR_UPSTREAM_PIT_GATE\)/)
+  assert.doesNotMatch(result.sections[1]!.markdown, /HISTORICAL_ASOF_QUALIFIED/)
+})
+
 test('historically rejected quote cannot feed conditional PE sensitivity', () => {
   const asOf = '2026-10-27T20:19:59.628Z'
   const lateQuote = { ...quote, observation: { ...quote.observation, priceDate: '2026-10-27' }, observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), retrievedAt: '2026-10-27T20:20:02.952Z' }

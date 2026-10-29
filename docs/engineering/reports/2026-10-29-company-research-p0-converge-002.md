@@ -7,7 +7,7 @@
 
 ## 实施与 PIT 限制
 
-只修改估值章节报价消费和摘要表述。`dailyCloseAvailableAt(priceDate)` 表示交易所收盘数据理论可用时间；它不证明当前响应已在研究截点前取得。历史 `HISTORICAL` 模式现要求报价 `retrievedAt` 为有效带时区时间且不晚于 `asOf`，否则发出 `VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF`，估值章节保留缺口，报价不进入合格来源集合，参考 PE 和条件 PE 敏感性均不计算。上游 `quality.pointInTimeSafe`、时间戳和数据来源不被改写。
+只修改估值章节报价消费和摘要表述。`dailyCloseAvailableAt(priceDate)` 表示交易所收盘数据理论可用时间；它不证明当前响应已在研究截点前取得。报价消费现同时要求实际 `retrievedAt >= observationAvailableAt`，且历史 `HISTORICAL` 模式要求 `retrievedAt <= asOf`。因此，收盘前取得的响应即使上游 `quality.pointInTimeSafe=true` 且 `asOf` 在收盘后，也会被拒绝；例如 2026-10-27 14:30 北京时间取得、当日 15:00 收盘可用、16:00 `asOf` 的报价不能标为 `HISTORICAL_ASOF_QUALIFIED`。历史模式的晚取回报价仍发出 `VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF`，估值章节保留缺口，报价不进入合格来源集合，参考 PE 和条件 PE 敏感性均不计算。上游 Data 层、`quality.pointInTimeSafe`、时间戳和数据来源不被改写。
 
 `CURRENT_VALUE_ONLY` 保留符合现有交易日、收盘时点、来源和 resolver gate 的当前参考报价，包括研究开始后才收盘并在响应取得前已收盘的情形。它明确分别显示理论收盘可用时间、实际 `retrievedAt` 和研究起点 `asOf`；摘要标为 `CURRENT_REFERENCE_ONLY` 并保留上游状态为独立字段，正文说明它不是历史数值版本证明或历史 PIT 确认。行情仍只产生当前参考 PE，不变成目标价或独立市场预期面。缺失/非法 `asOf` 或 `retrievedAt`、晚于截点的历史响应、收盘尚不可用和未来价格日均 fail closed。
 
@@ -34,6 +34,7 @@
 | HISTORICAL：报价在 `asOf` 后 3.257 秒取得（东山截面） | 同上；不得以 `pointInTimeSafe=true` 覆盖晚取回事实 |
 | CURRENT_VALUE_ONLY：响应晚于研究起点；含研究起点在收盘前、收盘后才取回 | 保留当前参考 PE，明确理论收盘可用时间、响应时间和 `historicalVersion=UNVERIFIED` |
 | 截止前已收盘且响应在历史 `asOf` 前取得 | 历史消费正例通过；同日收盘尚不可用的既有负例仍拒绝 |
+| 2026-10-27 14:30 北京时间取得响应，15:00 收盘可用，16:00 历史 `asOf`；上游 PIT 为 true | 新增负例拒绝；响应时间早于收盘可用时间，报价来源与估值均不消费 |
 | 报价日期晚于截面日期 | fail closed；不进入估值来源 |
 | `asOf` / `retrievedAt` 缺失或非法，及历史晚取回报价参与情景 | 返回诊断；历史报价不进入 PE 或条件敏感性来源 |
 
@@ -41,7 +42,7 @@
 
 | 命令 | 退出码 |
 |---|---:|
-| `node --import tsx --test tests/workflows/company-valuation-sections.test.ts` | 0（22/22） |
+| `node --import tsx --test tests/workflows/company-valuation-sections.test.ts` | 0（23/23） |
 | `node --import tsx --test tests/app/services/research-report.test.ts` | 0（17/17） |
 | `npm run typecheck -- --pretty false` | 0（`tsc --noEmit`） |
 | `git diff --check` | 0（有受保护既存文件的 LF/CRLF 提示，无空白错误） |
