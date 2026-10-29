@@ -22,7 +22,7 @@ The configured application setting names `openai-codex/gpt-6-luna`, but the root
 | D4 — Candidate redline review | **NOT RUN** | No candidate output exists. Baseline facts and locators were not edited. |
 | D5 — Report/Knowledge/blocked-state invariants | **BASELINE VERIFIED; CANDIDATE NOT RUN** | Both archived reports remain 19 sections and `17/19 BLOCKED`; `researchQuality.passed=false`. No report, source archive, Runtime or Knowledge write occurred. |
 | D6 — Engineering regression | **NOT RUN** | No product code changed and no real candidate was available. No tests or builds were run. |
-| D7 — PR and reviewable outcome | **IN PROGRESS** | This documentation-only blocked record and baseline are prepared on the isolated branch. No main merge is authorized. |
+| D7 — PR and reviewable outcome | **PARTIAL** | Documentation-only blocked record and baseline are available in [PR #10](https://github.com/rzpeuler/ResearchHub/pull/10). No main merge is authorized. |
 
 ## Baseline editorial scores
 
@@ -52,4 +52,4 @@ The minimal candidate is limited to the existing `company_research_synthesis` in
 - Pi/runtime availability checks were read-only and emitted only model/provider identity and availability flags; no credentials were read into output.
 - Typechecks, builds, tests, browser checks and full-suite baseline comparisons: `NOT_RUN` because there is no product-code candidate and no configured model.
 - Model call count and cost: `0`; elapsed model time: `0`.
-- This record does not claim `READY_FOR_CTO_ACCEPTANCE`; D2, D4, D6 and a reviewable PR are still outstanding.
+- This record does not claim `READY_FOR_CTO_ACCEPTANCE`; D2, D4 and D6 remain outstanding. PR #10 carries only the baseline, progress and blocked acceptance records for review.

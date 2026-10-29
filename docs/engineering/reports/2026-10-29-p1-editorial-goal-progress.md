@@ -55,4 +55,5 @@ Two initial combined shell invocations accidentally ran `npm ci` from the dirty 
 - The saved non-secret application selection is `openai-codex/gpt-6-luna`; local Pi provider-status inspection found zero configured providers. The root Runtime status returns no selected model. The configured primary production model is also unauthenticated.
 - No other provider/model was substituted. Model calls remain 0/12; provider/data acquisition calls remain zero.
 - Acceptance record: `docs/engineering/reports/2026-10-29-p1-editorial-goal-acceptance.md`, status `BLOCKED_MODEL_OR_EVIDENCE`.
-- M3–M6 product implementation, after-quality assessment, code validation and CTO-ready PR are not claimed. Only the baseline/progress/acceptance documents may be committed for review.
+- Documentation-only PR #10: `https://github.com/rzpeuler/ResearchHub/pull/10`; it contains the baseline/progress/acceptance records only.
+- M3–M6 product implementation, after-quality assessment, code validation and CTO-ready PR are not claimed. No merge is authorized.
