@@ -232,6 +232,101 @@ test('FIX-001 P4: NWC rejects unstable, excluded, unknown, incomplete or mismatc
   assert.equal(valid.components.fcff?.value, 19.5)
 })
 
+test('FIX-002 T1: EBIT alone outside the horizon blocks FCFF and preserves gross profit', () => {
+  const base = input(), fc = base.fcff
+  const changed = { ...fc.unleveredEbit, periodStart: '2025-01-01', periodEnd: '2025-12-31', periodBasis: 'FY' }
+  const result = calculateEconomicBridge(input({ fcff: { ...fc, unleveredEbit: changed } }))
+  assert.ok(result.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId === 'fcff.ebit'))
+  assertUnavailable(result, 'fcff')
+  assert.equal(result.components.grossProfit?.status, 'KNOWN')
+  assert.equal(result.components.grossProfit?.value, 40)
+})
+
+test('FIX-002 T2: mutually matching FY2025 FCFF operands still fail against the H1 2026 horizon', () => {
+  const base = input(), fc = base.fcff
+  const toFy2025 = (value: EconomicBridgeScalar): EconomicBridgeScalar => ({ ...value, periodStart: '2025-01-01', periodEnd: '2025-12-31', periodBasis: 'FY' })
+  const result = calculateEconomicBridge(input({ fcff: { ...fc, unleveredEbit: toFy2025(fc.unleveredEbit), taxRate: toFy2025(fc.taxRate), da: toFy2025(fc.da), capex: toFy2025(fc.capex) } }))
+  for (const subjectId of ['fcff.ebit', 'fcff.taxRate', 'fcff.da', 'fcff.capex']) assert.ok(result.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId === subjectId), subjectId)
+  assertUnavailable(result, 'fcff')
+  assert.equal(Object.hasOwn(result.components.fcff!, 'value'), false)
+  assert.equal(result.components.grossProfit?.value, 40)
+  assert.notEqual(result.components.fcff?.value, 19.5)
+})
+
+test('FIX-002 T3: opening NWC must be exactly the day before horizon start, never the closing day', () => {
+  const base = input(), fc = base.fcff
+  const cases = [
+    { label: 'one day early', periodEnd: '2025-12-30' },
+    { label: 'same as closing', periodEnd: '2026-06-30' },
+    { label: 'one day after required opening', periodEnd: '2026-01-01' },
+  ]
+  for (const item of cases) {
+    const nwcStart = fc.nwcStart.map((value) => ({ ...value, periodEnd: item.periodEnd }))
+    const result = calculateEconomicBridge(input({ fcff: { ...fc, nwcStart } }))
+    assert.ok(result.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId.startsWith('nwc.')), item.label)
+    assertUnavailable(result, 'deltaNwc'); assertUnavailable(result, 'fcff')
+    assert.equal(result.components.grossProfit?.status, 'KNOWN', `${item.label}: gross profit remains independent`)
+  }
+})
+
+test('FIX-002 T4: closing NWC is horizon-end anchored while FY opening basis is valid', () => {
+  const base = input(), fc = base.fcff
+  const bad = calculateEconomicBridge(input({ fcff: { ...fc, nwcEnd: fc.nwcEnd.map((value) => ({ ...value, periodEnd: value.accountId === 'inventory' ? '2026-06-29' : value.periodEnd })) } }))
+  assert.ok(bad.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId === 'nwc.inventory'))
+  assertUnavailable(bad, 'deltaNwc'); assertUnavailable(bad, 'fcff')
+  const valid = calculateEconomicBridge(base)
+  assert.equal(fc.nwcStart.every((value) => value.periodBasis === 'FY' && value.periodEnd === '2025-12-31'), true)
+  assert.equal(fc.nwcEnd.every((value) => value.periodBasis === 'H1_YTD' && value.periodEnd === '2026-06-30'), true)
+  assert.equal(valid.components.deltaNwc?.value, 1)
+  assert.equal(valid.components.fcff?.value, 19.5)
+})
+
+test('FIX-002 T5: every horizon boundary change rejects original FCFF periods and changes the input hash', () => {
+  const base = input(), untouched = structuredClone(base), baseline = calculateEconomicBridge(base)
+  const horizons = [
+    { ...base.horizon, periodStart: '2026-01-02' },
+    { ...base.horizon, periodEnd: '2026-06-29' },
+    { ...base.horizon, periodBasis: 'H1' },
+  ]
+  for (const horizon of horizons) {
+    const result = calculateEconomicBridge({ ...base, horizon })
+    assert.ok(result.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId.startsWith('fcff.')))
+    assertUnavailable(result, 'fcff')
+    assert.notEqual(result.inputHash, baseline.inputHash)
+  }
+  assert.deepEqual(base, untouched, 'horizon validation must not mutate caller input')
+  const invalidHorizons = [
+    { ...base.horizon, periodStart: '2026-02-30' },
+    { ...base.horizon, periodStart: '2026-06-30', periodEnd: '2026-01-01' },
+    { ...base.horizon, periodBasis: ' ' },
+  ]
+  for (const horizon of invalidHorizons) {
+    const result = calculateEconomicBridge({ ...base, horizon })
+    assert.ok(result.diagnostics.some((d) => d.code === 'PERIOD_MISMATCH' && d.subjectId === 'horizon'))
+    assertUnavailable(result, 'fcff')
+  }
+})
+
+test('FIX-002 T6: baseline and leap-day opening stock calculate without qualification', () => {
+  const baseline = calculateEconomicBridge(input())
+  assert.equal(baseline.components.deltaNwc?.value, 1)
+  assert.equal(baseline.components.fcff?.value, 19.5)
+  assert.equal(baseline.reportEligible, false)
+  assert.equal(baseline.assumptionReviewStatus, 'REVIEW_REQUIRED')
+  assert.equal(input().mode, 'FIXTURE_ONLY')
+
+  const base = input(), fc = base.fcff
+  const toLeapH1 = (value: EconomicBridgeScalar): EconomicBridgeScalar => ({ ...value, periodStart: '2024-03-01', periodEnd: '2024-06-30', periodBasis: 'H1_YTD' })
+  const leapStart = fc.nwcStart.map((value) => ({ ...value, periodStart: '2023-01-01', periodEnd: '2024-02-29', periodBasis: 'FY' }))
+  const leapEnd = fc.nwcEnd.map((value) => ({ ...value, periodStart: '2024-01-01', periodEnd: '2024-06-30', periodBasis: 'H1_YTD' }))
+  const result = calculateEconomicBridge({ ...base, horizon: { ...base.horizon, periodStart: '2024-03-01', periodEnd: '2024-06-30' }, fcff: { ...fc, unleveredEbit: toLeapH1(fc.unleveredEbit), taxRate: toLeapH1(fc.taxRate), da: toLeapH1(fc.da), capex: toLeapH1(fc.capex), nwcStart: leapStart, nwcEnd: leapEnd } })
+  assert.equal(result.components.deltaNwc?.value, 1)
+  assert.equal(result.components.fcff?.value, 19.5)
+  assert.equal(result.reportEligible, false)
+  assert.equal(result.assumptionReviewStatus, 'REVIEW_REQUIRED')
+  assert.equal(base.mode, 'FIXTURE_ONLY')
+})
+
 test('F31 CFO less long-term purchases is separate from unavailable FCFF', () => {
   const fc = input().fcff
   const r = calculateEconomicBridge(input({ fcff: { ...fc, unleveredEbit: { ...fc.unleveredEbit, value: unavailable }, cfo: s('cfo', 12), purchasesOfLongTermAssets: s('lt-purchases', 7, { signConvention: 'POSITIVE_CASH_OUTFLOW' }) } }))

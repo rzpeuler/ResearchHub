@@ -212,3 +212,97 @@ git diff --check
 | B8 Governance | PASS | Fixture-only、reportEligible false、Reviewer/Data/Model/Knowledge/生产接线均未触及；双公司 T0 仍 17/19 BLOCKED，P0-19 NOT_ACCEPTED。 |
 
 最高交付状态仍为 `S4-007B-002-B-FIX-001 READY_FOR_ARCHITECTURE_REVIEW`，未自签 ACCEPTED。公司研究、估值、19/19、M1/M2 与 002-C 仍未获准。
+
+## FIX-002 — Horizon-Aligned FCFF and NWC Boundary
+
+**任务：** `RHL-CQR-P0-19-S4-007B-002-B-FIX-002`
+**冻结 SHA / 本提交父 SHA：** `0c921b6ff36b575a11404f28dfb0f1892569cb0e`
+**目标分支：** `codex/company-research-p0-01-06`；编辑前本地 HEAD、merge-base 和 `origin/codex/company-research-p0-01-06` 均等于冻结 SHA。
+**最终状态：** `S4-007B-002-B-FIX-002 READY_FOR_ARCHITECTURE_REVIEW`；等待架构师按提交 SHA 独立验收。
+
+### 根因与修复
+
+FIX-001 将 FCFF 的 EBIT、税率、D&A、CapEx 互相做了 pairwise 期间比较，但“彼此相等”并不证明“与目标预测期间一致”。四项即使一起被改成 FY2025，也曾可与 H1 2026 的 ΔNWC 合成。NWC 期初只检查不晚于期末且期末等于 horizon 末日，因此同日或任意较早存量日期也曾通过；期初存量没有绑定到 horizon 起始日前一日。
+
+本次以 `input.horizon.periodStart / periodEnd / periodBasis` 为唯一 FCFF 目标期间。日期验证使用纯函数严格解析公历 `YYYY-MM-DD`，检查真实日历日期、起止顺序和非空 basis；每个 FCFF operand 分别逐字段对齐 horizon，任何不符均给出对应 `fcff.*` 的 `PERIOD_MISMATCH` 并关闭 `fcffReady`。NWC 每个配对科目的 opening `periodEnd` 必须等于 horizon 起始日前一日，closing `periodEnd` 必须等于 horizon 末日。日期比较不要求 opening/closing `periodBasis` 相同，也不把 opening 的 `periodStart` 错当观察日；来源报告可以是 FY、观察日仍须精确为期初边界。闰年与跨年由公历日历规则计算，不用 JS `Date` 对非法日期做静默归一化。
+
+期间失败时 `components.fcff` 无 `value` 且 `UNAVAILABLE`；NWC 存量边界失败时 `deltaNwc` 与 FCFF 都无 `value` 且 `UNAVAILABLE`。独立的 gross profit / PBT 仍沿既有依赖链计算；CFO 差额仍是独立组件，不作为 FCFF 兜底。既有单位、FLOW/STOCK、scope、币种、tax fraction、CapEx 符号、账户角色/身份/排除项、处理声明及 FIX-001 P1–P4 门槛保持。
+
+### 修改清单与测试定位
+
+仅修改本任务白名单的三个文件：
+
+| 文件 | 修改 |
+|---|---|
+| `workflows/company-deep-research/scenario-economic-bridge.ts` | 加入严格纯公历日期解析、horizon 对齐门及精确 NWC 观察日边界。 |
+| `tests/workflows/company-scenario-economic-bridge.test.ts` | 保留原 16 项，新增六组 FIX-002 反例/正例；最终共 22 项。 |
+| `docs/engineering/reports/2026-10-29-company-research-s4-007b-002b-implementation.md` | 追加本节，不覆盖 002-B 与 FIX-001 历史。 |
+
+| 组 | 输入/场景 | 关键结果 |
+|---|---|---|
+| T1 | 仅 EBIT 改为 FY2025 | `fcff.ebit` 定位 `PERIOD_MISMATCH`；FCFF 无值且不可用；毛利仍为 40。 |
+| T2 | EBIT、税率、D&A、CapEx 同时改为 FY2025，horizon 保持 H1 2026 | 四个 operand 都有 horizon mismatch；即使彼此一致也不能生成 19.5；FCFF 无值，毛利为 40。 |
+| T3 | opening NWC 分别偏早一天、等于 closing、偏晚一天 | 每种情况均有 NWC 时间诊断；ΔNWC 和 FCFF 无值且不可用；毛利仍 KNOWN。 |
+| T4 | closing NWC 错一天；并验证 FY opening 来源 / H1 closing 来源 | closing 错误使 ΔNWC 与 FCFF 关闭；合法 `2025-12-31` / `2026-06-30` 计算 ΔNWC `1`、FCFF `19.5`，不同 basis 不误拒绝。 |
+| T5 | 单独改 horizon 起点、终点或 basis；再测非法日期、倒置日期、空 basis | FCFF 均失败关闭；每个 horizon 变化使 input hash 改变；不修改传入对象；非法 horizon 有明确诊断。 |
+| T6 | 合法原始 fixture 与 horizon `2024-03-01` 的闰年 opening `2024-02-29` | 两者均计算 ΔNWC `1`、FCFF `19.5`；`reportEligible=false`、`REVIEW_REQUIRED`；输入仍为 `FIXTURE_ONLY`。 |
+
+结果契约没有 `mode` 输出字段；FIXTURE_ONLY 是输入约束。本测试不扩展契约，分别断言输入 mode 与结果的 `reportEligible=false`、`assumptionReviewStatus=REVIEW_REQUIRED`。开发中一次初跑发现新增测试误读了结果契约中的 `mode`；修正断言后最终验证全过，未修改公共契约。
+
+### 最终验证记录
+
+下列命令均在最终实现上执行，执行前后保护文件 SHA-256 对照 20/20 相同：
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `node --import tsx --test tests/workflows/company-scenario-economic-bridge.test.ts` | 0 | 22 passed / 0 failed：原有 16 项 + FIX-002 T1–T6 六组。 |
+| `node --import tsx --test tests/workflows/company-scenario-method-contracts.test.ts` | 0 | 19 passed / 0 failed。 |
+| `npm run typecheck -- --pretty false` | 0 | `tsc --noEmit --pretty false` 通过。 |
+| `git diff --check` | 0 | 无空白错误。 |
+
+未运行 `npm run test:node`、`npm run client:test`；不将历史 21 项 Node / 5 项客户端失败基线冒充为本轮结果。未运行真实公司研究、估值模型或 Knowledge 写入。
+
+### 保护文件 SHA-256 前后对照
+
+以下 5 个未提交用户 JSON 和 15 个冻结 BYD / 东山 sidecar 在上述最终测试前后逐个计算 SHA-256，前后均一致；仅对 sidecar 读取文件哈希，未读取或修改其内容。
+
+| 路径 | 测试前 SHA-256 | 测试后 SHA-256 |
+|---|---|---|
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-thesis-authorized.json` | `7252fd35dec70403fd6bb8b3edc6ffadd25211fd158461a1dde30458bf07f442` | `7252fd35dec70403fd6bb8b3edc6ffadd25211fd158461a1dde30458bf07f442` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-event-readonly.json` | `ef0e7475e0464ca1e3950feb348b0d3ed6dc7383e32200faa3fc413207bc641a` | `ef0e7475e0464ca1e3950feb348b0d3ed6dc7383e32200faa3fc413207bc641a` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-industry-readonly.json` | `12c951be5ca88fb35b155187055b0a15a50d212133c9b68088c0d1674500c0fa` | `12c951be5ca88fb35b155187055b0a15a50d212133c9b68088c0d1674500c0fa` |
+| `tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-thesis-references.json` | `61cd5cf5b24a7f0fc10746e0269a845d6e29464614c43738d7585ec075fb4670` | `61cd5cf5b24a7f0fc10746e0269a845d6e29464614c43738d7585ec075fb4670` |
+| `tests/validation/evidence/company-quality-pi-default-deny.json` | `4c02302a5b31cec6d93b9298e06a76bd0b834b4bacc914670c7fd06aa6300038` | `4c02302a5b31cec6d93b9298e06a76bd0b834b4bacc914670c7fd06aa6300038` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-analysis.json` | `72588193faff4c2e75fb2e07c0b07197619b8c23b9fa49f843e7f05ae34e98b3` | `72588193faff4c2e75fb2e07c0b07197619b8c23b9fa49f843e7f05ae34e98b3` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-bundle.json` | `691f3f561b02523f00865f574f6fd373b202c9dad98502abbd61fa3b5958067f` | `691f3f561b02523f00865f574f6fd373b202c9dad98502abbd61fa3b5958067f` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-company-research-002384-860916a8-4958-4d29-8da1-56ad5dd1c2c6.md` | `3c14d4fbb29aee31bc434b9c99b98de3e79f6897581c4519a46aa87f236eb91f` | `3c14d4fbb29aee31bc434b9c99b98de3e79f6897581c4519a46aa87f236eb91f` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-kb-integrity.json` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-report.json` | `6fa63686b889150551b42eab66b3ce32f4246871f5a3d4be99117d0e0d8917d4` | `6fa63686b889150551b42eab66b3ce32f4246871f5a3d4be99117d0e0d8917d4` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-started.json` | `716537e8348f69818ffdc128970e509ed77b367443dc1d4a12292e2d972f87df` | `716537e8348f69818ffdc128970e509ed77b367443dc1d4a12292e2d972f87df` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002384-workflow.json` | `0cf91dfa99a0ca0b1daff3b8711e5e29ab1f07c1d693cfa7f986999adc718ebd` | `0cf91dfa99a0ca0b1daff3b8711e5e29ab1f07c1d693cfa7f986999adc718ebd` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-analysis.json` | `60c877932829d114eb02af13304402ec5599b4410df5bc63926f4f646489de35` | `60c877932829d114eb02af13304402ec5599b4410df5bc63926f4f646489de35` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-bundle.json` | `1fd11c5f5e7764d23bd4950712faf056efeff09436dd983635b24c156a7a8739` | `1fd11c5f5e7764d23bd4950712faf056efeff09436dd983635b24c156a7a8739` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-company-research-002594-82bcc425-d48d-4e55-bc45-111aa8c28ba4.md` | `0f83c1cd96f5962402eae69503e2c53cdf76e16f01a6acf2f0324e986a036604` | `0f83c1cd96f5962402eae69503e2c53cdf76e16f01a6acf2f0324e986a036604` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-kb-integrity.json` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` | `4322cd0b20c70c400615987b06de5d400e45fecc7676cac11cccfd5678ff1f0a` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-report.json` | `2867b270318b21e334c28246935326dab19fa734c094253bb80637b2c32390c1` | `2867b270318b21e334c28246935326dab19fa734c094253bb80637b2c32390c1` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-started.json` | `7f1b87714dea542920e07235206af7db367abfc9f58cb4d043328c49dcb6fef1` | `7f1b87714dea542920e07235206af7db367abfc9f58cb4d043328c49dcb6fef1` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/002594-workflow.json` | `43316166217675df70473ed86cf646fa988dd3dfc53be6c4e75f7f32bf6ff7f6` | `43316166217675df70473ed86cf646fa988dd3dfc53be6c4e75f7f32bf6ff7f6` |
+| `runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/summary.json` | `e9999cf1ff2173c1ce5d87387abb0c65d9473426b5334547285499f0f51f9228` | `e9999cf1ff2173c1ce5d87387abb0c65d9473426b5334547285499f0f51f9228` |
+
+五份既有 dirty JSON、`plugins/document/parsers/docling/bridge/__pycache__/`、`runtime-launch.stderr.log`、`runtime-launch.stdout.log` 和 `tmp/` 均未被改写、暂存或纳入提交；其哈希/内容没有为本报告额外读取。实际 `git status` 与提交清单在交付前再次核验。
+
+### B0–B8 自查
+
+| Gate | 自查 | 证据 / 限制 |
+|---|---|---|
+| B0 Git/scope | PASS | 冻结父 SHA；仅三个白名单文件；提交及 push 前再次确认远端未变化。 |
+| B1 Contracts | PASS | 未改 `scenario-method-contracts.ts`、Phase 1 validator/API 或公共 Schema；Phase 1 契约测试 19/19。 |
+| B2 Revenue | PASS | 原 F25–F27、FIX-001 P3 保留；T1/T2 断言毛利不被 FCFF mismatch 切断。 |
+| B3 Profit | PASS | 原 F28–F29、FIX-001 P2 保留；利润下游依赖门未修改。 |
+| B4 FCFF & NWC | PASS | T1–T6 通过；FY2025 同伴一致但偏离目标期必拒；opening/closing 日期精确闭合；同日拒绝。 |
+| B5 Fail Closed | PASS | T1–T5 验证被拒组件 `UNAVAILABLE` 且不存在 `value` 属性。 |
+| B6 Determinism | PASS | 无外部 I/O；T5 检查 horizon 改变 hash 且输入对象不变；原始合法 H1 仍为 19.5。 |
+| B7 Test evidence | PASS | 两个聚焦套件、typecheck 与 `git diff --check` 均退出 0；未宣称 Node/client 全量通过。 |
+| B8 Governance | PASS | FIXTURE_ONLY 输入、`reportEligible:false`、review required；未重跑公司模型、未调用数据源、未写 Knowledge、未提升 P0-19，002-C 仍未授权。 |
+
+不改变历史 T0 `17/19 BLOCKED`、研究来源权利或估值资格。报告、实现和测试仅作为待独立审阅的 fixture 修复；最高状态为 `S4-007B-002-B-FIX-002 READY_FOR_ARCHITECTURE_REVIEW`。

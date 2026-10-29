@@ -74,6 +74,26 @@ function subtract(a: number, b: number): number | undefined { const n = a - b; r
 function samePeriod(a: EconomicBridgeScalar, b: EconomicBridgeScalar): boolean { return a.periodStart === b.periodStart && a.periodEnd === b.periodEnd && a.periodBasis === b.periodBasis }
 function sameScope(a: EconomicBridgeScalar, b: EconomicBridgeScalar): boolean { return a.companySymbol === b.companySymbol && a.financialScope === b.financialScope && a.economicScope === b.economicScope }
 function sameCurrency(a: EconomicBridgeScalar, b: EconomicBridgeScalar): boolean { return a.currency === b.currency && a.unit === b.unit && a.dimension === b.dimension && a.shareBasis === b.shareBasis }
+type CivilDate = { year: number; month: number; day: number }
+function parseCivilDate(value: unknown): CivilDate | undefined {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined
+  const year = Number(value.slice(0, 4)), month = Number(value.slice(5, 7)), day = Number(value.slice(8, 10))
+  if (year < 1 || year > 9999 || month < 1 || month > 12) return undefined
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return day >= 1 && day <= days[month - 1]! ? { year, month, day } : undefined
+}
+function previousCivilDate(value: unknown): string | undefined {
+  const date = parseCivilDate(value)
+  if (!date) return undefined
+  if (date.day > 1) return `${String(date.year).padStart(4, '0')}-${String(date.month).padStart(2, '0')}-${String(date.day - 1).padStart(2, '0')}`
+  const year = date.month === 1 ? date.year - 1 : date.year
+  const month = date.month === 1 ? 12 : date.month - 1
+  if (year < 1) return undefined
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(days[month - 1]!).padStart(2, '0')}`
+}
 function validatePair(a: EconomicBridgeScalar, b: EconomicBridgeScalar, subject: string, diagnostics: EconomicBridgeDiagnostic[]): boolean {
   let valid = true
   if (!samePeriod(a, b)) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: subject, reason: 'period start/end/basis differ' }); valid = false }
@@ -87,7 +107,7 @@ function scalar(value: EconomicBridgeScalar | null | undefined, id: string, diag
   if (!nonEmpty(value.sourceId) || !nonEmpty(value.companySymbol) || !nonEmpty(value.metricId) || !nonEmpty(value.unit) || !nonEmpty(value.financialScope) || !nonEmpty(value.economicScope) || !nonEmpty(value.periodStart) || !nonEmpty(value.periodEnd) || !nonEmpty(value.periodBasis)) {
     diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: id, reason: 'scalar identity, scope, unit, and period fields are required' }); return undefined
   }
-  if (!['CURRENCY_AMOUNT', 'CURRENCY_PER_UNIT', 'COUNT', 'RATE', 'CURRENCY_AMOUNT_PER_PERIOD'].includes(value.dimension) || !['FLOW', 'STOCK', 'RATE', 'COUNT'].includes(value.flowOrStock) || !Number.isFinite(Date.parse(value.periodStart)) || !Number.isFinite(Date.parse(value.periodEnd))) {
+  if (!['CURRENCY_AMOUNT', 'CURRENCY_PER_UNIT', 'COUNT', 'RATE', 'CURRENCY_AMOUNT_PER_PERIOD'].includes(value.dimension) || !['FLOW', 'STOCK', 'RATE', 'COUNT'].includes(value.flowOrStock) || !parseCivilDate(value.periodStart) || !parseCivilDate(value.periodEnd)) {
     diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: id, reason: 'scalar dimension, flow/stock kind, and period dates must be valid' }); return undefined
   }
   if (/\bEPS\b|PER_SHARE/i.test(value.metricId)) { diagnostics.push({ code: 'INVALID_STRUCTURE', subjectId: id, reason: 'per-share EPS cannot substitute for an income statement amount or NCI' }); return undefined }
@@ -276,6 +296,22 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
   const ebit = scalar(fc?.unleveredEbit, 'fcff.ebit', diagnostics), rate = scalar(fc?.taxRate, 'fcff.taxRate', diagnostics), da = scalar(fc?.da, 'fcff.da', diagnostics), capex = scalar(fc?.capex, 'fcff.capex', diagnostics)
   let fcffOperandsValid = ebit !== undefined && rate !== undefined && da !== undefined && capex !== undefined
   const ebitInput = fc?.unleveredEbit, taxRateInput = fc?.taxRate, daInput = fc?.da, capexInput = fc?.capex
+  const horizonStart = parseCivilDate(input.horizon?.periodStart)
+  const horizonEnd = parseCivilDate(input.horizon?.periodEnd)
+  const horizonValid = Boolean(horizonStart && horizonEnd && (input.horizon.periodStart <= input.horizon.periodEnd) && nonEmpty(input.horizon.periodBasis))
+  if (!horizonValid) {
+    diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: 'horizon', reason: 'FCFF horizon requires real YYYY-MM-DD dates in order and a non-empty periodBasis' })
+    fcffOperandsValid = false
+  }
+  const horizonOperands: readonly [string, EconomicBridgeScalar | undefined][] = [
+    ['fcff.ebit', ebitInput], ['fcff.taxRate', taxRateInput], ['fcff.da', daInput], ['fcff.capex', capexInput],
+  ]
+  for (const [subjectId, operand] of horizonOperands) {
+    if (!horizonValid || !operand || operand.periodStart !== input.horizon.periodStart || operand.periodEnd !== input.horizon.periodEnd || operand.periodBasis !== input.horizon.periodBasis) {
+      diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId, reason: 'FCFF operand periodStart, periodEnd, and periodBasis must exactly match the bridge horizon' })
+      fcffOperandsValid = false
+    }
+  }
   if (!ebitInput || ebitInput.companySymbol !== input.companySymbol || ebitInput.dimension !== 'CURRENCY_AMOUNT' || ebitInput.flowOrStock !== 'FLOW' || !ebitInput.currency) { diagnostics.push({ code: 'FCFF_INPUTS_MISSING', subjectId: 'fcff.ebit', reason: 'unlevered EBIT must belong to bridge company and be a currency amount FLOW' }); fcffOperandsValid = false }
   if (!taxRateInput || !ebitInput || !samePeriod(ebitInput, taxRateInput)) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must share EBIT period' }); fcffOperandsValid = false }
   if (!taxRateInput || !ebitInput || !sameScope(ebitInput, taxRateInput)) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: 'fcff.taxRate', reason: 'tax rate must share EBIT company and scope' }); fcffOperandsValid = false }
@@ -308,7 +344,12 @@ function calculateEconomicBridgeCore(raw: EconomicBridgeInput): EconomicBridgeRe
       if (!sameScope(a, b)) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: `nwc.${key}`, reason: 'opening and closing NWC scopes differ' }); nwcGood = false }
       if (!sameCurrency(a, b)) { diagnostics.push({ code: 'UNIT_MISMATCH', subjectId: `nwc.${key}`, reason: 'opening and closing NWC native units differ' }); nwcGood = false }
       if (fc!.unleveredEbit && (!sameScope(a, fc!.unleveredEbit) || !sameCurrency(a, fc!.unleveredEbit))) { diagnostics.push({ code: 'SCOPE_MISMATCH', subjectId: `nwc.${key}`, reason: 'operating NWC must match unlevered EBIT company, scopes, currency, unit, and dimension' }); nwcGood = false }
-      if (a.flowOrStock !== 'STOCK' || b.flowOrStock !== 'STOCK' || Date.parse(a.periodEnd) > Date.parse(b.periodEnd) || b.periodEnd !== input.horizon.periodEnd) { diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: `nwc.${key}`, reason: 'NWC requires opening stock no later than closing stock, with closing stock at horizon end' }); nwcGood = false }
+      const requiredOpeningDate = previousCivilDate(input.horizon?.periodStart)
+      const closingDateValid = parseCivilDate(input.horizon?.periodEnd) !== undefined
+      if (a.flowOrStock !== 'STOCK' || b.flowOrStock !== 'STOCK' || !requiredOpeningDate || !closingDateValid || a.periodEnd !== requiredOpeningDate || b.periodEnd !== input.horizon.periodEnd) {
+        diagnostics.push({ code: 'PERIOD_MISMATCH', subjectId: `nwc.${key}`, reason: `NWC stock observations must be opening ${requiredOpeningDate ?? 'valid day before horizon start'} and closing ${input.horizon?.periodEnd ?? 'valid horizon end'}` })
+        nwcGood = false
+      }
       if (!nwcGood) continue
       const av = scalar(a, `nwc.start.${key}`, diagnostics), bv = scalar(b, `nwc.end.${key}`, diagnostics)
       if (av === undefined || bv === undefined) { nwcGood = false; continue }
