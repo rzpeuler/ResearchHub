@@ -59,6 +59,14 @@ Two initial combined shell invocations accidentally ran `npm ci` from the dirty 
 - Full Client suite: 223 passed, 5 failed out of 228. All five same titles reproduced on clean `origin/main` in `App.test.tsx` (3) and `report-navigation.test.tsx` (2).
 - The full suites regenerated five tracked validation evidence JSONs in the isolated worktree and a parser `__pycache__`; the tracked JSONs were restored because the worktree started clean. The remaining untracked cache is excluded from staging. Root checkout and its user files were not used for tests.
 
+## M4 preflight — archived handoff reconstruction (mock only)
+
+- Reconstructed each bounded synthesis request from the real archived analysis/report sidecars; the fake executor returned only that archive's already-saved synthesis output. This did not invoke a model or contribute an after-score.
+- BYD: fixed `asOf=2026-10-27T20:19:59.628Z`, 10 methods, 9 allowed source IDs, source body hashes matched, 3 Workflow-owned sections, and all 304 archived allowed locators reproduced with 0 missing / 0 added. Stable request-input SHA-256: `c8a3226a01d6ec90f112862f8e97f77cc910e53e5fb3a2bc7844d78c3c13e978`.
+- Dongshan: fixed `asOf=2026-10-27T20:26:46.347Z`, 10 methods, 6 allowed source IDs, source body hashes matched, 3 Workflow-owned sections, and all 372 archived allowed locators reproduced with 0 missing / 0 added. Stable request-input SHA-256: `dcf16802e91820f71c6a2fc616e61a34a37e7961d63d2d5d6b0c4a02043b`.
+- The normalized rights, `retrievedAt`, and source metadata/provenance fields are not retained in the archive. No values were reconstructed for them; this confirms the permitted same-content snapshot handoff, not the original acquisition event. Baseline and candidate still need to use the same reconstructed inputs if model auth is restored.
+- The archive's saved synthesis outputs passed the current assembly path once per company with no diagnostics. This checks reconstruction and existing validation only; the model call count remains 0/12.
+
 ## Stop condition — direct Pi authentication unavailable
 
 - The user's runtime selection is `openai-codex/gpt-6-luna`, and `/api/settings` reports this catalog candidate `available=true`. The same response reports `modelProviders.openai-codex.configured=false`. A separate Pi `ModelRuntime` initialized from the standard Pi agent directory with model-network refresh disabled lists the candidate in its catalog but returns an empty available-model snapshot.

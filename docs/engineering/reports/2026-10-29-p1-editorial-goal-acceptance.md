@@ -12,11 +12,13 @@ The two archived company reports were read and fingerprinted in a read-only pass
 
 The user-visible Runtime setting selects `openai-codex/gpt-6-luna`, and its model catalog reports `available=true`; `modelProviders.openai-codex.configured` is `false`. A local Pi `ModelRuntime` initialized from the standard Pi agent directory with model-network refresh disabled has an empty available-model snapshot. This does not establish an authenticated path for the authorized Pi synthesis executor. No synthesis or connection-test call was made, and no alternative model or account was used. The minimum unlock is configuring the existing OpenAI Codex Pi provider; the same-source replay can then resume within the remaining 12-call budget.
 
+A no-model archive handoff reconstruction confirms that the bounded inputs can be rebuilt from existing sidecars: 9 BYD / 6 Dongshan allowed source bodies have matching content hashes; the reconstructed requests reproduce all 304 / 372 saved allowed locators, all 10 method results and the three Workflow-owned sections. The previously saved synthesis outputs pass through the current assembly once each via a mock executor with no diagnostics. This is input/validator evidence only; it is not a new model output or quality comparison. Rights, retrieval time, and source provenance metadata are absent from the archives and remain unknown.
+
 ## Definition of Done
 
 | Requirement | Status | Evidence |
 | --- | --- | --- |
-| D1 — Real archived baseline | **PASS** | [P1 editorial baseline](2026-10-29-p1-editorial-baseline.md): report/run IDs, `asOf`, 19 section IDs/order, evidence-location counts, quality issues, source snapshot and archive hashes. |
+| D1 — Real archived baseline | **PASS** | [P1 editorial baseline](2026-10-29-p1-editorial-baseline.md): report/run IDs, `asOf`, 19 section IDs/order, evidence-location counts, quality issues, source snapshot and archive hashes; the handoff reconstruction counts/hashes are recorded in the progress report. |
 | D2 — At least three real before/after improvements per company | **NOT MET** | No synthesis call was made because the permitted Pi runtime has no available authenticated model; there is no generated after text. |
 | D3 — Six-dimension scores and target threshold | **PARTIAL** | Both baselines score `3/3/3/3/3/2` in thesis clarity, causal evidence chain, counterevidence/failure conditions, monitoring, cross-section consistency and concision. No after-score exists. |
 | D4 — Candidate redline review | **NOT RUN** | No candidate output exists. Baseline facts and locators were not edited. |
