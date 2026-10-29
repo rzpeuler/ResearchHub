@@ -1,14 +1,14 @@
 # P1-GOAL-001 — 长程执行进度
 
-**CURRENT_MILESTONE:** M5 partial; M4 real same-input synthesis replay complete, P1 quality gate not met after two editorial iterations
+**CURRENT_MILESTONE:** final BYD automatic synthesis loop complete; production retry and human review both reject the output
 **BASELINE_SHA:** `6989b5f010d596e7436f1f4d49841ad8845ce64c`
 **WORKTREE_BRANCH:** `codex/p1-editorial-synthesis`
-**MODEL_CALLS_USED/MAX:** 6/12 P1 synthesis calls; 1 separate live Runtime connection probe
-**BYD_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → 3/3/3/3/3/2 (candidate remains nonconforming)
+**MODEL_CALLS_USED/MAX:** 12/12 P1 synthesis calls; 1 separate live Runtime connection probe
+**BYD_SCORE_BEFORE/AFTER:** P0 3/3/3/3/3/2 → latest raw retry 3/4/4/4/2/3 (rejected; final assembly falls back)
 **DONGSHAN_SCORE_BEFORE/AFTER:** 3/3/3/3/3/2 → 3/3/3/3/3/3 (provisional; candidate remains nonconforming)
 **REGRESSION_DELTA:** no new failures versus clean-main matched failing tests; 21 Node and 5 Client full-suite failures persist on main
-**BLOCKER:** `gpt-6-luna` is callable, but both candidate iterations violate the existing no-numeric-values constraint in the two synthesis sections; no third iteration is authorized
-**NEXT_STEP:** complete partial acceptance evidence and Git delivery; do not claim READY_FOR_CTO_ACCEPTANCE
+**BLOCKER:** automatic numeric grounding rejects the FY2025 basic-EPS misclassification of a `3.58元` dividend amount; retry leaves the unsupported price/EPS pair
+**NEXT_STEP:** finish report/response-record commit and remote sync; do not spend more model calls or claim READY_FOR_CTO_ACCEPTANCE
 
 ## M0 — preflight, protection, isolation
 
@@ -178,3 +178,9 @@ A deterministic replay of the same archived `request.input` through the existing
 **BYD reviewed candidate score:** `4/4/4/4/4/3` (thesis, causal chain, counterevidence/failure conditions, monitoring, consistency, concision). Compared with baseline, the reviewed thesis leads with the automotive revenue share and the split between automotive decline and electronics growth (`official-f7c8d23d2829a5e8@paragraph:821`; `official-c19c34dd239b2e9c@paragraph:706-708`); it gives the H1 profit/revenue/cash-flow counterevidence and keeps the net-profit attribution caveat (`akshare-financial-002594@paragraph:1`; revenue decline also directly cited to `official-c19c34dd239b2e9c@paragraph:698`); and its monitoring checks are reordered around these thesis drivers with distinct customer, working-capital, cash/capex and commercialization checks. The two sections total 3,627 characters versus baseline 3,779; monitoring shrinks 2,281 → 1,490 characters while retaining decision-relevant figures.
 
 Together with Dongshan candidate 2's earlier `4/4/4/4/4/3` score and three cited material improvements, both companies now meet the minimum reviewed-output threshold. The manual correction is explicitly disclosed; the prior failed raw model response remains in the history. The final status is **`READY_FOR_CTO_ACCEPTANCE`**. This is editorial acceptance only: `17/19 BLOCKED`, the two blocked sections, P0-19 `NOT_ACCEPTED`, and Knowledge eligibility are unchanged. PR #10 remains open and unmerged.
+
+## Final automatic closure status (2026-10-29)
+
+The subsequent no-human-edit BYD closed-loop acceptance supersedes that readiness status. Two actual `openai-codex/gpt-6-luna` calls exhausted the 12-call budget. The production assembly retry was exercised using the exact first real response and then a real Pi retry; it still returned `deterministic_fallback` because the second model response incorrectly treated a `3.58元` dividend-per-10-shares disclosure as FY2025 basic EPS. The resulting `82.01元` / `3.58元` valuation input pair failed the existing numeric grounding gate. There was no model success or acceptable final synthesis.
+
+The current outcome is **`PARTIAL_PRODUCT_QUALITY`**. D2 and D3 are not met; D4 review found a material factual classification error. See the final closure section of [the acceptance report](2026-10-29-p1-editorial-goal-acceptance.md) and its byte-exact [real retry response](2026-10-29-p1-byd-auto-loop-final-response.txt). Validation: assembly suite 112/112, `npm run typecheck` exit 0. Historical `17/19 BLOCKED`, blocked `bull-base-bear` / `variant-perception`, P0-19 `NOT_ACCEPTED`, and Knowledge state are unchanged.
