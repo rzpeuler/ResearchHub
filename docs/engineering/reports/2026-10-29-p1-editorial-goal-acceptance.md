@@ -86,3 +86,48 @@ This does not meet D2. D3's numeric threshold alone is not sufficient; candidate
 - Full Node/Client relative-baseline evidence remains as documented above; the full suites were not rerun after the final instruction-string edit.
 - The six drafts remain untracked and will not be included in the PR. No runtime archive, source body, auth file, or user asset is staged.
 - Final state: `PARTIAL_PRODUCT_QUALITY`. The two-iteration stop condition has been reached; a third prompt scheme or extra model calls are not pursued.
+
+## Continuation C0–C1 record (appended 2026-10-29)
+
+The original M0–M4 observations, six-call output hashes, historical failure classification, and M5 baseline comparison above remain unchanged. They are not overwritten by the continuation.
+
+A fresh Runtime test confirmed the root-launched Runtime has `openai-codex/gpt-6-luna` selected and can complete the model-test request: HTTP 200 with `{"ok":true}` in 2,735 ms. No configuration or authentication state was modified.
+
+C1 corrected the contradiction that had caused the prior candidates to be marked nonconforming. Synthesis now defaults to qualitative explanation while allowing a small, material set of directly disclosed and source-verified figures with metric/scope/period/unit and exact citations. Full revenue rows remain in their owning method chapter; the two synthesis sections select only decisive evidence and do not duplicate complete tables. Existing numeric grounding and citation validators remain unchanged. The focused assembly suite passes 112/112. No continuation candidate call has yet been assessed in this appended record; the acceptance status remains `PARTIAL_PRODUCT_QUALITY` pending C3–C5.
+
+## Continuation C1/C3/C4 acceptance addendum (2026-10-29)
+
+The initial C0–C1 append above recorded the design stage before calls. This addendum supersedes only its statement that C3 calls were pending; it does not replace historical M0–M5 evidence or failures.
+
+### C1 conflict matrix
+
+The old absolute numeric ban in the priority and main synthesis clauses conflicted with the cross-method requirement to integrate directly sourced revenue drivers. The revised existing instruction permits a small, material, source-verified set with exact metric, scope, period, unit, and locator; it does not set a numerical cap. Method chapters retain complete tables, while thesis/monitoring select only decisive facts and may not call unselected facts undisclosed. Valuation-specific restrictions and every existing citation, numeric, rights, PIT, and blocked-ledger validator remain unchanged. Tests continue to exercise a valid sourced value, a wrong sourced value that fails (5.04%→6.04%), and unsupported `9999` that fails closed. The new observation-date wording distinguishes quote dates from fiscal reporting periods.
+
+### C3 calls and acceptance
+
+Four new real synthesis calls were made with `openai-codex/gpt-6-luna`, bringing the cumulative count to 10/12. Each call used the exact same archived request-input hash as its M4 baseline, with unchanged `asOf`, 10 methods, source snapshots, and all 304 BYD / 372 Dongshan allowed citations and evidence locators. No tokens or costs were exposed by the executor.
+
+| Company / attempt | Input SHA-256 | Effective instruction SHA-256 | Output record SHA-256 | Outcome |
+| --- | --- | --- | --- | --- |
+| BYD 1 | `76d6e52dd6d0a6a25d016d24a0adba6b99c22c4b6c59f25d34466d26ad631158` | `4f37f0fa44cf4f91b5e2449c24b8fb60da205122a74485fd790162e4953a10fc` | `8588dbcac91b396cb7e536a366a5b22d6349dd51cadfcd887795fe6c268151c8` | Rejected for mislabeling the 2026-10-27 quote as year-end 2025. |
+| BYD 2 | same | `5da08f1b486a03e416f72330642dab9ecd9edd4a8aa7e427cb8760d6ac2d09ec` | `572c1a7ce2b2e2d8e614486e423e3ca84ec2170783572cf76273a0076083860d` | Deterministic fallback; unchanged numeric grounding rejects `7.13`. |
+| Dongshan 1 | `1fc05ffcece4e7b416d2fff4e9d24067a241b72959fb1d8a34a3bd47443aa8e0` | `840c08dd8368d2f266e0b6adfe12c191d385cb70f820cba4b5fe80da479a7b14` | `fea4e93b6fee5f77d541cf8ecf1952b22cdc05f9193c5e83f4ff1e4a4f4d6ca1` | Deterministic fallback; unverified valuation figure `101.09元` rejected. |
+| Dongshan 2 | same | `5f73735504da5724baccf180fe17c9ad817cb86f9061491bfb6fb3c645cc6efe` | `df71ced090092f6e561d0cd3265b15e7cd44c338387c60f74c7170910bbd352c` | Accepted by assembly with 0 diagnostics; valuation remains qualitative/blocked. |
+
+Dongshan's accepted candidate shows at least three substantiated editorial improvements over baseline: it centers the EML product-stage chain instead of reciting the five-product FY2025 table; it treats GMD-related revenue growth as partly inorganic; and it presents customer concentration plus cash/capex as explicit counterevidence and distinct monitoring checks. Provisional score is `4/4/4/4/4/3`. Citations include `official-296fff2b2889c26f@paragraph:359-362`, `official-296fff2b2889c26f@paragraph:775`, `official-39e591fa149e4543@paragraph:933`, `official-39e591fa149e4543@paragraph:965,969-970`, and `akshare-financial-002384@paragraph:1`.
+
+BYD has no accepted candidate. Its first output's more focused thesis and sourced automotive share (`official-f7c8d23d2829a5e8@paragraph:821`) do not cure the wrong quote period; its second attempt fixes that date but fails numeric grounding. D2 therefore remains unmet and the overall result stays **`PARTIAL_PRODUCT_QUALITY`**, not ready for CTO acceptance.
+
+### C4 regression
+
+- Focused Company Research/valuation/PIT/quality suite: **358 passed, 0 failed**.
+- `npm run typecheck`, `npm run client:typecheck`, `npm run client:build`: **exit 0**; the build retains the existing large-chunk warning.
+- Full Node: **3,284 passed / 21 failed of 3,305**, exit 1; the same known clean-main 21 failures in the same five test files as prior evidence, with no additional failure.
+- Full Client: **223 passed / 5 failed of 228**, exit 1; the same three `App.test.tsx` and two `report-navigation.test.tsx` failures as prior evidence.
+- Five tracked validation evidence JSONs regenerated by the Node suite were restored. No client file or Knowledge/Report state changed.
+
+The original DoD remains unmet because both companies need three accepted improvements. The branch remains a reviewable partial result; PR #10 must remain open and unmerged.
+
+### Protected C0 snapshot recheck
+
+The post-test comparison rehashed all 6,606 paths from the continuation C0 manifest: 6,606 present, 0 missing, 0 changed. This includes all captured Knowledge Base files, the P0 archive, and root dirty/untracked user files. Root checkout remains on `codex/company-research-p0-01-06` at `f167a8f272e9b1faf8615a74093047091a194cf1`; its three app edits, five validation evidence edits, runtime logs, `tmp/`, and parser cache remain untouched.
