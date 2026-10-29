@@ -578,3 +578,226 @@ export interface EconomicBridgeResult {
   readonly assumptionReviewStatus: 'REVIEW_REQUIRED'
   readonly diagnostics: readonly EconomicBridgeDiagnostic[]
 }
+
+// S4-007B-002-C: private, fixture-only economic review handoff contracts.
+// These types describe a frozen reviewer payload and untrusted receipt claims;
+// they do not grant reviewer identity, qualification, dispatch, or publication.
+export type ScenarioEconomicReviewRubricDimension =
+  | 'ECONOMIC_CAUSALITY' | 'EVIDENCE_RELEVANCE' | 'CALIBRATION' | 'COUNTEREVIDENCE'
+  | 'FALSIFIABLE_TRIGGER' | 'RESIDUAL' | 'PERIOD' | 'UNIT'
+
+export type ScenarioEconomicReviewJudgmentClaim = 'QUALIFIED_CLAIM' | 'REVIEW_REQUIRED_CLAIM' | 'REJECT_CLAIM' | 'NOT_ASSESSED_CLAIM'
+export type ScenarioEconomicReviewDecisionClaim = 'ACCEPT_CLAIM' | 'REVISION_REQUIRED_CLAIM' | 'REJECT_CLAIM'
+export type ScenarioEconomicReviewRecordStatus = 'REVIEW_REQUIRED' | 'STALE_REVIEW' | 'REJECTED' | 'UNAVAILABLE'
+export type ScenarioEconomicReviewDiagnosticCode =
+  | 'STRUCTURAL_INVALID' | 'MISSING_REQUIRED_DRIVER' | 'CROSS_BINDING_MISMATCH'
+  | 'BRIDGE_RESULT_MISMATCH' | 'HASH_UNAVAILABLE' | 'REVIEW_REQUIRED'
+  | 'STALE_REVIEW' | 'SELF_REVIEW' | 'RECEIPT_INVALID' | 'IDENTITY_UNVERIFIED'
+  | 'SEMANTIC_REVIEW_REQUIRED'
+
+export interface ScenarioEconomicReviewDiagnostic {
+  readonly code: ScenarioEconomicReviewDiagnosticCode
+  readonly subjectId: string
+  readonly reason: string
+}
+
+export interface ScenarioEconomicReviewComponentSummary {
+  readonly status: 'KNOWN' | 'UNAVAILABLE'
+  readonly value?: number
+  readonly formulaVersion: string
+  readonly lineageIds: readonly string[]
+  readonly reason?: string
+}
+
+export interface ScenarioEconomicReviewObservationSummary {
+  readonly observationId: string
+  readonly driverId: string
+  readonly originKind: OriginKind
+  readonly atomicSkillOwner: string
+  readonly metricId: string
+  readonly economicScope: string
+  readonly financialScope: string
+  readonly periodStart: string | null
+  readonly periodEnd: string | null
+  readonly periodBasis: string | null
+  readonly fiscalYear: number | null
+  readonly flowOrStock: EconomicBridgeScalar['flowOrStock'] | 'TEXT'
+  readonly unit: string | null
+  readonly currency: string | null
+  readonly shareBasis: ObservationBase['shareBasis']
+  readonly observedAt: string | null
+  readonly sourcePublishedAt: string | null
+  readonly retrievedAt: string | null
+  readonly analysisAsOf: string
+  readonly asOfMode: AsOfMode
+  readonly evidenceManifestHash: string
+  readonly claimedValueVersionStatus: ValueVersionStatus
+  readonly assessedValueVersionStatus: ValueVersionStatus
+  readonly claimedEligibility: Eligibility
+  readonly assessedEligibility: Eligibility
+  readonly sourceConflicts: readonly string[]
+  readonly missingFields: readonly string[]
+  readonly rejectionReasons: readonly string[]
+  readonly sourceCandidateId: string | null
+  readonly sourceLocation: string | null
+  readonly immutableSourceContentHash: string | null
+  readonly rawValueToken: string | null
+  readonly normalizedValue: number | string | null
+  readonly valueVersionIdClaim: string | null
+  readonly valueVersionAvailableAtClaim: string | null
+  readonly sourcePublishedAtClaim: string | null
+  readonly rightsDecisionClaim: RightsEvidence['decision'] | null
+  readonly rightsEvidenceHashClaim: string | null
+  readonly rightsEvidenceTextHashClaim: string | null
+  readonly valueVersionProofMethodClaim: ValueVersionProof['method'] | null
+  readonly revisionStatusClaim: ValueVersionProof['revisionStatus'] | null
+  readonly snapshotCapturedAtClaim: string | null
+  readonly snapshotSealedAtClaim: string | null
+  readonly inferenceInputRefs: readonly string[]
+  readonly derivationOperation: string | null
+  readonly derivationPurpose: string | null
+  readonly derivationInputObservationIds: readonly string[]
+  readonly derivationResult: number | null
+  readonly derivationFormulaVersion: string | null
+  readonly sourceAndRightsClaimsTrusted: false
+}
+
+export interface ScenarioEconomicReviewProposalSummary {
+  readonly proposalId: string
+  readonly driverId: string
+  readonly authorId: string
+  readonly originKind: 'RESEARCH_ASSUMPTION'
+  readonly proposalVersion: string
+  readonly proposedValue: number | null
+  readonly unit: string
+  readonly currency: string | null
+  readonly financialScope: string
+  readonly mechanism: string
+  readonly calibrationRefs: readonly string[]
+  readonly counterEvidenceRefs: readonly string[]
+  readonly falsifiableTrigger: string
+  readonly inputObservationRefs: readonly string[]
+  readonly economicSummary: EconomicBridgeInput['calibrationProposals'][number] | null
+}
+
+export interface ScenarioEconomicReviewCasePacket {
+  readonly scenario: ScenarioName
+  readonly bridgeId: string
+  readonly inputHash: string
+  readonly bridgeHash: string
+  readonly formulaVersion: string
+  readonly bridgeStatus: EconomicBridgeResult['status']
+  readonly driverProposalRefs: readonly string[]
+  readonly driverObservationRefs: readonly string[]
+  readonly residualPolicy: ScenarioForecastBridge['residualPolicy']
+  readonly residualDescription: string | null
+  readonly components: Readonly<Record<string, ScenarioEconomicReviewComponentSummary>>
+  readonly diagnostics: readonly EconomicBridgeDiagnostic[]
+  readonly residual: ScenarioEconomicReviewComponentSummary
+  readonly cashFlowDifference: ScenarioEconomicReviewComponentSummary
+  readonly calibrationProposals: readonly EconomicBridgeInput['calibrationProposals'][number][]
+  readonly proposals: readonly ScenarioEconomicReviewProposalSummary[]
+  readonly adjustments: readonly BridgeAdjustment[]
+}
+
+export interface ScenarioEconomicReviewPacket {
+  readonly schemaVersion: 'scenario-economic-review-packet-v1'
+  readonly mode: 'FIXTURE_ONLY'
+  readonly companySymbol: string
+  readonly analysisAsOf: string
+  readonly asOfMode: AsOfMode
+  readonly targetFiscalYear: number
+  readonly targetPeriodStart: string
+  readonly targetPeriodEnd: string
+  readonly targetPeriodBasis: ScenarioHorizon['targetPeriodBasis']
+  readonly financialScope: string
+  readonly currency: string
+  readonly methodId: string
+  readonly methodVersion: string
+  readonly phase1RubricVersion: string
+  readonly economicReviewRubricVersion: string
+  readonly reviewContractVersion: string
+  readonly phase1MethodStatus: ScenarioMethodResult['methodStatus']
+  readonly phase1StructuralStatus: ScenarioMethodResult['structuralStatus']
+  readonly phase1Diagnostics: readonly ScenarioMethodDiagnostic[]
+  readonly phase1Hashes: {
+    readonly evidenceManifestHash: string
+    readonly valueVersionProofSetHash: string
+    readonly reviewPacketHash: string
+  }
+  readonly authorIds: readonly string[]
+  readonly authorSetHash: Sha256
+  readonly requiredDriverIds: readonly string[]
+  readonly observations: readonly ScenarioEconomicReviewObservationSummary[]
+  /** Fixed semantic order: BEAR, BASE, BULL. */
+  readonly cases: readonly [ScenarioEconomicReviewCasePacket, ScenarioEconomicReviewCasePacket, ScenarioEconomicReviewCasePacket]
+  readonly adapterLimits: readonly string[]
+  readonly dispatchAuthorized: false
+  readonly reportEligible: false
+  readonly reviewRequired: true
+}
+
+export interface ScenarioEconomicReviewPacketBuildInput {
+  readonly mode: 'FIXTURE_ONLY'
+  readonly scenarioMethodInput: ScenarioMethodContractInput
+  readonly bridges: readonly { readonly input: EconomicBridgeInput; readonly result: EconomicBridgeResult }[]
+  readonly rubricVersion: string
+  readonly reviewContractVersion: string
+}
+
+export interface ScenarioEconomicReviewPacketBuildResult {
+  readonly packetStatus: 'STRUCTURALLY_PREPARED_FIXTURE_ONLY' | 'UNAVAILABLE'
+  readonly packet: ScenarioEconomicReviewPacket | null
+  readonly economicReviewPacketHash: Sha256 | null
+  readonly phase1Result: ScenarioMethodResult | null
+  readonly diagnostics: readonly ScenarioEconomicReviewDiagnostic[]
+  readonly dispatchAuthorized: false
+  readonly reportEligible: false
+  readonly reviewRequired: true
+}
+
+export interface ScenarioEconomicReviewRubricClaim {
+  readonly judgment: ScenarioEconomicReviewJudgmentClaim
+  readonly reason: string
+}
+
+export interface ScenarioEconomicReviewFinding {
+  readonly scenario: ScenarioName
+  readonly driverId: string
+  readonly proposalId: string
+  readonly rationale: string
+  readonly rubric: Readonly<Record<ScenarioEconomicReviewRubricDimension, ScenarioEconomicReviewRubricClaim>>
+}
+
+export interface ScenarioEconomicReviewReceipt {
+  readonly reviewerId: string
+  readonly reviewerRoleClaim: string
+  readonly reviewerSessionClaim: string
+  readonly reviewerExecutionIdClaim: string
+  readonly decisionClaim: ScenarioEconomicReviewDecisionClaim
+  readonly packetHash: string
+  readonly rubricVersion: string
+  readonly reviewContractVersion: string
+  readonly authorIds: readonly string[]
+  readonly authorSetHash: string
+  readonly findings: readonly ScenarioEconomicReviewFinding[]
+  readonly identityAttestationReferenceClaim: string | null
+  readonly independentOfAuthorClaim: boolean
+  readonly identityVerifiedClaim: boolean
+  readonly signatureClaim: string | null
+  readonly authorityReferenceClaim: string | null
+}
+
+export interface ScenarioEconomicReviewAssessment {
+  readonly reviewRecordStatus: ScenarioEconomicReviewRecordStatus
+  readonly currentPacketHash: string | null
+  readonly claimedPacketHash: string | null
+  readonly receiptHash: Sha256 | null
+  readonly reviewerId: string | null
+  readonly independenceConflict: boolean
+  readonly identityVerified: false
+  readonly independenceVerified: false
+  readonly qualificationGranted: false
+  readonly reportEligible: false
+  readonly diagnostics: readonly ScenarioEconomicReviewDiagnostic[]
+}
