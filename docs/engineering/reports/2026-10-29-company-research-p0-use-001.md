@@ -65,8 +65,8 @@ React 测试采用 `client/vitest.config.ts` 的 `root: client`，因此 filter 
 
 冻结基线与 `origin/codex/company-research-p0-01-06` 初始 SHA 均为 `bdae675c1bc506ab067c2e5279a69984b107f00c`。本次报告记载的实现提交 SHA 与最终远端 HEAD 在提交后补录；提交仅包含上述三个白名单文件。既有 5 个 dirty JSON、15 个归档 sidecars、日志、缓存与 `tmp/` 文件逐项记录 SHA-256，执行前后比较应完全一致；哈希表附于本报告末尾。用户文件未暂存、覆盖或清理。
 
-**实现提交 SHA**：`bb47db1`（组件 + 测试，2 files changed, 79 insertions, 1 deletion）。
-本验收报告单独提交；其父提交为上述实现提交。报告提交及最终远端 HEAD 由交付回执核验，避免在报告中写入无法自引用的自身 SHA。
+**实现提交 SHA**：`bb47db12273516ce5277ea36d22f092d39d09911`（组件 + 测试，2 files changed, 79 insertions, 1 deletion）。
+**最终报告提交父 SHA**：`0e8a7d62688faa82ace7a115156da387ab682ed5`。最终报告提交的自身 SHA 由交付回执核验，避免在报告中写入无法自引用的自身 SHA。
 
 ## 受保护文件 SHA-256（执行前 = 执行后）
 
