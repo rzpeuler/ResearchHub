@@ -67,4 +67,4 @@ Two initial combined shell invocations accidentally ran `npm ci` from the dirty 
 - Acceptance record: `docs/engineering/reports/2026-10-29-p1-editorial-goal-acceptance.md`, status `BLOCKED_MODEL_OR_EVIDENCE`.
 - Existing PR #10 is updated with this partial code/test evidence and block; it remains unmerged.
 - Documentation-only PR #10: `https://github.com/rzpeuler/ResearchHub/pull/10`; it contains the baseline/progress/acceptance records only.
-- M3–M6 product implementation, after-quality assessment, code validation and CTO-ready PR are not claimed. No merge is authorized.
+- M3 is partial. M4 same-input after-quality assessment, complete P1 implementation, final regression closure and CTO-ready acceptance are not claimed. No merge is authorized.
