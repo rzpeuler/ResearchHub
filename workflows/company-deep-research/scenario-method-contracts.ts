@@ -414,3 +414,167 @@ export interface EnterpriseValueBridgeConsistencyInput {
   readonly totalEquityValue: BridgeAmountEvidence
   readonly market: EquityMarketInput
 }
+
+// S4-007B-002-B: private, synthetic-only accounting bridge contracts. These are
+// deliberately separate from ScenarioForecastBridge and the EV amount contract.
+export type EconomicValueEvidence =
+  | { readonly status: 'KNOWN'; readonly value: number; readonly evidenceRefs: readonly [string, ...string[]] }
+  | { readonly status: 'KNOWN_ZERO'; readonly value: 0; readonly evidenceRefs: readonly [string, ...string[]] }
+  | { readonly status: 'NOT_APPLICABLE'; readonly reason: string; readonly evidenceRefs: readonly [string, ...string[]] }
+  | { readonly status: 'UNAVAILABLE'; readonly reason: string }
+
+export interface CalibrationRange {
+  readonly calibrationId: string
+  readonly lower: EconomicValueEvidence
+  readonly upper: EconomicValueEvidence
+  readonly dimension: 'CURRENCY_AMOUNT' | 'CURRENCY_PER_UNIT' | 'COUNT' | 'RATE' | 'CURRENCY_AMOUNT_PER_PERIOD'
+  readonly unit: string
+  readonly currency: string | null
+  readonly periodBasis: string
+  readonly financialScope: string
+  readonly economicScope: string
+  readonly method: string | null
+  readonly evidenceRefs: readonly string[]
+  readonly category: 'OPERATIONAL_MECHANISM' | 'HISTORICAL_OR_INDUSTRY_ENVELOPE'
+  readonly status: 'CALIBRATED' | 'UNVERIFIED' | 'MISSING'
+}
+
+export interface EconomicBridgeLine {
+  readonly lineId: string
+  readonly economicLineKey: string
+  readonly bridgeId: string
+  readonly companySymbol: string
+  readonly scenario: ScenarioName
+  readonly fromMetric: string
+  readonly toMetric: string
+  readonly operation: 'ADD' | 'SUBTRACT' | 'MULTIPLY' | 'DIVIDE' | 'RECLASSIFY'
+  readonly inputRefs: readonly string[]
+  readonly amount: EconomicValueEvidence
+  readonly dimension: CalibrationRange['dimension']
+  readonly unit: string
+  readonly currency: string | null
+  readonly periodStart: string
+  readonly periodEnd: string
+  readonly periodBasis: string
+  readonly flowOrStock: 'FLOW' | 'STOCK' | 'RATE' | 'COUNT'
+  readonly shareBasis?: 'BASIC' | 'DILUTED' | 'NOT_APPLICABLE' | 'UNSPECIFIED'
+  readonly financialScope: string
+  readonly economicScope: string
+  readonly originKind: 'FACT' | 'DERIVED' | 'INFERENCE' | 'RESEARCH_ASSUMPTION'
+  readonly formulaVersion: string
+  readonly evidenceRefs: readonly string[]
+  readonly adjustmentRefs: readonly string[]
+  readonly disposition: 'INCLUDED_ONCE' | 'CROSS_CHECK_ONLY' | 'EXCLUDED' | 'UNRESOLVED'
+}
+
+export interface EconomicBridgeScalar {
+  readonly value: EconomicValueEvidence
+  readonly companySymbol: string
+  readonly metricId: string
+  readonly dimension: CalibrationRange['dimension']
+  readonly unit: string
+  readonly currency: string | null
+  readonly periodStart: string
+  readonly periodEnd: string
+  readonly periodBasis: string
+  readonly flowOrStock: 'FLOW' | 'STOCK' | 'RATE' | 'COUNT'
+  readonly financialScope: string
+  readonly economicScope: string
+  readonly sourceId: string
+  readonly accountId?: string
+  readonly mappingRole?: string
+  readonly signConvention?: 'SIGNED_AMOUNT' | 'POSITIVE_EXPENSE' | 'POSITIVE_CASH_OUTFLOW'
+  readonly shareBasis?: 'BASIC' | 'DILUTED' | 'NOT_APPLICABLE' | 'UNSPECIFIED'
+}
+
+export interface EconomicBridgeInput {
+  readonly mode: 'FIXTURE_ONLY'
+  readonly companySymbol: string
+  readonly bridgeId: string
+  readonly analysisAsOf: string
+  readonly horizon: { readonly scenario: ScenarioName; readonly periodStart: string; readonly periodEnd: string; readonly periodBasis: string }
+  readonly formulaVersion: string
+  readonly rightsVersionClaim: string
+  readonly valueVersionClaim: string
+  readonly sourceTimeClaims: { readonly sourcePublishedAt: string | null; readonly retrievedAt: string | null; readonly valueVersionAvailableAt: string | null; readonly snapshotCapturedAt: string | null; readonly snapshotSealedAt: string | null }
+  readonly revenue: {
+    readonly lines: readonly EconomicBridgeLine[]
+    readonly selectedRoute: 'DISCLOSED_SEGMENT_REVENUE' | 'RECOGNIZED_VOLUME_TIMES_REALIZED_NET_ASP'
+    readonly volume: EconomicBridgeScalar | null
+    readonly realizedNetAsp: EconomicBridgeScalar | null
+    readonly reportedConsolidatedRevenue: EconomicBridgeScalar
+    readonly adjustments: readonly { readonly adjustmentId: string; readonly accountId: string; readonly kind: 'ACQUISITION' | 'DISPOSAL' | 'RECLASSIFICATION' | 'ELIMINATION'; readonly signedAmount: EconomicBridgeScalar; readonly overlapsLineId: string | null; readonly evidenceRefs: readonly string[] }[]
+  }
+  readonly profit: {
+    readonly cogs: EconomicBridgeScalar
+    readonly operatingExpenses: readonly EconomicBridgeScalar[]
+    readonly otherOperatingIncome: readonly EconomicBridgeScalar[]
+    readonly signedNetFinanceItems: EconomicBridgeScalar
+    readonly signedNonOperatingItems: EconomicBridgeScalar
+    readonly incomeTaxExpense: EconomicBridgeScalar
+    readonly profitAttributableToNci: EconomicBridgeScalar
+    readonly nciBasis: 'CONSOLIDATED_TO_PARENT' | 'MISSING' | 'MIXED'
+    readonly ebit: EconomicBridgeScalar
+    readonly nonRecurringItems: readonly { readonly adjustmentId: string; readonly accountId: string; readonly amount: EconomicBridgeScalar; readonly treatment: 'INCLUDED_IN_OPERATING_EXPENSES' | 'EXCLUDED_FROM_OPERATING_PROFIT' | 'UNRESOLVED'; readonly overlapsAccountId: string | null }[]
+  }
+  readonly fcff: {
+    readonly unleveredEbit: EconomicBridgeScalar
+    readonly taxRate: EconomicBridgeScalar
+    readonly taxConvention: string | null
+    readonly da: EconomicBridgeScalar
+    readonly capex: EconomicBridgeScalar
+    readonly nwcStart: readonly EconomicBridgeScalar[]
+    readonly nwcEnd: readonly EconomicBridgeScalar[]
+    readonly nwcComplete: boolean
+    readonly excludedOperatingCapitalIds: readonly string[]
+    readonly leaseTreatment: string | null
+    readonly acquisitionTreatment: string | null
+    readonly taxTreatment: string | null
+    readonly cfo: EconomicBridgeScalar | null
+    readonly purchasesOfLongTermAssets: EconomicBridgeScalar | null
+  }
+  readonly calibrationProposals: readonly {
+    readonly scenario: ScenarioName
+    readonly driverId: string
+    readonly baseline: string | null
+    readonly proposedValue: number | null
+    readonly mechanism: string | null
+    readonly calibration: CalibrationRange | null
+    readonly strongestCounterevidence: string | null
+    readonly trigger: string | null
+    readonly author: string | null
+  }[]
+}
+
+export type EconomicBridgeDiagnosticCode =
+  | 'DOUBLE_COUNTED_REVENUE_PATH' | 'SCOPE_MISMATCH' | 'PERIOD_MISMATCH' | 'UNIT_MISMATCH'
+  | 'MISSING_REQUIRED_OPERAND' | 'DUPLICATE_ADJUSTMENT' | 'RESIDUAL_UNVERIFIED'
+  | 'ACCOUNT_MAPPING_OVERLAP' | 'NCI_SCOPE_MISSING' | 'FCFF_INPUTS_MISSING'
+  | 'HISTORICAL_ENVELOPE_NOT_CALIBRATION' | 'REVIEW_REQUIRED' | 'INVALID_NUMBER'
+  | 'NEGATIVE_PHYSICAL_QUANTITY' | 'INVALID_STRUCTURE' | 'NON_RECURRING_UNRESOLVED'
+
+export interface EconomicBridgeDiagnostic {
+  readonly code: EconomicBridgeDiagnosticCode
+  readonly subjectId: string
+  readonly reason: string
+}
+
+export interface EconomicBridgeComponent {
+  readonly status: 'KNOWN' | 'UNAVAILABLE'
+  readonly value?: number
+  readonly formulaVersion: string
+  readonly lineageIds: readonly string[]
+  readonly reason?: string
+}
+
+export interface EconomicBridgeResult {
+  readonly status: 'STRUCTURALLY_VALID_FIXTURE_ONLY' | 'UNAVAILABLE'
+  readonly reportEligible: false
+  readonly inputHash: string
+  readonly bridgeHash: string
+  readonly components: Readonly<Record<string, EconomicBridgeComponent>>
+  readonly residual: EconomicBridgeComponent
+  readonly cashFlowDifference: EconomicBridgeComponent
+  readonly assumptionReviewStatus: 'REVIEW_REQUIRED'
+  readonly diagnostics: readonly EconomicBridgeDiagnostic[]
+}
