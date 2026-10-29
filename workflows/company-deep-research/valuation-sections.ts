@@ -122,15 +122,37 @@ function citations(ids: readonly string[]): string {
   return [...new Set(ids)].map((id) => `[${id}@paragraph:1]`).join(' ')
 }
 
-function acquisitionAttemptSummary(items: readonly { readonly metricId?: string; readonly status: string; readonly quality?: { readonly pointInTimeSafe?: boolean; readonly valueVersionStatus?: string }; readonly attempts?: readonly { readonly sourceId: string; readonly fallbackLevel: string; readonly status: string }[] }[]): string {
-  if (!items.length) return '无估值/预期类采集条目'
-  return items.map((item) => {
+function validIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/u.exec(value)
+  if (!match) return false
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match
+  const month = Number(monthText)
+  const day = Number(dayText)
+  const monthStart = new Date(`${yearText}-${monthText}-01T00:00:00.000Z`)
+  const daysInMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), month, 0)).getUTCDate()
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth
+    && Number(hourText) <= 23 && Number(minuteText) <= 59 && Number(secondText) <= 59
+    && Number.isFinite(Date.parse(value))
+}
+
+function acquisitionAttemptSummary(
+  items: readonly { readonly metricId?: string; readonly status: string; readonly quality?: { readonly pointInTimeSafe?: boolean; readonly valueVersionStatus?: string }; readonly attempts?: readonly { readonly sourceId: string; readonly fallbackLevel: string; readonly status: string }[] }[],
+  marketQuoteConsumption?: string,
+): string {
+  if (!items.length) return marketQuoteConsumption ? `valuation_market_price=${marketQuoteConsumption}` : '无估值/预期类采集条目'
+  const summary = items.map((item) => {
     const attemptItems = item.attempts ?? []
     const attempts = attemptItems.length
       ? attemptItems.map((attempt) => `${attempt.sourceId}/${attempt.fallbackLevel}:${attempt.status}`).join(', ')
       : '无来源尝试记录'
+    if (item.metricId === 'valuation_market_price' && marketQuoteConsumption) {
+      return `${item.metricId}=${marketQuoteConsumption}(upstream=${item.status}, upstreamPIT=${item.quality?.pointInTimeSafe === true ? 'safe' : 'not-qualified'}, valueVersion=${item.quality?.valueVersionStatus ?? 'not-proven'}; ${attempts})`
+    }
     return `${item.metricId ?? 'unknown'}=${item.status}(PIT=${item.quality?.pointInTimeSafe === true ? 'safe' : 'not-qualified'}, valueVersion=${item.quality?.valueVersionStatus ?? 'not-proven'}; ${attempts})`
   }).join('；')
+  if (marketQuoteConsumption && !items.some((item) => item.metricId === 'valuation_market_price')) return `valuation_market_price=${marketQuoteConsumption}；${summary}`
+  return summary
 }
 
 function formatScenarioRate(value: number): string { return `${(value * 100).toFixed(2)}%` }
@@ -496,16 +518,50 @@ export function buildCompanyValuationSections(input: {
   diagnostics.push(...input.acquisition.earningsExpectationItems.filter(item => item.status !== 'AVAILABLE').map(item => `EXPECTATION_ITEM_${item.metricId}_${item.status}`))
 
   const basisYear = input.acquisition.valuationBasisFiscalYear
-  const acquisitionAttempts = acquisitionAttemptSummary([...input.acquisition.valuationItems, ...input.acquisition.earningsExpectationItems])
   const quoteItem = input.acquisition.valuationItems.find((item) => item.metricId === 'valuation_market_price')
-  const quote = quoteItem?.status === 'AVAILABLE' && quoteItem.value?.kind === 'market'
-    && quoteItem.quality.pointInTimeSafe
-    && quoteItem.value.observation.priceDate <= input.asOf.slice(0, 10)
-    && quoteItem.value.observationAvailableAt === dailyCloseAvailableAt(quoteItem.value.observation.priceDate)
-    && Date.parse(quoteItem.value.observationAvailableAt) <= Date.parse(input.asOf)
+  const potentialQuote = quoteItem?.status === 'AVAILABLE' && quoteItem.value?.kind === 'market'
     ? quoteItem.value
     : undefined
+  let quote = potentialQuote
+  let quoteConsumption = 'REJECTED(QUOTE_NOT_AVAILABLE)'
+  const asOfValid = validIsoTimestamp(input.asOf)
+  if (!asOfValid) {
+    diagnostics.push('VALUATION_MARKET_PRICE_ASOF_INVALID')
+    quote = undefined
+    quoteConsumption = 'REJECTED(VALUATION_MARKET_PRICE_ASOF_INVALID)'
+  } else if (!potentialQuote) {
+    quoteConsumption = 'REJECTED(QUOTE_NOT_AVAILABLE)'
+  } else if (!validIsoTimestamp(potentialQuote.retrievedAt)) {
+    diagnostics.push('VALUATION_MARKET_PRICE_RETRIEVAL_TIME_INVALID')
+    quote = undefined
+    quoteConsumption = 'REJECTED(VALUATION_MARKET_PRICE_RETRIEVAL_TIME_INVALID)'
+  } else if (asOfMode === 'HISTORICAL' && Date.parse(potentialQuote.retrievedAt) > Date.parse(input.asOf)) {
+    diagnostics.push('VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF')
+    quote = undefined
+    quoteConsumption = `REJECTED(VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF; retrievedAt=${potentialQuote.retrievedAt}>asOf=${input.asOf})`
+  } else if (!(quoteItem?.quality?.pointInTimeSafe
+    && potentialQuote.observation.priceDate <= input.asOf.slice(0, 10)
+    && potentialQuote.observationAvailableAt === dailyCloseAvailableAt(potentialQuote.observation.priceDate)
+    && Date.parse(potentialQuote.observationAvailableAt) <= Date.parse(asOfMode === 'CURRENT_VALUE_ONLY' ? potentialQuote.retrievedAt : input.asOf))) {
+    quote = undefined
+    quoteConsumption = 'REJECTED(MARKET_CLOSE_OR_UPSTREAM_PIT_GATE)'
+  } else if (asOfMode === 'CURRENT_VALUE_ONLY' && Date.parse(potentialQuote.retrievedAt) > Date.parse(input.asOf)) {
+    quoteConsumption = `CURRENT_REFERENCE_ONLY(retrievedAt=${potentialQuote.retrievedAt}>researchStart=${input.asOf}; historicalVersion=UNVERIFIED)`
+    diagnostics.push('VALUATION_MARKET_PRICE_CURRENT_REFERENCE_ONLY_AFTER_ASOF')
+  } else if (asOfMode === 'CURRENT_VALUE_ONLY') {
+    quoteConsumption = `CURRENT_REFERENCE_ONLY(retrievedAt=${potentialQuote.retrievedAt}<=researchStart=${input.asOf}; historicalVersion=UNVERIFIED)`
+  } else {
+    quoteConsumption = `HISTORICAL_ASOF_QUALIFIED(retrievedAt=${potentialQuote.retrievedAt}<=asOf=${input.asOf})`
+  }
   if (!quote) diagnostics.push('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE')
+  const acquisitionAttempts = acquisitionAttemptSummary([...input.acquisition.valuationItems, ...input.acquisition.earningsExpectationItems], quoteConsumption)
+  /*
+   * The resolver's observation availability check proves when the exchange
+   * close could exist. A response fetched after a historical cutoff needs an
+   * independently trusted archived version, which this consumer contract does
+   * not provide. CURRENT_VALUE_ONLY remains usable as a current reference.
+   */
+  const qualifiedQuote = quote && quoteItem?.status === 'AVAILABLE' ? quote : undefined
 
   const filingEps = extractFilingBasicEps(input.sources, basisYear, input.asOf)
   if (!filingEps) diagnostics.push('VALUATION_FILING_BASIC_EPS_UNAVAILABLE_OR_AMBIGUOUS')
@@ -516,16 +572,16 @@ export function buildCompanyValuationSections(input: {
   const dedupedExpectations = dedupeContributors(surfaces)
   const estimates = dedupedExpectations.all
 
-  const marketEvidenceSource = quote ? quoteSource({
+  const marketEvidenceSource = qualifiedQuote ? quoteSource({
     company: input.company,
     asOf: input.asOf,
-    value: quote.observation.close,
-    priceDate: quote.observation.priceDate,
-    originalSourceId: quote.sourceId,
-    originPublisher: quote.originPublisher,
-    retrievalProvider: quote.retrievalProvider,
-    sourceUrl: quote.sourceUrl,
-    retrievedAt: quote.retrievedAt,
+    value: qualifiedQuote.observation.close,
+    priceDate: qualifiedQuote.observation.priceDate,
+    originalSourceId: qualifiedQuote.sourceId,
+    originPublisher: qualifiedQuote.originPublisher,
+    retrievalProvider: qualifiedQuote.retrievalProvider,
+    sourceUrl: qualifiedQuote.sourceUrl,
+    retrievedAt: qualifiedQuote.retrievedAt,
   }) : undefined
   const selectedEstimateIds = new Set(estimates.flatMap((estimate) => estimate.sourceCandidateIds))
   const estimateSources = surfaces.flatMap(surface => surface.sources).filter((source, index, all) => selectedEstimateIds.has(source.candidate.candidateId) && all.findIndex(candidate => candidate.candidate.candidateId === source.candidate.candidateId) === index)
@@ -534,12 +590,14 @@ export function buildCompanyValuationSections(input: {
   const epsSourceId = filingEps?.source.candidate.candidateId
   const baseSourceIds = [...new Set([marketSourceId, epsSourceId].filter((value): value is string => value !== undefined))]
 
-  let valuationSection = gap('valuation', titles.valuation, '无法同时确认 PIT 收盘价与年度报告基本 EPS')
+  let valuationSection = gap('valuation', titles.valuation, quote
+    ? '无法同时确认 PIT 收盘价与年度报告基本 EPS'
+    : `市场报价消费资格未通过（${quoteConsumption}）；不以该报价计算参考 PE 或条件敏感性`)
   let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], `本轮没有来源支持的目标年经营驱动假设（销量/产品收入、经营利润率、现金流驱动及其 Bear/Base/Bull 区间），无法构成同财年、同方法的可复算敏感性。已尝试的估值/预期采集路线及资格状态：${acquisitionAttempts}。在获得合格经营假设前不建立三情景估值`)
   diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
   if (input.scenarioCandidate) {
     const conditionalPe = quote && filingEps && marketEvidenceSource
-      ? conditionalReferencePeSensitivity({ plan: input.scenarioCandidate, quote: quote.observation.close, marketSourceId: marketEvidenceSource.candidate.candidateId, filingEps, basisYear, asOf: input.asOf, sources: input.sources })
+      ? conditionalReferencePeSensitivity({ plan: input.scenarioCandidate, quote: qualifiedQuote!.observation.close, marketSourceId: marketEvidenceSource.candidate.candidateId, filingEps, basisYear, asOf: input.asOf, sources: input.sources })
       : undefined
     scenarioSection = renderCompanyScenarioCandidate(input.scenarioCandidate, conditionalPe)
     diagnostics.splice(diagnostics.indexOf('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE'), 1)
@@ -548,7 +606,7 @@ export function buildCompanyValuationSections(input: {
   }
   if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)
-    const market = { priceDate: quote.observation.priceDate, close: quote.observation.close }
+    const market = { priceDate: qualifiedQuote!.observation.priceDate, close: qualifiedQuote!.observation.close }
     const basis = buildValuationBasis(market, { basisFiscalYear: basisYear, reportDate: `${basisYear}-12-31`, publicationDate: reportDate, eps: filingEps.value }, input.asOf.slice(0, 10), 'verified')
     const eligible = methodEligibility(basis)
     const peEligible = eligible.find((item) => item.method === 'PE')?.eligible === true
@@ -557,10 +615,13 @@ export function buildCompanyValuationSections(input: {
       const filedRef = `[${filingEps.source.candidate.candidateId}@${filingEps.location}]`
       const marketRef = citations([marketSourceId!])
       const priceSensitivity = 1 / filingEps.value
-      const epsSensitivity = quote.observation.close / filingEps.value ** 2 * 0.01
+      const epsSensitivity = qualifiedQuote!.observation.close / filingEps.value ** 2 * 0.01
+      const quoteContext = asOfMode === 'CURRENT_VALUE_ONLY'
+        ? ` ${qualifiedQuote!.observation.priceDate} 交易日收盘的理论可用时间为 ${dailyCloseAvailableAt(qualifiedQuote!.observation.priceDate)}；本次响应实际取得时间为 ${qualifiedQuote!.retrievedAt}（研究起点 asOf=${input.asOf}）。本节按 CURRENT_VALUE_ONLY 保留为当前参考 PE；该标签和响应内容不证明同一数值版本在历史 asOf 前已取得或不可变封存，也不构成历史 PIT 确认。`
+        : ` 行情响应于 ${qualifiedQuote!.retrievedAt} 取得，不晚于历史 asOf=${input.asOf}；在本模块现有消费门下可用于该历史截面的参考 PE。`
       valuationSection = {
         id: 'valuation', title: titles.valuation,
-        markdown: `截至 ${quote.observation.priceDate}，${quote.originPublisher} 未复权收盘价为 ${quote.observation.close} CNY/share ${marketRef}。FY${basisYear} 年报基本 EPS 为 ${filingEps.value} CNY/share ${filedRef}，以收盘价除以该 EPS 得到参考 PE ${currentPe.toFixed(2)} 倍。基于同一价格与 EPS，参考 PE 按 P/E 计算：价格每变动 1 CNY/share 的局部 PE 变化为 1/EPS = 1/${filingEps.value} = ${priceSensitivity.toFixed(2)} 倍；EPS 每变动 0.01 CNY/share 的局部 PE 变化为 −P/EPS² × 0.01 = −${quote.observation.close}/${filingEps.value}² × 0.01 = −${epsSensitivity.toFixed(2)} 倍 ${marketRef} ${filedRef}。该局部敏感性只说明历史 PE 对输入的数学响应，不是未来盈利假设或目标价。当前数据未提供可确认的 FY${basisYear} BVPS，PB 不适用；同业候选缺少可复核的日期和统一估值口径，因此本节不采用可比公司倍数。参考 PE 是当前盈利基准下的倍数描述，不构成目标价或买卖建议。`,
+        markdown: `截至 ${qualifiedQuote!.observation.priceDate}，${qualifiedQuote!.originPublisher} 未复权收盘价为 ${qualifiedQuote!.observation.close} CNY/share ${marketRef}。${quoteContext} FY${basisYear} 年报基本 EPS 为 ${filingEps.value} CNY/share ${filedRef}，以收盘价除以该 EPS 得到参考 PE ${currentPe.toFixed(2)} 倍。基于同一价格与 EPS，参考 PE 按 P/E 计算：价格每变动 1 CNY/share 的局部 PE 变化为 1/EPS = 1/${filingEps.value} = ${priceSensitivity.toFixed(2)} 倍；EPS 每变动 0.01 CNY/share 的局部 PE 变化为 −P/EPS² × 0.01 = −${qualifiedQuote!.observation.close}/${filingEps.value}² × 0.01 = −${epsSensitivity.toFixed(2)} 倍 ${marketRef} ${filedRef}。该局部敏感性只说明历史 PE 对输入的数学响应，不是未来盈利假设或目标价。当前数据未提供可确认的 FY${basisYear} BVPS，PB 不适用；同业候选缺少可复核的日期和统一估值口径，因此本节不采用可比公司倍数。参考 PE 是当前盈利基准下的倍数描述，不构成目标价或买卖建议。`,
         sourceCandidateIds: [...baseSourceIds],
       }
 
