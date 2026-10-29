@@ -77,6 +77,8 @@
 | 完整 Node：`npm run test:node` | 3,305 项，3,284 通过、21 失败 |
 | 完整 Client：`npm run client:test` | 228 项，223 通过、5 失败 |
 
+Git 空白检查：关闭报告提交及暂存报告的 `git diff --check` / `git diff --cached --check` 均 exit 0。对完整来源差异运行 `git diff --check origin/main...HEAD` 为 exit 2，只有四处来源分支既有尾随空格：`docs/engineering/reports/2026-10-27-company-research-gate1-field-lineage-detail.md:3-4` 与 `docs/engineering/specs/2026-10-27-company-research-p0-19-input-contract-proposal.md:3-4`。它们早于本任务且不在本次文档白名单内，未修改。
+
 完整回归在干净冻结 main worktree 使用相同 lockfile 和命令复跑：
 
 - Node main：3,101 项，3,077 通过、24 失败。来源的 21 个失败身份全部与 main 一致；main 的另外 3 项失败在来源分支通过，因此没有新增 Node 失败。
