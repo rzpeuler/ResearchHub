@@ -195,11 +195,37 @@ export function renderResearchReport(report: ResearchReport): string {
   const title = report.reportType === 'daily_brief' ? 'Daily Intelligence Brief' : report.reportType === 'earnings_review' ? 'Earnings Review' : report.reportType === 'valuation' ? 'Valuation' : report.reportType === 'event_research' ? 'Event Research' : report.reportType === 'thesis_red_team' ? 'Thesis Red Team' : report.reportType === 'industry_research' ? 'Industry Research' : report.reportType === 'thesis_lifecycle' ? 'Thesis Lifecycle' : 'Company Research'
   const company = report.reportType === 'company_research'
   const lines = [`# ${company ? `${report.verifiedSecurityIdentity?.verifiedName ?? ''}公司研究报告` : title}`, '', `- Report: ${report.reportId}`, `- As of: ${report.asOf}`, `- Knowledge revision: ${report.knowledgeBaseRevision}`, '', `Methodology: ${report.methodology}`, '']
-  if (report.researchQuality) lines.push(`研究完成度：${report.researchQuality.passed ? '通过' : '未完成'}（核心覆盖 ${report.researchQuality.coreCoverage.completed}/${report.researchQuality.coreCoverage.required}）`, '', ...(report.researchQuality.issues.length ? ['研究缺口：', ...report.researchQuality.issues.map((item) => `- ${item}`), ''] : []))
+  if (report.researchQuality) {
+    if (company) lines.push(...renderCompanyResearchQualitySummary(report.researchQuality))
+    else lines.push(`研究完成度：${report.researchQuality.passed ? '通过' : '未完成'}（核心覆盖 ${report.researchQuality.coreCoverage.completed}/${report.researchQuality.coreCoverage.required}）`, '', ...(report.researchQuality.issues.length ? ['研究缺口：', ...report.researchQuality.issues.map((item) => `- ${item}`), ''] : []))
+  }
   for (const section of report.sections) { const markdown = company ? normalizeCompanySectionMarkdown(section.markdown) : section.markdown.trim(); lines.push(`## ${company ? COMPANY_SECTION_TITLES[section.id] ?? section.title : section.title}`, '', markdown, ''); if (section.sourceRefs?.length) lines.push(`Sources: ${section.sourceRefs.join(', ')}`, ''); if (section.relationRefs?.length) lines.push(`Relations: ${section.relationRefs.join(', ')}`, ''); if (section.claimRefs?.length) lines.push(`Claims: ${section.claimRefs.join(', ')}`, ''); if (externalEvidenceReportTypes.has(report.reportType) && section.evidenceLinks?.length) lines.push('External evidence:', ...section.evidenceLinks.map((url) => `- <${url}>`), ''); if (section.evidenceLocations?.length) lines.push('证据定位：', ...section.evidenceLocations.map((item) => `- ${item.sourceCandidateId ?? ''} ${item.url ? `[原文](${item.url})` : ''} ${item.locator}${item.excerpt ? `：${item.excerpt}` : ''}`), '') }
+  if (company && report.researchQuality?.issues.length) lines.push(...renderCompanyResearchQualityAuditAppendix(report.researchQuality.issues))
   return `${lines.join('\n').trim()}\n`
 }
 const COMPANY_SECTION_TITLES: Readonly<Record<string, string>> = { 'company-overview': '公司概况与发展历程', 'business-model': '商业模式', 'business-segments': '业务分部', 'revenue-profit-drivers': '收入与利润驱动', products: '产品与服务', technologies: '技术与壁垒', 'industry-exposure': '行业与市场空间', 'supply-chain': '供应链', competition: '竞争格局', 'financial-quality': '财务质量', 'growth-drivers': '增长驱动', 'management-capital-allocation': '管理层、治理与资本配置', catalysts: '催化因素', risks: '风险', valuation: '估值', 'bull-base-bear': '乐观、基准与悲观情景', 'variant-perception': '预期差', 'investment-thesis': '研究结论', 'monitoring-checklist': '跟踪清单' }
+
+function renderCompanyResearchQualitySummary(quality: CompanyResearchQuality): string[] {
+  const result = [`完整研究验收：${quality.passed ? '通过' : '未通过'}（${quality.coreCoverage.completed}/${quality.coreCoverage.required}）`, '']
+  const failures = quality.sectionChecks.filter((item) => !item.passed)
+  if (!failures.length) return result
+  result.push('未通过章节与研究缺口：')
+  for (const failure of failures) {
+    const sectionTitle = COMPANY_SECTION_TITLES[failure.sectionId] ?? failure.sectionId
+    const gap = failure.sectionId === 'bull-base-bear'
+      ? '缺少有来源支持的目标年经营驱动假设和区间，无法提供可复算的 Bear/Base/Bull 情景。'
+      : failure.sectionId === 'variant-perception'
+        ? '机构预测的历史数值版本未核验，不能形成合格的市场预期与本方观点比较。'
+        : '本节未满足研究质量检查；具体原因见文末审计明细。'
+    result.push(`- ${sectionTitle}：${gap}`)
+  }
+  result.push('')
+  return result
+}
+
+function renderCompanyResearchQualityAuditAppendix(issues: readonly string[]): string[] {
+  return ['## 质量检查明细（审计）', '', '### 原始质量检查项', ...issues.map((item) => `- ${item}`), '']
+}
 
 export async function writeResearchReport(report: ResearchReport, reportRoot: string): Promise<string> {
   validateResearchReport(report)
