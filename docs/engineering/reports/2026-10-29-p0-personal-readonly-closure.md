@@ -5,7 +5,7 @@
 **来源分支：** `codex/company-research-p0-01-06`
 **冻结来源 HEAD：** `f167a8f272e9b1faf8615a74093047091a194cf1`
 **冻结目标 main HEAD：** `952c723d78b0eaff4ae49e521ee7cd04b2bb8bc5`
-**本报告的父提交：** `f167a8f272e9b1faf8615a74093047091a194cf1`
+**报告首次提交的父提交：** `f167a8f272e9b1faf8615a74093047091a194cf1`
 
 本报告记录只读个人研究阶段的集成和限制，不改变产品资格、报告、历史证据、Knowledge 或研究方法。
 
@@ -41,7 +41,7 @@
 - Company Research acquisition/expectation provider 与对应数据策略；
 - Company Research、P0-19、S4 的工程报告和规格。
 
-本任务只在允许白名单新增本关闭报告。关闭报告使相对冻结 main 的差异增加一个提交和一个文件；PR head、PR 编号/URL、合并方式、合并前后 SHA 及最终 ancestry 在合并后 Codex 交付回执中核实，以避免自引用 SHA。
+本任务只在允许白名单新增本关闭报告这一个文件；其文档提交及验证结果补记均只改该文件。相对冻结 main 的最终提交数、文件数和净差异量、PR head、PR 编号/URL、合并方式、合并前后 SHA 及最终 ancestry 在合并后 Codex 交付回执中核实，以避免自引用 SHA。
 
 ## 3. S4 与资格边界核对（B2）
 
