@@ -1,15 +1,17 @@
 # P0-USE-001 — 公司研究前端阅读验收与最小呈现对齐
 
-**执行基线 / 冻结远端 SHA**：`bdae675c1bc506ab067c2e5279a69984b107f00c`  
-**执行分支**：`codex/company-research-p0-01-06`  
-**最终状态**：`PARTIAL`  
+**执行基线 / 冻结远端 SHA**：`bdae675c1bc506ab067c2e5279a69984b107f00c`
+
+**执行分支**：`codex/company-research-p0-01-06`
+
+**最终状态**：`PARTIAL`
 **P0-19**：`NOT_ACCEPTED`；两份既有真实运行仍为 `17/19 blocked`
 
 ## 结论与范围
 
 `/reports` 的 React 页面消费 JSON 报告，原有顶部只显示“研究尚未完成”和章节覆盖率；失败章节名称及原因只在折叠的原始 issues 中。此前 Markdown exporter 的改进不等于 React 页面已展示具名缺口。本轮只在有 `researchQuality` 的 `company_research` 报告顶部按失败 `sectionChecks` 显示短摘要：章节标题来自已存在的 section ID/title；限制说明只翻译已存在的已知 reason code，其他原因使用“本节未通过完整研究验收，原因见审计明细”。原始 `quality.issues` 原样保留在原折叠区，质量结果、正文、证据、数据与运行身份均未修改。
 
-修改文件仅限：
+修改文件仅限（相对冻结基线：3 files changed, 203 insertions, 1 deletion）：
 
 - `client/src/components/ResearchReportBody.tsx`
 - `client/src/components/ResearchReportBody.test.tsx`
@@ -62,7 +64,7 @@ React 测试采用 `client/vitest.config.ts` 的 `root: client`，因此 filter 
 
 冻结基线与 `origin/codex/company-research-p0-01-06` 初始 SHA 均为 `bdae675c1bc506ab067c2e5279a69984b107f00c`。本次报告记载的实现提交 SHA 与最终远端 HEAD 在提交后补录；提交仅包含上述三个白名单文件。既有 5 个 dirty JSON、15 个归档 sidecars、日志、缓存与 `tmp/` 文件逐项记录 SHA-256，执行前后比较应完全一致；哈希表附于本报告末尾。用户文件未暂存、覆盖或清理。
 
-**实现提交 SHA**：`bb47db1`（组件 + 测试，2 files changed, 79 insertions, 1 deletion）。  
+**实现提交 SHA**：`bb47db1`（组件 + 测试，2 files changed, 79 insertions, 1 deletion）。
 本验收报告单独提交；其父提交为上述实现提交。报告提交及最终远端 HEAD 由交付回执核验，避免在报告中写入无法自引用的自身 SHA。
 
 ## 受保护文件 SHA-256（执行前 = 执行后）
