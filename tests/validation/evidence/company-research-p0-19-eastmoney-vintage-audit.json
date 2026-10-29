@@ -1,0 +1,130 @@
+{
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "auditDate": "2026-10-28",
+  "sourceRevision": "da166c0c37d5139115c61ce6fa3b096747eeef45",
+  "method": "Read-only extraction of sourceSummaries from root-checkout Runtime/API reports; no Knowledge writes",
+  "rawProviderRowsIncluded": false,
+  "forecastValuesIncluded": false,
+  "findings": {
+    "periodMapping": "AKShare report projection uses explicit YYYY-prefixed forecast field names; inspected live rows expose 2026, 2027, and 2028 fields. Exact-report EastMoney Report API queries returned currentYear=2026 for the matched 2024 reports, consistent with those FY2026 labels. The inspected records do not demonstrate a fiscal-year parser defect.",
+    "publicationAndValueVintage": "The acquired current row has no per-estimate valueVersion/EPS basis. Some exact report PDFs independently reproduce the acquired fiscal-period estimate and state diluted EPS; these remain candidate-only until the point-to-document proof is represented and enforced by the runtime.",
+    "qualification": "RUNTIME_VARIANT_ESTIMATES_UNQUALIFIED; EXACT_PDF_MATCHES_REMAIN_CANDIDATE_ONLY"
+  },
+  "exactReportApiCrossChecks": [
+    {
+      "provider": "EastMoney Report API",
+      "queryMode": "Read-only exact company and report-date query",
+      "symbol": "002594",
+      "infoCode": "AP202408301639632746",
+      "reportPublishedDate": "2024-08-30",
+      "responseCurrentYear": 2026,
+      "matchedAkshareFiscalYearField": "2026-盈利预测-收益",
+      "forecastAmountIncluded": false
+    },
+    {
+      "provider": "EastMoney Report API",
+      "queryMode": "Read-only exact company and report-date query",
+      "symbol": "002384",
+      "infoCode": "AP202405071632555327",
+      "reportPublishedDate": "2024-05-07",
+      "responseCurrentYear": 2026,
+      "matchedAkshareFiscalYearField": "2026-盈利预测-收益",
+      "forecastAmountIncluded": false
+    }
+  ],
+  "companies": [
+    {
+      "symbol": "002594",
+      "runId": "1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "analysisSnapshotAsOf": "2026-10-27 19:03:34 Asia/Shanghai",
+      "observations": [
+        {
+          "sourceCandidateId": "eastmoney-akshare-report-afb94d85f63c72f9abccac791306054eb975eb5b12557bca7981b8b57c931fde",
+          "contentHash": "3cfca2de17aaa86a25ede0ec9ceb1769da0c851b4ed50d02fa45556d225071a4",
+          "reportPublishedDate": "2024-08-30",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false
+        },
+        {
+          "sourceCandidateId": "eastmoney-akshare-report-445414013658f3b0ea3fa87f41002760c2bf1efee7cb6522c022e9500cf116ee",
+          "contentHash": "0a95c9e6d7e9c273321f0b9b37000ee9be7baf22eff72dbf3899797190278460",
+          "reportPublishedDate": "2026-09-11",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false
+        }
+      ]
+    },
+    {
+      "symbol": "002384",
+      "runId": "05fe2ed6-8753-4ae0-93c9-508c70eecce5",
+      "analysisSnapshotAsOf": "2026-10-27 19:13:23 Asia/Shanghai",
+      "observations": [
+        {
+          "sourceCandidateId": "eastmoney-akshare-report-139de6c9bd8340e81a1cf2d2d199112144c31cb4479ee312d0fb7fd6199c9f4f",
+          "contentHash": "4c6093b533afce0a4ef876ba50c6d09c05f70923fe7fa1a0579c794537eb180e",
+          "reportPublishedDate": "2026-03-30",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false,
+          "pdfCrossCheck": {
+            "reportUrl": "https://pdf.dfcfw.com/pdf/H3_AP202603301820859917_1.pdf",
+            "exactFiscalYearEstimateMatched": true,
+            "epsBasis": "DILUTED",
+            "localPdfTextAndVisualInspection": true,
+            "runtimePointQualification": "CANDIDATE_ONLY"
+          }
+        },
+        {
+          "sourceCandidateId": "eastmoney-akshare-report-3e64039ab3d76d232f7916ff84404c140c7f18eef1092cc521f17ff8a43cc309",
+          "contentHash": "ac5507caa7893a19f8c2fb8adea473997e8c491fd8086f806b22a642a8e0c106",
+          "reportPublishedDate": "2024-05-07",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false
+        },
+        {
+          "sourceCandidateId": "eastmoney-akshare-report-fda3c1f2dd5a3bbb32e207c3baef9cd4bd237c3dd013f30188556d694621d849",
+          "contentHash": "8d809bcf2ae28b9c73b89df782921f78ac93d2f559359f643100ec7b42f05a21",
+          "reportPublishedDate": "2026-09-02",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false
+        }
+      ]
+    }
+  ],
+  "contractReferences": {
+    "estimatePoint": "skills/earnings-review/expectations/contracts.ts",
+    "akshareProjection": "plugins/research-acquisition/earnings-expectations-eastmoney-akshare.ts",
+    "eastmoneyReportParser": "plugins/research-acquisition/expectations/eastmoney-report.ts",
+    "existingParserTest": "tests/plugins/eastmoney-expectation-source.test.ts"
+  },
+  "limitations": [
+    "The local ignored analysis sidecars contain raw provider rows and were not copied to the repository.",
+    "This evidence does not determine whether the EastMoney/AKShare service has a documented archived-revision guarantee.",
+    "The verified PDF match and basis are not currently attached to an EstimatePoint in the runtime; no estimate is accepted as a qualified historical value-version point by this audit.",
+    "No forecast amount is recorded in the committed evidence."
+  ]
+}

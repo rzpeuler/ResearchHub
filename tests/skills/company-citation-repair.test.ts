@@ -380,6 +380,45 @@ test('section numeric citation repair adds the unique supplied continuation for 
   assert.ok(result.repairs.some(repair=>repair.sectionId==='competition'&&repair.addedReferences.some(ref=>ref.location==='paragraph:2')))
 })
 
+test('product optical-module row repair cites only matching supplied specification paragraphs', () => {
+  const sourceId = 'official-interim-optical'
+  const content = [
+    '2026年半年度报告',
+    '公司数据中心光模块产品。',
+    '400G模块采用QSFP-DD、QSFP112及OSFP封装。',
+    '800G光模块支持DSP、LPO和LRO架构。',
+    '1.6T模块技术选项包括EML和InP PIC，采用OSFP封装。',
+    '公司称100G PAM4 EML已用于模块产品。',
+    '400G PAM4 EML仍处研发阶段，面向3.2T模块。',
+  ].join('\n')
+  const official = { ...source, candidate: { ...source.candidate, candidateId: sourceId }, title: '2026年半年度报告', content } as CompanyResearchInput['sources'][number]
+  const packetValue: CompanyEvidencePacket = {
+    sourceCandidateId: sourceId,
+    title: official.title!,
+    publisher: 'CNINFO',
+    excerpts: content.split('\n').map((text, index) => ({ sourceCandidateId: sourceId, location: `paragraph:${index + 1}`, text })),
+  }
+  const row = `| 光模块 | H1销售额见技术节：400G封装/架构选择、800G架构和1.6T芯片技术选项。 [${sourceId}@paragraph:2] |`
+  const draft = { findings: [], markdown: row, sections: [{ id: 'products', markdown: row }] }
+  const result = repairCompanyMethodCitations(draft, [packetValue], { ...input, sources: [official] })
+  const repaired = result.output.sections[0]!.markdown
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:3`))
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:4`))
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:5`))
+  assert.doesNotMatch(repaired, new RegExp(`${sourceId}@paragraph:7`), 'a 400G chip development statement cannot establish 400G module architecture')
+  assert.equal(validateCompanyNumericGrounding({ markdown: repaired, sources: [official], evidenceContexts: [packetValue] }).status, 'grounded')
+
+  const without400GPackage: CompanyEvidencePacket = { ...packetValue, excerpts: packetValue.excerpts.filter((excerpt) => excerpt.location !== 'paragraph:3') }
+  const rejected = repairCompanyMethodCitations(draft, [without400GPackage], { ...input, sources: [official] })
+  assert.doesNotMatch(rejected.output.sections[0]!.markdown, new RegExp(`${sourceId}@paragraph:7`))
+  assert.equal(validateCompanyNumericGrounding({ markdown: rejected.output.sections[0]!.markdown, sources: [official], evidenceContexts: [without400GPackage] }).status, 'unsupported_numbers')
+
+  const unrelatedSource = { ...official, candidate: { ...official.candidate, candidateId: 'official-unrelated' } }
+  const unrelatedPacket: CompanyEvidencePacket = { ...packetValue, sourceCandidateId: 'official-unrelated', excerpts: packetValue.excerpts.map((excerpt) => ({ ...excerpt, sourceCandidateId: 'official-unrelated' })) }
+  const excluded = repairCompanyMethodCitations(draft, [packetValue, unrelatedPacket], { ...input, sources: [official, unrelatedSource] })
+  assert.doesNotMatch(excluded.output.sections[0]!.markdown, /official-unrelated@paragraph:(?:3|4|5)/, 'an otherwise matching but uncited source cannot be introduced')
+})
+
 test('finding citation repair combines exact cited rows when one claim reports separate customer percentages', () => {
   const customerSource = { ...source, content: '公司主要销售客户情况\n前五名客户合计销售金额（元） 145,648,095,000.00\n前五名客户合计销售金额占年度销售总额比例 18.12%\n1 客户一 100,736,686,000.00 12.53%' }
   const customerPacket: CompanyEvidencePacket = { ...packet, excerpts: customerSource.content.split('\n').map((text, index) => ({ sourceCandidateId: 'filing', location: `paragraph:${index + 1}`, text })) }
@@ -1235,6 +1274,45 @@ test('a colliding exact locator is disambiguated only by same-claim references t
   assert.match(crossSource.output.sections[0]!.markdown,new RegExp(`${typo}@paragraph:717`))
 })
 
+test('a consecutive cited paragraph cluster can be rebound only to one exact supplied source', () => {
+  const correctId = 'official-customer-risk-h1'
+  const wrongId = 'official-customer-risk-annual'
+  const paragraphs = new Map<number, string>([
+    [1320, '1、客户集中度风险'],
+    [1321, '公司客户资源较好，主要客户均为相关行业的国际国内知名企业，客户信誉良好，且公司与其建立了稳定的合作关系。'],
+    [1322, '但是公司前五大客户收入占比较高，如果主要客户的经营状况发生重大不利变化，将会对公司'],
+    [1323, '经营产生不利影响。公司将高度关注重点客户所处行业发展动向及客户信用状况，积极加大新产品、新客户开拓力度，减'],
+    [1324, '少因客户集中度较高对公司可能产生的不利影响。'],
+  ])
+  const lines = Array.from({ length: 1324 }, (_, index) => paragraphs.get(index + 1) ?? '')
+  const correctSource = { ...source, candidate: { ...source.candidate, candidateId: correctId }, title: '2026年半年度报告', content: lines.join('\n') }
+  const wrongSource = { ...source, candidate: { ...source.candidate, candidateId: wrongId }, title: '2025年年度报告', content: Array.from({ length: 1324 }, () => '其他披露内容。').join('\n') }
+  const excerpts = [...paragraphs].map(([paragraph, text]) => ({ sourceCandidateId: correctId, location: `paragraph:${paragraph}`, text }))
+  const correctPacket: CompanyEvidencePacket = { sourceCandidateId: correctId, title: correctSource.title!, publisher: '公司', excerpts }
+  const claim = '公司披露客户集中度风险：若主要客户经营状况重大不利变化可能影响经营，公司将关注客户信用并拓展新产品、新客户。'
+  const wrongCluster = [1320, 1321, 1322, 1323, 1324].map(paragraph => `[${wrongId}@paragraph:${paragraph}]`).join(' ')
+  const draft = { findings: [], markdown: `${claim} ${wrongCluster}`, sections: [{ id: 'business-model', markdown: `${claim} ${wrongCluster}` }] }
+  const options = { ...input, sources: [wrongSource, correctSource] }
+
+  const repaired = repairUnavailableCompanyMethodCitations(draft, [correctPacket], options)
+  assert.equal(repaired.repairs.length, 2, 'the same repair is recorded for the Markdown and section copies of the claim')
+  assert.match(repaired.output.sections[0]!.markdown, new RegExp(`${correctId}@paragraph:1320`))
+  assert.doesNotMatch(repaired.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+  const numeric = validateCompanyNumericGrounding({ markdown: repaired.output.sections[0]!.markdown, sources: [correctSource], evidenceContexts: [correctPacket] })
+  assert.equal(numeric.status, 'grounded', JSON.stringify(numeric.diagnostics))
+
+  const duplicatePacket: CompanyEvidencePacket = { ...correctPacket, sourceCandidateId: 'official-customer-risk-second', excerpts: excerpts.map(excerpt => ({ ...excerpt, sourceCandidateId: 'official-customer-risk-second' })) }
+  const ambiguous = repairUnavailableCompanyMethodCitations(draft, [correctPacket, duplicatePacket], { ...options, sources: [...options.sources, { ...correctSource, candidate: { ...correctSource.candidate, candidateId: 'official-customer-risk-second' }, title: '另一份报告' }] })
+  assert.equal(ambiguous.repairs.length, 0, 'the full locator cluster must identify one unique candidate source')
+  assert.match(ambiguous.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+
+  const unrelatedClaim = '公司公布新款手机上市日期并建立自动化产线。'
+  const unrelatedDraft = { ...draft, markdown: `${unrelatedClaim} ${wrongCluster}`, sections: [{ id: 'business-model', markdown: `${unrelatedClaim} ${wrongCluster}` }] }
+  const unrelated = repairUnavailableCompanyMethodCitations(unrelatedDraft, [correctPacket], options)
+  assert.equal(unrelated.repairs.length, 0, 'unique parallel locators do not repair a claim the supplied text does not support')
+  assert.match(unrelated.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+})
+
 test('inline citation repair can use an exact paragraph already cited by a finding in the same method',()=>{
   const researchSource={...source,content:'2024年研发投入541.61亿元。\n2025年研发投入634.41亿元。'}
   const researchPacket:CompanyEvidencePacket={...packet,excerpts:researchSource.content.split('\n').map((text,index)=>({sourceCandidateId:'filing',location:`paragraph:${index+1}`,text}))}
@@ -1752,4 +1830,77 @@ test('financial-quality normalizes only an exact prepared simple-FCF formula bef
   const unbound={...draft,findings:[{...draft.findings[0]!,text:wrongPeriodText}],markdown:`${wrongPeriodText}\n2025年上半年${tableRow.replace('2026年上半年','')}`,sections:[{id:'financial-quality',markdown:`## 现金流\n${wrongPeriodText}\n2025年上半年${tableRow.replace('2026年上半年','')}`} ]}
   const rejected=repairCompanyMethodCitations(unbound,[financialPacket],{...input,sources:[financialSource],preparedAnalysis})
   assert.ok(rejected.output.markdown.includes(formula),'wrong period must not receive deterministic formula normalization')
+})
+
+test('fills only uniquely matched omitted split labels and value rows in cited classified tables', () => {
+  const annualId = 'official-annual'
+  const annualLines = [
+    '单位：元',
+    '2025 年 2024 年',
+    '同比增减',
+    '金额 占营业收入比重 金额 占营业收入比重',
+    '分行业',
+    '计算机、通信和',
+    '其他电子 39,643,732,616.04 98.80% 36,479,191,979.20 99.21% 8.67%',
+    '单位：元',
+    '营业收入 营业成本 毛利率',
+    '营业收入比上年同期增减',
+    '营业成本比上年同期增减',
+    '毛利率比上年同期增减',
+    '分行业',
+    '计算机、通信',
+    '和其他电子 39,643,732,616.04 34,153,971,460.65 13.85% 8.67% 8.83% -0.12%',
+  ]
+  const annual = { candidate: { candidateId: annualId }, title: '2025年年度报告', content: annualLines.join('\n') } as CompanyResearchInput['sources'][number]
+  const annualPacket: CompanyEvidencePacket = { sourceCandidateId: annualId, title: annual.title, publisher: 'CNINFO', excerpts: annualLines.map((text, index) => ({ sourceCandidateId: annualId, location: `paragraph:${index + 1}`, text })) }
+  const annualRefs = (paragraphs: number[]) => paragraphs.map(paragraph => ({ sourceCandidateId: annualId, location: `paragraph:${paragraph}` }))
+  const revenueFinding: CompanyMethodFinding = {
+    text: '2025年度分行业营业收入表中，计算机、通信和其他电子收入为396.44亿元、占营业收入98.80%；2024年度该标签行收入为364.79亿元、占99.21%。',
+    kind: 'fact', evidence: annualRefs([1, 2, 3, 4, 5, 7]),
+  }
+  assert.equal(validateCompanyNumericGrounding({ markdown: `${revenueFinding.text} ${[...revenueFinding.evidence, { sourceCandidateId: annualId, location: 'paragraph:6' }].map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources: [annual], evidenceContexts: [annualPacket] }).status, 'grounded')
+  const revenueRepair = repairCompanyMethodCitations({ ...output(revenueFinding), findings: [revenueFinding] }, [annualPacket], { ...input, sources: [annual] })
+  assert.deepEqual(revenueRepair.output.findings[0]!.evidence, [...revenueFinding.evidence, { sourceCandidateId: annualId, location: 'paragraph:6' }])
+  assert.equal(validateCompanyNumericGrounding({ markdown: `${revenueFinding.text} ${revenueRepair.output.findings[0]!.evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources: [annual], evidenceContexts: [annualPacket] }).status, 'grounded')
+
+  const marginFinding: CompanyMethodFinding = {
+    text: '2025年度分行业“计算机、通信和其他电子”行营业收入396.44亿元、占98.80%；毛利率比上年同期增减为-0.12%。收入同比增幅8.67%，成本同比增幅8.83%。',
+    kind: 'fact', evidence: annualRefs([1, 2, 5, 8, 9, 10, 11, 12, 13]),
+  }
+  const marginRepair = repairCompanyMethodCitations({ ...output(marginFinding), findings: [marginFinding] }, [annualPacket], { ...input, sources: [annual] })
+  const repairedRefs = marginRepair.output.findings[0]!.evidence
+  for (const paragraph of [3, 4, 6, 7, 14, 15]) assert.ok(repairedRefs.some(ref => ref.location === `paragraph:${paragraph}`), `missing annual row context paragraph ${paragraph}`)
+  assert.equal(validateCompanyNumericGrounding({ markdown: `${marginFinding.text} ${repairedRefs.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources: [annual], evidenceContexts: [annualPacket] }).status, 'grounded')
+
+  const halfId = 'official-half'
+  const halfLines = [
+    '单位：元', '营业收入 营业成本 毛利率', '营业收入比上年同期增减', '营业成本比上年同期增减',
+    '毛利率比上年同期增减', '分行业', '计算机、通信和', '其他电子',
+    '27,347,867,868.08 21,929,134,042.30 19.81% 63.21% 51.01% 6.48%',
+  ]
+  const half = { candidate: { candidateId: halfId }, title: '2026年半年度报告', content: halfLines.join('\n') } as CompanyResearchInput['sources'][number]
+  const halfPacket: CompanyEvidencePacket = { sourceCandidateId: halfId, title: half.title, publisher: 'CNINFO', excerpts: halfLines.map((text, index) => ({ sourceCandidateId: halfId, location: `paragraph:${index + 1}`, text })) }
+  const halfFinding: CompanyMethodFinding = {
+    text: '2026年上半年分行业“计算机、通信和其他电子”收入为273.48亿元、毛利率19.81%；毛利率比上年同期增减为6.48%。',
+    kind: 'fact', evidence: [1, 2, 3, 4, 5, 6].map(paragraph => ({ sourceCandidateId: halfId, location: `paragraph:${paragraph}` })),
+  }
+  const halfRepair = repairCompanyMethodCitations({ ...output(halfFinding), findings: [halfFinding] }, [halfPacket], { ...input, company: { symbol: '002384' }, sources: [half] })
+  assert.deepEqual(halfRepair.output.findings[0]!.evidence.slice(-3).map(ref => ref.location), ['paragraph:7', 'paragraph:8', 'paragraph:9'])
+  assert.equal(validateCompanyNumericGrounding({ markdown: `${halfFinding.text} ${halfRepair.output.findings[0]!.evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources: [half], evidenceContexts: [halfPacket], trustedText: ['002384', '2026-10-15'] }).status, 'grounded')
+  const rowAlreadyCited = { ...halfFinding, evidence: [...halfFinding.evidence, { sourceCandidateId: halfId, location: 'paragraph:9' }] }
+  const rowAlreadyCitedRepair = repairCompanyMethodCitations({ ...output(rowAlreadyCited), findings: [rowAlreadyCited] }, [halfPacket], { ...input, company: { symbol: '002384' }, sources: [half] })
+  assert.ok(rowAlreadyCitedRepair.output.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'))
+  assert.ok(rowAlreadyCitedRepair.output.findings[0]!.evidence.some(ref => ref.location === 'paragraph:8'))
+
+  const wrongValue = { ...halfFinding, text: halfFinding.text.replace('273.48亿元', '300亿元') }
+  const wrongValueRepair = repairCompanyMethodCitations({ ...output(wrongValue), findings: [wrongValue] }, [halfPacket], { ...input, company: { symbol: '002384' }, sources: [half] })
+  assert.deepEqual(wrongValueRepair.output.findings[0]!.evidence, wrongValue.evidence, 'an unmatched number must not receive row citations')
+
+  const wrongLabel = { ...halfFinding, text: halfFinding.text.replace('计算机、通信和其他电子', '计算机、通信和其他行业') }
+  const wrongLabelRepair = repairCompanyMethodCitations({ ...output(wrongLabel), findings: [wrongLabel] }, [halfPacket], { ...input, company: { symbol: '002384' }, sources: [half] })
+  assert.deepEqual(wrongLabelRepair.output.findings[0]!.evidence, wrongLabel.evidence, 'a category label mismatch must not receive row citations')
+
+  const missingHeader = { ...halfFinding, evidence: halfFinding.evidence.filter(ref => ref.location !== 'paragraph:2') }
+  const missingHeaderRepair = repairCompanyMethodCitations({ ...output(missingHeader), findings: [missingHeader] }, [halfPacket], { ...input, company: { symbol: '002384' }, sources: [half] })
+  assert.deepEqual(missingHeaderRepair.output.findings[0]!.evidence, missingHeader.evidence, 'incomplete header citations must remain blocked')
 })

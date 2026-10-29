@@ -40,7 +40,7 @@ async function snapshotTreeSha256(root: string): Promise<string> {
   return createHash('sha256').update(JSON.stringify(await snapshotTree(root))).digest('hex')
 }
 
-test('Pi research_company Application Tool completes the real ResearchService Workflow and reloads its Report read-only', async () => {
+test('Pi research_company Application Tool persists a P0-19-blocked report without Knowledge writes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-pi-company-tool-kb-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-pi-company-tool-reports-'))
   try {
@@ -93,21 +93,22 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
     assert.ok(tool)
     const response = await tool.execute('pi-company-tool-call', { workflowRunId: 'pi-company-tool-run', symbol: '600519', name: '贵州茅台', exchange: 'SH', writeKnowledge: true }, undefined, undefined, {} as never)
     const result = JSON.parse(response.content[0]!.type === 'text' ? response.content[0]!.text : '{}') as { status: string; runId: string; reportId?: string }
-    assert.equal(result.status, 'completed')
+    assert.equal(result.status, 'blocked')
     assert.equal(result.runId, 'pi-company-tool-run')
     assert.ok(result.reportId)
     const run = workflowService.getWorkflowStatus(result.runId)
-    assert.equal(run?.status, 'completed')
+    assert.equal(run?.status, 'blocked')
     const report = await researchService.getResearchReport(result.reportId!)
     assert.equal(report.workflowRunId, result.runId)
     assert.equal(report.reportType, 'company_research')
     assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
     assert.ok(report.sections.some((section) => section.evidenceLinks?.includes('https://example.test/company-filing')))
+    assert.equal(report.researchQuality?.passed, false)
     assert.deepEqual(report.subjectRefs, ['entity:company-600519'])
     assert.deepEqual(report.sourceRefs, [])
     assert.deepEqual(report.claimRefs, [])
     assert.ok(report.sections.every((section) => (section.sourceRefs?.length ?? 0) === 0 && (section.claimRefs?.length ?? 0) === 0))
-    assert.equal(workflowService.getWorkflowStatus(result.runId)?.status, 'completed')
+    assert.equal(workflowService.getWorkflowStatus(result.runId)?.status, 'blocked')
     assert.deepEqual(await snapshotTree(root), before, 'Pi Tool read-only policy must preserve the entire Knowledge file tree')
     const defaultReadonlySha256 = await snapshotTreeSha256(root)
     assert.equal(defaultReadonlySha256, beforeSha256, 'Canonical, Raw Archive, registry, and ReviewCase tree SHA-256 must remain unchanged')
@@ -116,7 +117,7 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
     const readonlyTool = readonlyTools.find((item) => item.name === 'research_company')!
     const readonlyResponse = await readonlyTool.execute('pi-company-tool-readonly', { workflowRunId: 'pi-company-tool-readonly', symbol: '600519', name: '贵州茅台', exchange: 'SH' }, undefined, undefined, {} as never)
     const readonlyResult = JSON.parse(readonlyResponse.content[0]!.type === 'text' ? readonlyResponse.content[0]!.text : '{}') as { status: string; reportId?: string }
-    assert.equal(readonlyResult.status, 'completed')
+    assert.equal(readonlyResult.status, 'blocked')
     assert.deepEqual(await snapshotTree(root), before, 'Explicit read-only policy must preserve the existing Canonical Company and complete Knowledge tree')
     const explicitReadonlySha256 = await snapshotTreeSha256(root)
     assert.equal(explicitReadonlySha256, beforeSha256)
@@ -124,18 +125,21 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
     const authorizedTool = authorizedTools.find((item) => item.name === 'research_company')!
     const authorizedResponse = await authorizedTool.execute('pi-company-tool-authorized', { workflowRunId: 'pi-company-tool-authorized', symbol: '600519', name: '贵州茅台', exchange: 'SH' }, undefined, undefined, {} as never)
     const authorizedResult = JSON.parse(authorizedResponse.content[0]!.type === 'text' ? authorizedResponse.content[0]!.text : '{}') as { status: string; committedIds?: string[]; reportId?: string }
-    assert.equal(authorizedResult.status, 'completed')
+    assert.equal(authorizedResult.status, 'blocked')
     assert.ok(authorizedResult.reportId)
-    assert.ok((authorizedResult.committedIds?.length ?? 0) > 0)
+    assert.deepEqual(authorizedResult.committedIds, [], 'Explicit write authorization cannot bypass the P0-19 quality gate')
     const persisted = await readCanonicalV04Assets(root)
-    assert.ok(persisted.objects.some((item) => item.kind === 'claim' && (item.value as { statement?: string }).statement === '600519 business_model_map 研究判断。'))
+    assert.equal(persisted.objects.some((item) => item.kind === 'claim'), false)
     const authorizedReport = await researchService.getResearchReport(authorizedResult.reportId!)
     const registeredRefs = new Set(persisted.registry.map((entry) => entry.id))
     const reportRefs = [...authorizedReport.subjectRefs, ...authorizedReport.sourceRefs, ...authorizedReport.claimRefs]
     assert.ok(reportRefs.every((ref) => registeredRefs.has(ref)), 'authorized report references must resolve through the persisted registry')
-    const rawBackedVerification = await verifyCompanyResearchKnowledge(root, authorizedReport, '600519')
-    assert.ok(rawBackedVerification.verifiedRaw.length > 0)
-    assert.ok(rawBackedVerification.verifiedRaw.every((item) => item.valid && item.sizeBytes > 0))
+    await assert.rejects(
+      () => verifyCompanyResearchKnowledge(root, authorizedReport, '600519'),
+      /Write acceptance requires durable sources and qualified claims/,
+      'A blocked report cannot be treated as accepted write evidence',
+    )
+    const rawBackedVerification = { verifiedRaw: [] }
     const evidenceDirectory = join(process.cwd(), 'tests', 'validation', 'evidence')
     await mkdir(evidenceDirectory, { recursive: true })
     await writeFile(join(evidenceDirectory, 'company-quality-pi-default-deny.json'), `${JSON.stringify({

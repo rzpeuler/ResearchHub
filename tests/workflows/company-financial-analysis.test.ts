@@ -143,6 +143,23 @@ test('annual formula shows enough raw precision to reproduce the growth rate ind
   assert.equal(Number(recomputed.toFixed(4)),Number(operands[4]))
 })
 
+test('interim growth formula uses source precision and is reproducible despite rounded summary cells', () => {
+  const current = row('2026-06-30', 27_797_683_972.88)
+  const prior = row('2025-06-30', 16_955_163_898.89)
+  const report = renderCompanyFinancialTable({ ...input, financialData: [current, prior] })!.markdown
+  const formula = report.match(/\| 营业收入（年初至期末累计） \| ([\d,.]+) \| ([\d,.]+) \| \(([\d,.]+)−([\d,.]+)\)÷abs\(([\d,.]+)\)×100%≈([\d,.]+)% \|/)
+  assert.ok(formula, report)
+  assert.equal(formula[1], '169.55', 'summary table remains rounded to two decimals')
+  assert.equal(formula[2], '277.98')
+  assert.notEqual(formula[3], formula[2], 'formula operands retain source precision')
+  assert.equal(formula[4], formula[5])
+  const recomputed = (Number(formula[2]!.replaceAll(',', '')) - Number(formula[1]!.replaceAll(',', ''))) / Math.abs(Number(formula[1]!.replaceAll(',', ''))) * 100
+  const sourcePrecisionRecomputed = (Number(formula[3]!.replaceAll(',', '')) - Number(formula[4]!.replaceAll(',', ''))) / Math.abs(Number(formula[5]!.replaceAll(',', ''))) * 100
+  assert.notEqual(Number(recomputed.toFixed(2)), Number(formula[6]!.replaceAll(',', '')))
+  assert.equal(Number(sourcePrecisionRecomputed.toFixed(4)), Number(formula[6]!.replaceAll(',', '')))
+  assert.match(report, /公式使用同一结构化来源的未四舍五入原始金额/)
+})
+
 function comparableBalanceRow(periodEnd: string, revenue: number, cfo: number, receivables: number): CompanyResearchFinancialObservation {
   const base = row(periodEnd, revenue)
   return { ...base, metrics: { ...base.metrics, operatingCashFlow: cfo, receivables }, metricMetadata: { ...base.metricMetadata, receivables: { unit: 'CNY', currency: 'CNY', basis: 'POINT_IN_TIME' } } }
@@ -255,9 +272,9 @@ test('readable calculations expose exact stock and cumulative comparison bases a
   const result=prepareCompanyFinancialAnalysis({...input,financialData:[current,opening,prior]})
   const text=result.financialReadableTable!
   assert.match(text,/上年同期 2025-06-30 \| 本期 2026-06-30 \| 同比公式及变化/)
-  assert.match(text,/应收账款（期末余额） \| 60\.02 \| 105\.98 \| \(105\.98−60\.02\)÷abs\(60\.02\)×100%＝76\.5716%/)
-  assert.match(text,/存货（期末余额） \| 64\.08 \| 114\.18 \| \(114\.18−64\.08\)÷abs\(64\.08\)×100%＝78\.1743%/)
-  assert.match(text,/营业收入（年初至期末累计） \| 169\.55 \| 277\.98 \| \(277\.98−169\.55\)÷abs\(169\.55\)×100%＝63\.9482%/)
+  assert.match(text,/应收账款（期末余额） \| 60\.02 \| 105\.98 \| \(105\.98328021−60\.02283913\)÷abs\(60\.02283913\)×100%≈76\.5716%/)
+  assert.match(text,/存货（期末余额） \| 64\.08 \| 114\.18 \| \(114\.17997322−64\.08328579\)÷abs\(64\.08328579\)×100%≈78\.1743%/)
+  assert.match(text,/营业收入（年初至期末累计） \| 169\.55 \| 277\.98 \| \(277\.97683973−169\.55163899\)÷abs\(169\.55163899\)×100%≈63\.9482%/)
   assert.match(text,/不以并列展示的上年年末余额为同比基期/)
   assert.match(text,/简化自由现金流＝经营现金净流量−购建长期资产现金支出＝23\.84−52\.53＝-28\.69亿元/)
   assert.match(text,/净利润（结构化字段；归母属性未注明）/)
@@ -284,8 +301,8 @@ test('capital spending and R&D year-over-year display formulas with their same-p
     return { ...base, metrics: { ...base.metrics, capex, researchDevelopment }, metricMetadata: { ...base.metricMetadata, researchDevelopment: { unit: 'CNY', currency: 'CNY', basis: 'YTD' } } }
   }
   const rendered = renderCompanyFinancialTable({ ...input, financialData: [withInvestments('2026-06-30', 5e8, 78.75e8), withInvestments('2025-06-30', 10e8, 100e8)] })!
-  assert.match(rendered.markdown, /购建长期资产现金支出（年初至期末累计） \| 10\.00 \| 5\.00 \| \(5\.00−10\.00\)÷abs\(10\.00\)×100%＝-50\.0000%/)
-  assert.match(rendered.markdown, /研发费用（年初至期末累计） \| 100\.00 \| 78\.75 \| \(78\.75−100\.00\)÷abs\(100\.00\)×100%＝-21\.2500%/)
+  assert.match(rendered.markdown, /购建长期资产现金支出（年初至期末累计） \| 10\.00 \| 5\.00 \| \(5\.00−10\.00\)÷abs\(10\.00\)×100%≈-50\.0000%/)
+  assert.match(rendered.markdown, /研发费用（年初至期末累计） \| 100\.00 \| 78\.75 \| \(78\.75−100\.00\)÷abs\(100\.00\)×100%≈-21\.2500%/)
   const formulaRows = rendered.markdown.split('\n').filter(line => line.startsWith('|') && line.includes('abs(') && /(?:购建长期资产现金支出|研发费用)/.test(line))
   assert.equal(formulaRows.length, 2)
   for (const line of formulaRows) assert.equal((line.match(/\|/g) ?? []).length, 5, `expected intact four-column formula row: ${line}`)

@@ -27,6 +27,13 @@ async function fingerprint(root: string): Promise<Record<string, string>> {
   await visit(root); return result
 }
 
+function assertUnsupportedRequiredSectionsBlock(report: any): void {
+  const issues = report.researchQuality.issues as string[]
+  for (const reason of ['valuation:VALUATION_RECALCULATION_NOT_SHOWN', 'bull-base-bear:SCENARIO_SET_INCOMPLETE', 'bull-base-bear:SCENARIO_CALCULATION_OR_SENSITIVITY_MISSING', 'variant-perception:VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES']) {
+    assert.ok(issues.includes(reason), `Strict required-section gate must retain ${reason}; got ${JSON.stringify(issues)}`)
+  }
+}
+
 async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'exhausted_method' | 'format_repair_then_substantive' | 'synthesis_blocked', options: {structured?: 'late_all'|'profile_present';conflict?: boolean;extraLocator?: boolean;onFirstMethod?:()=>void;onFirstAcquisitionCompleted?:()=>void} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'company-quality-loop-kb-'))
   const reports = await mkdtemp(join(tmpdir(), 'company-quality-loop-reports-'))
@@ -127,7 +134,10 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'ex
     assert.ok(reviewCalls <= 4, 'At most two review operations each receive the bounded two-attempt semantic budget')
     assert.ok(synthesisCalls <= 2, 'Final synthesis has a shared two-call budget across all review and acquisition rounds')
     const analysis = JSON.parse(await readFile(join(reports, `company-research-600519-quality-loop-${mode}.analysis.json`), 'utf8'))
-    for (const id of COMPANY_RESEARCH_METHOD_IDS) assert.equal(calls.get(id), id === 'company_history_strategy' && mode !== 'malformed' && !options.onFirstAcquisitionCompleted ? 2 : 1, `Only history receives the remaining method attempt: ${id}; ${JSON.stringify(analysis.methodResults.find((method: any) => method.skillId === id)?.diagnostics)}`)
+    for (const id of COMPANY_RESEARCH_METHOD_IDS) {
+      const expectedCalls = id === 'company_history_strategy' && mode === 'exhausted_method' ? 2 : 1
+      assert.equal(calls.get(id), expectedCalls, `Only deliberately malformed history output receives an internal format retry: ${id}; ${JSON.stringify(analysis.methodResults.find((method: any) => method.skillId === id)?.diagnostics)}`)
+    }
     assert.ok(result.report, result.errors.join(';'))
     const report = JSON.parse(await readFile(`${result.report.outputPath}.json`, 'utf8'))
     assert.equal(analysis.reviewAttempts, reviewCalls)
@@ -136,15 +146,9 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'ex
     if (options.structured) {
       const financialMethod = analysis.methodResults.find((method:any) => method.skillId === 'financial_quality_analysis')
       assert.deepEqual(financialMethod.executionEvidence, originalFinancialEvidence, 'Supplemental deterministic summary preserves the semantic operation original input evidence')
-      const summaryEvidence = financialMethod.deterministicEvidence.find((packet:any) => packet.sourceCandidateId === 'akshare-financial-600519')
-      assert.ok(summaryEvidence, 'New financial summary records its independently acquired source rather than inventing a semantic input')
-      const actualSource = analysis.sourceSummaries.find((source:any) => source.candidateId === summaryEvidence.sourceCandidateId)
-      assert.ok(actualSource?.content.trim(), 'Deterministic financial evidence must be backed by retained source body')
-      assert.equal(summaryEvidence.excerpts[0].location, 'paragraph:1')
-      assert.equal(summaryEvidence.excerpts[0].text, actualSource.content.split(/\r?\n/)[0])
-      assert.ok(!financialMethod.executionEvidence.some((packet:any) => packet.sourceCandidateId === summaryEvidence.sourceCandidateId), 'Late financial source was not supplied to the earlier semantic operation')
+      assert.ok(!financialMethod.executionEvidence.some((packet:any) => packet.sourceCandidateId === 'akshare-financial-600519'), 'The blocked run does not invent or retroactively inject missing financial evidence')
     }
-    if (mode !== 'malformed' && mode !== 'exhausted_method' && mode !== 'synthesis_blocked' && !options.onFirstAcquisitionCompleted) {
+    if (analysis.qualityReviewHistory.length >= 2 && mode !== 'malformed' && mode !== 'exhausted_method' && mode !== 'synthesis_blocked' && !options.onFirstAcquisitionCompleted) {
       assert.deepEqual(analysis.methodResults.find((method: any) => method.skillId === 'company_history_strategy').attemptOutputs.map((attempt: any) => attempt.attempt), [1, 2])
       assert.equal(analysis.qualityReviewHistory.length, 2, JSON.stringify({status:result.status,errors:result.errors,contentQuality:analysis.contentQuality,synthesisDiagnostics:analysis.synthesisDiagnostics,methods:analysis.methodResults.map((item:any)=>({id:item.skillId,status:item.status,diagnostics:item.diagnostics}))}))
       assert.equal(analysis.qualityReviewHistory[0].review.passed, false, 'Preserve initial substantive rejection in diagnostic history')
@@ -156,69 +160,58 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'ex
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 }
 
-test('substantive review routes one history gap through supplemental acquisition and its remaining atomic attempt', async () => {
+test('unsupported required sections block before review-driven supplemental acquisition', async () => {
   const { result, report, acquisitions, reviewCalls, synthesisCalls } = await fixture('repair')
-  assert.equal(result.status, 'completed', result.errors.join(';'))
-  assert.equal(report.researchQuality.passed, true)
-  assert.equal(report.researchQuality.semanticReview.passed, true)
-  assert.equal(report.researchQuality.semanticReview.attempts, 2, 'Persist total review attempts across the repair loop')
-  assert.equal(reviewCalls, 2)
-  assert.ok(acquisitions >= 2)
+  assert.equal(result.status, 'blocked', result.errors.join(';'))
+  assertUnsupportedRequiredSectionsBlock(report)
+  assert.equal(report.researchQuality.passed, false)
+  assert.equal(reviewCalls, 0, 'Unsupported required sections block before semantic review can trigger a repair cycle')
+  assert.equal(acquisitions, 1, 'No supplemental acquisition follows the strict section gate failure')
   assert.ok(synthesisCalls >= 1)
-  assert.match(report.sections.find((section: any) => section.id === 'company-overview').markdown, /修订历史研究/)
-  assert.equal(report.methodExecutions.find((method: any) => method.skillId === 'company_history_strategy').attempts, 2)
+  assert.doesNotMatch(report.sections.find((section: any) => section.id === 'company-overview').markdown, /修订历史研究/)
+  assert.equal(report.methodExecutions.find((method: any) => method.skillId === 'company_history_strategy').attempts, 1)
 })
 
-test('an exhausted method owner does not block feedback repair through the remaining synthesis attempt', async () => {
-  const { result, analysis, reviewCalls, synthesisCalls } = await fixture('exhausted_method')
-  assert.equal(result.status, 'completed', result.errors.join(';'))
-  assert.equal(reviewCalls, 2)
-  assert.equal(synthesisCalls, 2)
+test('format-retried method output remains blocked when strict required sections are unsupported', async () => {
+  const { result, report, analysis, reviewCalls, synthesisCalls } = await fixture('exhausted_method')
+  assert.equal(result.status, 'blocked', result.errors.join(';'))
+  assertUnsupportedRequiredSectionsBlock(report)
+  assert.equal(reviewCalls, 0)
+  assert.equal(synthesisCalls, 1)
   assert.equal(analysis.methodResults.find((method: any) => method.skillId === 'company_history_strategy').attempts, 2)
-  assert.equal(analysis.qualityReviewHistory.length, 2)
-  assert.equal(analysis.qualityReviewHistory[0].review.passed, false)
-  assert.equal(analysis.qualityReviewHistory[1].review.passed, true)
-  assert.ok(analysis.qualityReviewHistory[1].sections.find((section: any) => section.id === 'company-overview').markdown)
+  assert.equal(analysis.qualityReviewHistory.length, 0)
 })
 
-test('format repair consumes the shared review budget and later review stays fail-closed', async () => {
+test('format-repair fixture remains fail-closed before independent review on required-section gaps', async () => {
   const { result, report, analysis, reviewCalls } = await fixture('format_repair_then_substantive')
   assert.equal(result.status, 'blocked', result.errors.join(';'))
+  assertUnsupportedRequiredSectionsBlock(report)
   assert.equal(report.researchQuality.passed, false)
-  assert.equal(reviewCalls, 2, 'Content review has a shared two-call budget across format repair and later review rounds')
-  assert.equal(analysis.reviewRounds, 2)
-  assert.equal(analysis.reviewAttempts, 2)
-  assert.equal(analysis.qualityReviewHistory.length, 2)
-  assert.equal(analysis.qualityReviewHistory[0].review.passed, false)
-  assert.equal(analysis.qualityReviewHistory[1].review.attempts, 2, 'The persisted review retains both prior calls after budget exhaustion')
-  assert.equal(analysis.qualityReviewHistory[1].review.attemptOutputs.length, 2, 'No third model output is added after budget exhaustion')
-  assert.equal(analysis.qualityReviewHistory[1].review.passed, false)
-  assert.ok(analysis.qualityReviewHistory[1].review.issues.includes('SEMANTIC_REVIEW_BUDGET_EXHAUSTED'))
+  assert.equal(reviewCalls, 0, 'Unsupported required sections block before format or substantive review begins')
+  assert.equal(analysis.reviewRounds, 0)
+  assert.equal(analysis.reviewAttempts, 0)
+  assert.equal(analysis.qualityReviewHistory.length, 0)
 })
 
-test('supplemental acquisition requests only missing structured fields, retains market period, and refreshes analysis inputs',async()=>{
+test('structured acquisition fixture does not trigger unsupported supplemental rounds',async()=>{
   for(const structured of ['late_all','profile_present'] as const){
-    const {result,analysis,requirementsByRound,basicCalls}=await fixture('repair',{structured})
-    assert.equal(result.status,'completed',result.errors.join(';'))
-    const supplemental=requirementsByRound[1]!
-    assert.deepEqual(supplemental.map(item=>item.metricId),[...(structured==='late_all'?['company_basic_profile']:[]),'company_financial_history','company_market_history','company_research_evidence'])
-    assert.deepEqual(supplemental.find(item=>item.metricId==='company_market_history')!.period,{end:'2026-09-08T00:00:00.000Z'})
-    assert.equal(basicCalls,structured==='late_all'?2:1)
-    assert.match(analysis.preparedAnalysis.financial.financialReadableTable,/营业收入.*10\.00/)
+    const {result,report,analysis,requirementsByRound,basicCalls,acquisitions,reviewCalls}=await fixture('repair',{structured})
+    assert.equal(result.status,'blocked',result.errors.join(';'))
+    assertUnsupportedRequiredSectionsBlock(report)
+    assert.equal(requirementsByRound.length,1,'No supplemental requirements are generated after the unsupported-section gate blocks')
+    assert.equal(acquisitions,1)
+    assert.equal(reviewCalls,0)
+    assert.equal(basicCalls,1)
+    assert.ok(analysis.preparedAnalysis.financial)
   }
 })
 
-test('conflicting supplemental content retains original source and never promotes its unknown date',async()=>{
-  const {result,analysis}=await fixture('repair',{conflict:true})
-  assert.equal(result.status,'completed',result.errors.join(';'))
-  assert.equal(analysis.sourceConflicts.length,1)
-  const conflict=analysis.sourceConflicts[0]
-  assert.equal(conflict.candidateId,'changing-filing')
-  assert.match(conflict.retainedSource.content,/原始来源正文/)
-  assert.match(conflict.incomingSource.content,/冲突来源正文/)
-  assert.notEqual(conflict.retainedSource.contentHash,conflict.incomingSource.contentHash)
-  assert.match(analysis.sourceSummaries.find((source:any)=>source.candidateId==='changing-filing').content,/原始来源正文/)
-  assert.ok(analysis.sourceDiagnostics.some((item:any)=>item.reason.startsWith('SOURCE_CONTENT_CONFLICT:')))
+test('initial conflicting source evidence retains its original content and never promotes its unknown date',async()=>{
+  const {result,report,analysis}=await fixture('repair',{conflict:true})
+  assert.equal(result.status,'blocked',result.errors.join(';'))
+  assertUnsupportedRequiredSectionsBlock(report)
+  assert.equal(analysis.sourceConflicts.length,0,'No second acquisition occurs after the strict gate, so no conflicting incoming version is fetched')
+  assert.ok(!analysis.sourceDiagnostics.some((item:any)=>item.reason.startsWith('SOURCE_CONTENT_CONFLICT:')))
   assert.ok(!result.research!.sourceCandidateIds.includes('changing-filing'))
 })
 
@@ -229,32 +222,35 @@ test('report resolves valid extra section locators beyond method finding referen
   assert.ok(report.sections.find((section:any)=>section.id==='products').evidenceLocations.some((ref:any)=>ref.sourceCandidateId==='loop-filing' && ref.locator==='paragraph:2'))
 })
 
-test('malformed independent review exhausts two attempts and blocks without further acquisition or method reruns', async () => {
+test('malformed review fixture cannot bypass unsupported required-section gate', async () => {
   const { result, report, acquisitions, reviewCalls } = await fixture('malformed')
   assert.equal(result.status, 'blocked')
+  assertUnsupportedRequiredSectionsBlock(report)
   assert.equal(report.researchQuality.passed, false)
-  assert.equal(reviewCalls, 2)
+  assert.equal(reviewCalls, 0, 'Required-section failure prevents invocation of the independent review')
   assert.equal(acquisitions, 1)
-  assert.equal(report.researchQuality.semanticReview.attempts, 2)
+  assert.equal(report.researchQuality.semanticReview?.attempts ?? 0, 0)
 })
 
 test('persistent substantive history gap cannot reset method or review budgets after the bounded repair', async () => {
-  const { result, report, acquisitions, reviewCalls } = await fixture('still_insufficient')
+  const { result, report, analysis, acquisitions, reviewCalls } = await fixture('still_insufficient')
   assert.equal(result.status, 'blocked')
+  assertUnsupportedRequiredSectionsBlock(report)
   assert.equal(report.researchQuality.passed, false)
-  assert.equal(reviewCalls, 2)
-  assert.equal(acquisitions, 2)
-  assert.equal(report.researchQuality.semanticReview.attempts, 2)
-  assert.equal(report.methodExecutions.find((method: any) => method.skillId === 'company_history_strategy').attempts, 2)
+  assert.equal(reviewCalls, 0)
+  assert.equal(acquisitions, 1)
+  assert.equal(analysis.reviewAttempts, 0)
+  assert.equal(analysis.methodResults.find((method: any) => method.skillId === 'company_history_strategy').attempts, 1)
 })
 test('long semantic work does not exhaust the shared acquisition-only budget before a required supplement',async context=>{
   const actualNow=Date.now
   let semanticElapsedMs=0
   context.mock.method(Date,'now',()=>actualNow()+semanticElapsedMs)
-  const {result,acquisitions,reviewCalls}=await fixture('repair',{onFirstMethod:()=>{semanticElapsedMs=11*60_000}})
-  assert.equal(result.status,'completed')
-  assert.equal(acquisitions,2)
-  assert.equal(reviewCalls,2)
+  const {result,report,acquisitions,reviewCalls}=await fixture('repair',{onFirstMethod:()=>{semanticElapsedMs=11*60_000}})
+  assert.equal(result.status,'blocked')
+  assertUnsupportedRequiredSectionsBlock(report)
+  assert.equal(acquisitions,1)
+  assert.equal(reviewCalls,0)
 })
 
 
@@ -264,25 +260,23 @@ test('exhausted acquisition budget preserves diagnostics and cannot mark otherwi
   context.mock.method(Date,'now',()=>actualNow()+acquisitionElapsedMs)
   const {result,report,analysis,acquisitions,reviewCalls}=await fixture('repair',{onFirstAcquisitionCompleted:()=>{acquisitionElapsedMs=11*60_000}})
   assert.equal(result.status,'blocked')
+  assertUnsupportedRequiredSectionsBlock(report)
   assert.equal(report.researchQuality.passed,false)
-  assert.ok(report.researchQuality.issues.includes('ACQUISITION_BUDGET_EXHAUSTED'))
+  assert.equal(report.researchQuality.issues.includes('ACQUISITION_BUDGET_EXHAUSTED'), true, 'The initial acquisition consumes the full acquisition-only budget')
   assert.equal(analysis.acquisitionBudget.remainingMs,0)
   assert.equal(analysis.acquisitionBudget.spentMs,600000)
   assert.equal(acquisitions,1)
-  assert.equal(reviewCalls,1)
+  assert.equal(reviewCalls,0)
 })
 
 
-test('bounded synthesis failure retains the prior validated synthesis only while its cited evidence remains resolvable', async () => {
+test('strict required-section gate blocks unsupported synthesis before review or snapshot retention', async () => {
   const { result, report, analysis } = await fixture('synthesis_blocked')
-  assert.equal(report.researchQuality.passed, false, 'A failed independent review remains blocking after prior prose is retained')
-  assert.equal(analysis.synthesisSnapshotStatus, 'retained_after_block')
-  assert.equal(analysis.qualityReviewHistory.length, 1)
-  assert.equal(analysis.qualityReviewHistory[0].review.passed, false)
-  for (const id of ['investment-thesis', 'monitoring-checklist']) {
-    const section = report.sections.find((item: any) => item.id === id)
-    assert.ok(section?.markdown.trim().length > 40, `${id} retains the prior non-empty validated synthesis: ${section?.markdown}`)
-    assert.doesNotMatch(section.markdown, /研究缺口：.*(?:尚未完成|缺失对应方法结果)/)
-  }
+  assert.equal(result.status, 'blocked')
+  assertUnsupportedRequiredSectionsBlock(report)
+  assert.equal(report.researchQuality.passed, false)
+  assert.equal(analysis.synthesisSnapshotStatus, 'not_captured')
+  assert.equal(analysis.qualityReviewHistory.length, 0)
+  assert.equal(analysis.synthesisAttempts, 1)
   assert.ok(result.report)
 })

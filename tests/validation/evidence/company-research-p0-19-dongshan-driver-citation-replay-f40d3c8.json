@@ -1,0 +1,81 @@
+{
+  "evidenceType": "sanitized-saved-method-replay",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "0dd5ea078d36237ce2e804abb2fe67a7e4e34b73",
+  "replayRevision": "f40d3c8f7204b41989b3f059354e742e9583f5fa",
+  "company": {
+    "symbol": "002384",
+    "name": "Dongshan Precision"
+  },
+  "sourceRunId": "e57da218-083a-4949-bbd0-f903a8fb41af",
+  "sourceArtifact": "runtime-data/company-quality-acceptance/post-0dd5ea0/002384-analysis.json",
+  "method": "business_driver_analysis",
+  "methodStatusInSavedRun": "failed",
+  "attemptCount": 2,
+  "findingIndexBase": 0,
+  "sourceDocuments": [
+    {
+      "sourceCandidateId": "official-39e591fa149e4543",
+      "title": "2025年年度报告",
+      "contentHash": "8009fc94cc5a754b4cf5c18132217ce704c216484c2922d74d92f7f008ba3330"
+    },
+    {
+      "sourceCandidateId": "official-296fff2b2889c26f",
+      "title": "2026年半年度报告",
+      "contentHash": "6500c4e7c05ab455ebbbfc5eba1fa7ede7a48d6be171c53c4edc87c4682f707a"
+    }
+  ],
+  "replayedFindings": [
+    {
+      "attempt": 1,
+      "findingIndex": 3,
+      "beforeNumericStatus": "unsupported_numbers",
+      "afterNumericStatus": "grounded",
+      "addedReferences": [
+        "official-39e591fa149e4543@paragraph:865",
+        "official-39e591fa149e4543@paragraph:866",
+        "official-39e591fa149e4543@paragraph:869",
+        "official-39e591fa149e4543@paragraph:870",
+        "official-39e591fa149e4543@paragraph:893",
+        "official-39e591fa149e4543@paragraph:894"
+      ]
+    },
+    {
+      "attempt": 2,
+      "findingIndex": 3,
+      "beforeNumericStatus": "unsupported_numbers",
+      "afterNumericStatus": "grounded",
+      "addedReferences": [
+        "official-39e591fa149e4543@paragraph:865",
+        "official-39e591fa149e4543@paragraph:866",
+        "official-39e591fa149e4543@paragraph:869",
+        "official-39e591fa149e4543@paragraph:870",
+        "official-39e591fa149e4543@paragraph:893",
+        "official-39e591fa149e4543@paragraph:894"
+      ]
+    },
+    {
+      "attempt": 1,
+      "findingIndex": 4,
+      "beforeNumericStatus": "grounded",
+      "afterNumericStatus": "grounded",
+      "addedReferences": []
+    },
+    {
+      "attempt": 2,
+      "findingIndex": 4,
+      "beforeNumericStatus": "unsupported_numbers",
+      "afterNumericStatus": "grounded",
+      "addedReferences": [
+        "official-296fff2b2889c26f@paragraph:793",
+        "official-296fff2b2889c26f@paragraph:794",
+        "official-296fff2b2889c26f@paragraph:795"
+      ]
+    }
+  ],
+  "notes": [
+    "Replay used the saved reasoning input, exact supplied evidence excerpts, source text hashes, current repairCompanyMethodCitations implementation, and validateCompanyNumericGrounding; no model or Runtime call was made.",
+    "Only previously supplied source paragraphs were added. The annual revenue/margin rows bind the split classification label, unit, table header, and exact values; the interim row binds its split label and values.",
+    "This replay does not change the persisted run or method result and is not live report acceptance. The saved Dongshan report remains blocked; raw reports, method outputs, and source text remain local."
+  ]
+}

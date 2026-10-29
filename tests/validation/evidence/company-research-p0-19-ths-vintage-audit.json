@@ -1,0 +1,40 @@
+{
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "auditDate": "2026-10-28",
+  "sourceRevision": "da166c0c37d5139115c61ce6fa3b096747eeef45",
+  "method": "Read-only inspection of Tonghuashun sourceSummaries in the root-checkout Runtime/API reports; no Knowledge writes",
+  "rawProviderRowsIncluded": false,
+  "forecastValuesIncluded": false,
+  "observations": [
+    {
+      "symbol": "002594",
+      "runId": "1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "sourceCandidateId": "ths-institution-9c69c733b5448428900f6bc907f0d439d308aef4edc68d53283f56319a809be7",
+      "contentHash": "a014813164c908b0a97ac3ef39695d4cbdff3bcc1f4883dad98fbbcd08b79b1c",
+      "institution": "湘财证券",
+      "publishedAt": "2026-10-17",
+      "forecastPeriodFieldsPresent": true,
+      "originalReportUrlPresent": false,
+      "valueVersionPresent": false,
+      "epsBasisPresent": false
+    },
+    {
+      "symbol": "002384",
+      "runId": "05fe2ed6-8753-4ae0-93c9-508c70eecce5",
+      "sourceCandidateId": "ths-institution-1eeca550b3f48876041cea01536bba455c8df681e5f9f219aa719731bed6d1fd",
+      "contentHash": "0a9fabbeeb68dcd1dba9e342203dc71a8df9c1b1d72d7ef6b5be69d3bbb0829a",
+      "institution": "中泰证券",
+      "publishedAt": "2026-08-24",
+      "forecastPeriodFieldsPresent": true,
+      "originalReportUrlPresent": false,
+      "valueVersionPresent": false,
+      "epsBasisPresent": false
+    }
+  ],
+  "qualification": "NOT_QUALIFIED_FOR_NUMERIC_VALUE_VERSION_OR_EPS_BASIS",
+  "limitations": [
+    "This proves only that these acquired Tonghuashun rows omit the fields and report URL; it does not prove no original report exists elsewhere.",
+    "No forecast value or full provider row is committed.",
+    "The rows remain subject to the existing fail-closed Variant Perception gate."
+  ]
+}

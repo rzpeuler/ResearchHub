@@ -79,6 +79,33 @@ export function mergeExcessTrailingMarkdownTableCells(markdown: string): string 
   }
   const separator = (line: string) => line.includes('|') && cells(line).every(cell => /^:?-{3,}:?$/.test(cell))
   let changed = false
+  // A long industry section can place the next, identical period/industry
+  // header after prose appended to the final annual row. Split only this exact
+  // header when the preceding row matches its current table and the next
+  // separator plus following data row prove the new table width.
+  const industryHeader = '| 期间与分类（分行业） | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减 | 营业成本比上年同期增减 | 毛利率比上年同期增减 |'
+  for (let rowIndex = 1; rowIndex + 2 < lines.length; rowIndex++) {
+    const line = lines[rowIndex]!
+    const headerIndex = line.lastIndexOf(industryHeader)
+    const narrativeIndex = line.lastIndexOf('| 上述行业预测与历史销量定义')
+    if (headerIndex < 0 || line.indexOf(industryHeader) !== headerIndex || (narrativeIndex >= headerIndex)) continue
+    const hasNarrative = narrativeIndex >= 0
+    const rawPrefix = line.slice(0, hasNarrative ? narrativeIndex : headerIndex).trimEnd()
+    const prefix = hasNarrative ? rawPrefix : rawPrefix.replace(/\|\s*\|\s*$/u, '|')
+    const narrative = hasNarrative ? line.slice(narrativeIndex + 1, headerIndex).trim() : ''
+    if ((hasNarrative && !narrative) || !prefix.endsWith('|')) continue
+    let previousSeparator = rowIndex - 1
+    while (previousSeparator >= 0 && !separator(lines[previousSeparator]!)) previousSeparator--
+    if (previousSeparator < 0 || cells(prefix).length !== cells(lines[previousSeparator]!).length) continue
+    const nextSeparator = rowIndex + 1
+    if (!separator(lines[nextSeparator]!) || cells(lines[nextSeparator]!).length !== cells(industryHeader).length) continue
+    const nextRows: string[][] = []
+    for (let index = nextSeparator + 1; index < lines.length && lines[index]!.includes('|') && !separator(lines[index]!); index++) nextRows.push(cells(lines[index]!))
+    if (!nextRows.some(row => row.length === cells(industryHeader).length)) continue
+    lines.splice(rowIndex, 1, prefix, narrative, industryHeader)
+    changed = true
+    rowIndex += 2
+  }
   for (let index = 1; index < lines.length; index++) {
     if (!separator(lines[index]!)) continue
     let headerIndex = index - 1

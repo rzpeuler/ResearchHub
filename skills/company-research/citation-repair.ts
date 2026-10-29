@@ -148,7 +148,7 @@ function reinforceFinancialQualityMarginCitations(markdown: string, sections: re
   return { sections: updated, repairs }
 }
 
-/** Repair a narrowly recognizable malformed source ID only when its exact supplied paragraph resolves uniquely. */
+/** Preserve existing narrow citation fixes; repeated-substring source-ID repairs are limited to finding evidence. */
 export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonly CompanyEvidencePacket[], input: CompanyResearchInput): { readonly output: T; readonly repairs: readonly CompanyCitationRepair[] } {
   let raw: unknown = output
   if (typeof raw === 'string') {
@@ -157,30 +157,20 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output, repairs: [] }
   const value = structuredClone(raw) as Record<string, unknown>
   if (typeof value.markdown !== 'string' || !Array.isArray(value.sections) || !Array.isArray(value.findings)) return { output, repairs: [] }
-  const byTypo = new Map<string, CompanyMethodEvidenceRef[]>()
+  const repairs: CompanyCitationRepair[] = []
+  const legacyRepairs = new Map<string, CompanyMethodEvidenceRef[]>()
+  const legacyFindingIndexes = new Map<string, number>()
   const packetIds = [...new Set(packets.map(packet => packet.sourceCandidateId))]
-  const isKnownTypo = (malformedId: string, candidateId: string): boolean => {
-    // Some official IDs are emitted with one extra terminal character while
-    // the provider also substitutes the canonical final character. Restrict
-    // this case to the exact official-ID prefix and a two- or three-character
-    // tail; source uniqueness and exact locator text are checked in resolve().
+  const isKnownLegacyTypo = (malformedId: string, candidateId: string): boolean => {
     const canonicalPrefix = candidateId.slice(0, -1)
     const malformedTailLength = malformedId.length - canonicalPrefix.length
     if (malformedId.startsWith('official-') && candidateId.startsWith('official-')
       && malformedId.startsWith(canonicalPrefix)
       && malformedTailLength >= 2 && malformedTailLength <= 3) return true
     if (malformedId.length === candidateId.length + 1 && malformedId.startsWith(candidateId)) return true
-    // Some providers replace the final character instead of appending an
-    // extra one. Keep this repair deliberately limited to one terminal
-    // substitution; the exact supplied paragraph and unique-source checks in
-    // resolve() remain mandatory before any citation is rewritten.
     if (malformedId.length === candidateId.length
       && malformedId.startsWith(candidateId.slice(0, -1))
       && malformedId.at(-1) !== candidateId.at(-1)) return true
-    // Some model outputs repeat a long tail of an official document ID after
-    // one stray character. Accept only IDs that share all but the final source
-    // character and end in an exact >=10-character suffix of that same ID.
-    // Exact paragraph/text uniqueness below remains mandatory.
     if (!malformedId.startsWith('official-') || !candidateId.startsWith('official-')) return false
     let commonPrefix = 0
     while (commonPrefix < malformedId.length && commonPrefix < candidateId.length && malformedId[commonPrefix] === candidateId[commonPrefix]) commonPrefix++
@@ -190,13 +180,25 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
     const stray = tail[0]!
     const repeatedTail = tail.slice(1)
     if (candidateId.indexOf(stray) < 0) return false
-    for (let start = 0; start <= candidateId.length - 10; start++) {
-      if (candidateId.slice(start) === repeatedTail) return true
+    for (let start = 0; start <= candidateId.length - 10; start++) if (candidateId.slice(start) === repeatedTail) return true
+    return false
+  }
+  const isRepeatedSubstringTypo = (malformedId: string, candidateId: string): boolean => {
+    if (!malformedId.startsWith('official-') || !candidateId.startsWith('official-')) return false
+    // Accept only an insertion that duplicates an immediately adjacent 3-8
+    // character substring of the canonical ID. This covers repeated ID tails
+    // while excluding arbitrary edits, transpositions, and one-character typos.
+    for (let insertion = 1; insertion < candidateId.length; insertion++) {
+      for (let length = 3; length <= 8; length++) {
+        const repeated = candidateId.slice(insertion - length, insertion)
+        if (repeated.length === length
+          && malformedId === `${candidateId.slice(0, insertion)}${repeated}${candidateId.slice(insertion)}`) return true
+      }
     }
     return false
   }
-  const resolve = (sourceId: string, location: string): CompanyMethodEvidenceRef | undefined => {
-    const candidates = packetIds.filter(id => isKnownTypo(sourceId, id))
+  const resolve = (sourceId: string, location: string, includeRepeatedSubstring = false): CompanyMethodEvidenceRef | undefined => {
+    const candidates = packetIds.filter(id => isKnownLegacyTypo(sourceId, id) || includeRepeatedSubstring && isRepeatedSubstringTypo(sourceId, id))
       .filter(id => {
         const sourceMatches = input.sources.filter(source => source.candidate.candidateId === id)
         const packetMatches = packets.filter(packet => packet.sourceCandidateId === id)
@@ -211,44 +213,55 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
       })
     return candidates.length === 1 ? { sourceCandidateId: candidates[0]!, location } : undefined
   }
-  const repairs: CompanyCitationRepair[] = []
-  const normalize = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, location: string) => {
-    const corrected = resolve(sourceId, location)
+  const normalizeLegacyText = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, location: string) => {
+    // A duplicated adjacent source-ID substring may be repaired in prose as
+    // well as finding objects only when the exact paragraph is present in one
+    // unique source and one unique method packet. This canonicalizes identity;
+    // the normal reference and numeric validators still decide whether the
+    // paragraph supports the claim.
+    const corrected = resolve(sourceId, location, true)
     if (!corrected) return literal
     const key = `${sourceId}@${location}`
-    const ref = { sourceCandidateId: corrected.sourceCandidateId, location: corrected.location }
-    byTypo.set(key, [...(byTypo.get(key) ?? []), ref])
-    return `[${ref.sourceCandidateId}@${ref.location}]`
+    legacyRepairs.set(key, [...(legacyRepairs.get(key) ?? []), corrected])
+    return `[${corrected.sourceCandidateId}@${corrected.location}]`
   })
-  const markdown = normalize(value.markdown)
-  const sections = value.sections.map((item) => {
+  const markdown = normalizeLegacyText(value.markdown)
+  const sections = value.sections.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const section = item as Record<string, unknown>
-    return typeof section.markdown === 'string' ? { ...section, markdown: normalize(section.markdown) } : section
+    return typeof section.markdown === 'string' ? { ...section, markdown: normalizeLegacyText(section.markdown) } : section
   })
-  const findings = value.findings.map((item) => {
+  const findings = value.findings.map((item, findingIndex) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const finding = item as Record<string, unknown>
     if (!Array.isArray(finding.evidence)) return finding
+    const findingRepairs: { original: CompanyMethodEvidenceRef; corrected: CompanyMethodEvidenceRef }[] = []
+    const evidence = finding.evidence.map(ref => {
+      if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return ref
+      const row = ref as Record<string, unknown>
+      if (typeof row.sourceCandidateId !== 'string' || typeof row.location !== 'string') return ref
+      const corrected = resolve(row.sourceCandidateId, row.location, true)
+      if (!corrected) return ref
+      findingRepairs.push({ original: { sourceCandidateId: row.sourceCandidateId, location: row.location }, corrected })
+      return corrected
+    })
+    if (findingRepairs.length) {
+      const uniqueRepairs = [...new Map(findingRepairs.map(item => [`${item.original.sourceCandidateId}@${item.original.location}->${item.corrected.sourceCandidateId}@${item.corrected.location}`, item])).values()]
+      for (const item of uniqueRepairs) {
+        const key = `${item.original.sourceCandidateId}@${item.original.location}`
+        legacyRepairs.set(key, [...(legacyRepairs.get(key) ?? []), item.corrected])
+        legacyFindingIndexes.set(key, findingIndex)
+      }
+    }
     return {
       ...finding,
-      evidence: finding.evidence.map(ref => {
-        if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return ref
-        const row = ref as Record<string, unknown>
-        if (typeof row.sourceCandidateId !== 'string' || typeof row.location !== 'string') return ref
-      const corrected = resolve(row.sourceCandidateId, row.location)
-      if (!corrected) return ref
-      const key = `${row.sourceCandidateId}@${row.location}`
-      byTypo.set(key, [...(byTypo.get(key) ?? []), corrected])
-      return corrected
-      }),
+      evidence,
     }
   })
-  for (const [key, additions] of byTypo) {
+  for (const [key, additions] of legacyRepairs) {
     const [sourceCandidateId, location] = key.split('@')
     const corrected = [...new Map(additions.map(ref => [`${ref.sourceCandidateId}@${ref.location}`, ref])).values()]
-    if (corrected.length !== 1) continue
-    repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched a narrowly recognized official-ID suffix pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
+    if (corrected.length === 1) repairs.push({ ...(legacyFindingIndexes.has(key) ? { findingIndex: legacyFindingIndexes.get(key)! } : {}), inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched an existing narrow typo pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
   }
   return { output: { ...value, markdown, sections, findings } as T, repairs }
 }
@@ -469,6 +482,98 @@ function exactMarketStructureH1MarginRowReference(
     ].filter(ref => !cited.has(`${ref.sourceCandidateId}@${ref.location}`)))
   }
   return matches.length === 1 && matches[0]!.length ? matches[0] : undefined
+}
+
+/**
+ * Complete only omitted split label/value locators for a uniquely named,
+ * already-cited official product/industry table row. The table unit and
+ * classification heading must already be cited, along with its period header
+ * or main metric header. Any remaining supplied header lines are added with
+ * the exact split label/value row; numeric grounding remains the final gate.
+ */
+function exactClassifiedTableRowContextReferences(
+  finding: CompanyMethodFinding,
+  packets: readonly CompanyEvidencePacket[],
+  input: CompanyResearchInput,
+): CompanyMethodEvidenceRef[] | undefined {
+  const tableKind = findingTableKind(finding.text)
+  if (!tableKind || !/\b(?:19|20)\d{2}\s*年/.test(finding.text) || !/收入|毛利率/.test(finding.text)) return undefined
+  const normalizedFinding = finding.text.replace(/[\s“”"「」『』]/g, '')
+  const cited = new Set(finding.evidence.map(ref => `${ref.sourceCandidateId}@${ref.location}`))
+  const matches = new Map<string, CompanyMethodEvidenceRef[][]>()
+
+  for (const packet of packets) {
+    if (!finding.evidence.some(ref => ref.sourceCandidateId === packet.sourceCandidateId)) continue
+    const sourceMatches = input.sources.filter(source => source.candidate.candidateId === packet.sourceCandidateId)
+    if (sourceMatches.length !== 1 || sourceMatches[0]!.title !== packet.title || !/(?:年年度报告|年半年度报告)/.test(packet.title.replace(/\s+/g, ''))) continue
+    const source = sourceMatches[0]!
+    const lines = source.content.split(/\r?\n/)
+    const byParagraph = new Map<number, CompanyEvidencePacket['excerpts'][number]>()
+    for (const excerpt of packet.excerpts) {
+      const paragraph = Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1])
+      if (!Number.isInteger(paragraph) || excerpt.sourceCandidateId !== packet.sourceCandidateId || excerpt.text !== lines[paragraph - 1]) continue
+      if (!byParagraph.has(paragraph)) byParagraph.set(paragraph, excerpt)
+      else if (byParagraph.get(paragraph)!.text !== excerpt.text) byParagraph.delete(paragraph)
+    }
+    const excerpts = [...byParagraph.entries()].map(([paragraph, excerpt]) => ({ paragraph, excerpt })).sort((a, b) => a.paragraph - b.paragraph)
+    const citedRows = new Set(excerpts.filter(item => cited.has(`${packet.sourceCandidateId}@paragraph:${item.paragraph}`)
+      && numbers(item.excerpt.text).length >= 2 && excerptTableKind(packet, item.excerpt) === tableKind).map(item => item.paragraph))
+    for (const { paragraph: rowParagraph, excerpt: rowExcerpt } of excerpts) {
+      if (citedRows.size && !citedRows.has(rowParagraph)) continue
+      if (excerptTableKind(packet, rowExcerpt) !== tableKind || numbers(rowExcerpt.text).length < 2) continue
+      const rowPrefix = /^[\s\u3000]*([^\d]+?)\s*(?=-?\d)/.exec(rowExcerpt.text)?.[1]?.trim() ?? ''
+      const preceding: { paragraph: number; text: string }[] = []
+      for (let current = rowParagraph - 1; current > 0 && preceding.length < 3; current -= 1) {
+        const excerpt = byParagraph.get(current)
+        if (!excerpt || /\d|[。；;！？]|单位|营业收入|营业成本|毛利率|分行业|分产品|分地区/.test(excerpt.text)) break
+        if (!excerpt.text.trim() || excerpt.text.length > 90) break
+        preceding.unshift({ paragraph: current, text: excerpt.text.trim() })
+      }
+      const labelCandidates: { readonly label: string; readonly prefixes: readonly { readonly paragraph: number; readonly text: string }[] }[] = []
+      if (rowPrefix) labelCandidates.push({ label: rowPrefix.replace(/\s+/g, ''), prefixes: [] })
+      for (let start = 0; start < preceding.length; start += 1) {
+        const prefixes = preceding.slice(start)
+        const label = `${prefixes.map(item => item.text).join('')}${rowPrefix}`.replace(/\s+/g, '')
+        if (label.length >= 4 && normalizedFinding.includes(label)) labelCandidates.push({ label, prefixes })
+      }
+      const matchingLabels = labelCandidates.filter(candidate => candidate.label.length >= 4 && normalizedFinding.includes(candidate.label))
+      const longestLabels = matchingLabels.filter(candidate => !matchingLabels.some(other => other.label.length > candidate.label.length && other.label.endsWith(candidate.label)))
+      if (longestLabels.length !== 1) continue
+
+      const classificationText = tableKind === 'industry' ? '分行业' : '分产品'
+      const heading = excerpts.filter(item => item.paragraph < rowParagraph && item.paragraph >= rowParagraph - 40 && /^(?:分行业|分产品|分地区)$/.test(item.excerpt.text.trim())).at(-1)
+      if (!heading || heading.excerpt.text.trim() !== classificationText || !cited.has(`${packet.sourceCandidateId}@paragraph:${heading.paragraph}`)) continue
+      const unit = excerpts.filter(item => item.paragraph < heading.paragraph && item.paragraph >= rowParagraph - 40 && /^\s*单位\s*[:：]\s*(?:元|千元|万元|百万元|亿元)\s*$/.test(item.excerpt.text)).at(-1)
+      if (!unit || !cited.has(`${packet.sourceCandidateId}@paragraph:${unit.paragraph}`)) continue
+      const firstClassificationHeading = excerpts.find(item => item.paragraph > unit.paragraph
+        && item.paragraph <= heading.paragraph && /^(?:分行业|分产品|分地区)$/.test(item.excerpt.text.trim()))
+      if (!firstClassificationHeading) continue
+      const header = excerpts.filter(item => item.paragraph > unit.paragraph && item.paragraph < firstClassificationHeading.paragraph)
+      if (!header.length) continue
+      const compactHeader = header.map(item => item.excerpt.text).join('').replace(/\s+/g, '')
+      if (!/营业收入/.test(compactHeader)) continue
+      const mainHeader = header.find(item => /营业收入/.test(item.excerpt.text)
+        && (!/毛利率/.test(compactHeader) || /营业成本/.test(item.excerpt.text) && /毛利率/.test(item.excerpt.text)))
+      const periodHeader = header.find(item => /(?:19|20)\d{2}\s*年/.test(item.excerpt.text))
+      const citedHeaderAnchor = periodHeader
+        ? cited.has(`${packet.sourceCandidateId}@paragraph:${periodHeader.paragraph}`)
+        : Boolean(mainHeader && cited.has(`${packet.sourceCandidateId}@paragraph:${mainHeader.paragraph}`))
+      if (!mainHeader || !citedHeaderAnchor) continue
+
+      const label = longestLabels[0]!
+      const refs = [
+        ...header.map(item => ({ sourceCandidateId: packet.sourceCandidateId, location: `paragraph:${item.paragraph}` })),
+        ...label.prefixes.map(item => ({ sourceCandidateId: packet.sourceCandidateId, location: `paragraph:${item.paragraph}` })),
+        { sourceCandidateId: packet.sourceCandidateId, location: rowExcerpt.location },
+      ].filter(ref => !cited.has(`${ref.sourceCandidateId}@${ref.location}`))
+      if (refs.length) {
+        const tableKey = `${packet.sourceCandidateId}@${heading.paragraph}`
+        matches.set(tableKey, [...(matches.get(tableKey) ?? []), refs])
+      }
+    }
+  }
+  if (!matches.size || [...matches.values()].some(tableMatches => tableMatches.length !== 1)) return undefined
+  return [...matches.values()].flat(2)
 }
 
 /** R111: preserve the percent unit shown by BYD's official annual product-margin change column. */
@@ -1165,6 +1270,27 @@ function excerptTableKind(packet: CompanyEvidencePacket, excerpt: CompanyEvidenc
   }).sort((left, right) => Number(right.location.split(':')[1]) - Number(left.location.split(':')[1]))[0]
   return heading?.text.trim() === '分产品' ? 'product' : heading?.text.trim() === '分行业' ? 'industry' : undefined
 }
+function claimIncludesExactClassifiedRowLabel(claim: string, packet: CompanyEvidencePacket, excerpt: CompanyEvidencePacket['excerpts'][number]): boolean {
+  if (!/(?:分行业|分产品)/.test(claim)) return true
+  const row = Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1])
+  if (!Number.isInteger(row)) return false
+  const normalizedClaim = strip(claim).replace(/[\s“”"「」『』]/g, '')
+  const rowPrefix = /^[\s\u3000]*([^\d]+?)\s*(?=-?\d)/.exec(excerpt.text)?.[1]?.trim() ?? ''
+  const candidates = new Set<string>()
+  if (rowPrefix) candidates.add(rowPrefix.replace(/\s+/g, ''))
+  const preceding: string[] = []
+  for (let paragraph = row - 1; paragraph > 0 && preceding.length < 3; paragraph -= 1) {
+    const line = packet.excerpts.filter(item => item.sourceCandidateId === packet.sourceCandidateId && item.location === `paragraph:${paragraph}`)
+    if (line.length !== 1 || /\d|[。；;！？]|单位|营业收入|营业成本|毛利率|分行业|分产品|分地区/.test(line[0]!.text)) break
+    if (!line[0]!.text.trim() || line[0]!.text.length > 90) break
+    preceding.unshift(line[0]!.text.trim())
+  }
+  for (let start = 0; start < preceding.length; start += 1) {
+    const label = `${preceding.slice(start).join('')}${rowPrefix}`.replace(/\s+/g, '')
+    if (label.length >= 4) candidates.add(label)
+  }
+  return [...candidates].some(label => label.length >= 4 && normalizedClaim.includes(label))
+}
 function deduplicateCompanyPackets(packets: readonly CompanyEvidencePacket[]): CompanyEvidencePacket[] {
   const grouped = new Map<string, { packet: CompanyEvidencePacket; excerpts: Map<string, CompanyEvidencePacket['excerpts'][number]>; conflicts: Set<string> }>()
   for (const packet of packets) {
@@ -1301,6 +1427,59 @@ export function repairUnavailableCompanyMethodCitations<T>(output: T, packets: r
     return { ...source, content: lines.join('\n') }
   })
   const repairs: CompanyCitationRepair[] = []
+  const repairAdjacentSourceLocatorCluster = (text: string, fieldPath: string): string => text.replace(/((?:\[[^\]\s]+@paragraph:\d+\]\s*){2,})/g, (literal, rawCluster: string, offset: number, whole: string) => {
+    const refs = [...rawCluster.matchAll(/\[([^@\]\s]+)@paragraph:(\d+)\]/g)].map(match => ({ sourceCandidateId: match[1]!, location: `paragraph:${match[2]}`, paragraph: Number(match[2]) }))
+    if (refs.length < 2 || !input.sources.some(source => source.candidate.candidateId === refs[0]!.sourceCandidateId)
+      || refs.some((ref, index) => index > 0 && (ref.sourceCandidateId !== refs[0]!.sourceCandidateId || ref.paragraph !== refs[index - 1]!.paragraph + 1))) return literal
+    if (refs.some(ref => allowed.has(`${ref.sourceCandidateId}@${ref.location}`))) return literal
+
+    const locatorSourceIds = refs.map(ref => new Set(packets
+      .filter(packet => packet.sourceCandidateId !== refs[0]!.sourceCandidateId
+        && input.sources.some(source => source.candidate.candidateId === packet.sourceCandidateId)
+        && packet.excerpts.some(excerpt => excerpt.location === ref.location))
+      .map(packet => packet.sourceCandidateId)))
+    const matchingSourceIds = [...locatorSourceIds[0]!].filter(sourceId => locatorSourceIds.every(ids => ids.has(sourceId)))
+    if (matchingSourceIds.length !== 1) return literal
+    const sourceCandidateId = matchingSourceIds[0]!
+    // Leave ordinary truncated-id completion to the existing strict-prefix repair.
+    if (sourceCandidateId.startsWith(refs[0]!.sourceCandidateId) || refs[0]!.sourceCandidateId.startsWith(sourceCandidateId)) return literal
+    if (packets.filter(packet => packet.sourceCandidateId === sourceCandidateId).length !== 1
+      || input.sources.filter(source => source.candidate.candidateId === sourceCandidateId).length !== 1) return literal
+    const packet = packets.find(candidate => candidate.sourceCandidateId === sourceCandidateId)
+    if (!packet) return literal
+
+    const claimStart = whole.lastIndexOf('\n', Math.max(0, offset - 1)) + 1
+    const before = whole.slice(claimStart, offset).trimEnd()
+    const withoutSentenceEnd = /[。！？；]$/.test(before) ? before.slice(0, -1) : before
+    const boundary = Math.max(withoutSentenceEnd.lastIndexOf('。'), withoutSentenceEnd.lastIndexOf('！'), withoutSentenceEnd.lastIndexOf('？'), withoutSentenceEnd.lastIndexOf('；'))
+    const claim = withoutSentenceEnd.slice(boundary + 1).trim()
+    if (!claim) return literal
+
+    const excerpts = refs.flatMap(ref => packet.excerpts.filter(excerpt => excerpt.location === ref.location))
+    if (excerpts.length !== refs.length) return literal
+    const semanticText = [packet.title, ...excerpts.map(excerpt => excerpt.text)].join(' ')
+    if (!meaningMatches(claim, semanticText)) return literal
+    const candidateRefs = refs.map(ref => ({ sourceCandidateId, location: ref.location }))
+    const grounded = validateCompanyNumericGrounding({
+      markdown: `${claim} ${candidateRefs.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`,
+      sources: packetSources,
+      evidenceContexts: packets,
+      preparedAnalysis: input.preparedAnalysis,
+      trustedText: [input.company.symbol, input.asOf],
+    })
+    if (grounded.status !== 'grounded') return literal
+
+    const replacements = new Map(refs.map(ref => [`[${ref.sourceCandidateId}@${ref.location}]`, `[${sourceCandidateId}@${ref.location}]`]))
+    const repairedCluster = rawCluster.replace(/\[[^\]\s]+@paragraph:\d+\]/g, citation => replacements.get(citation) ?? citation)
+    repairs.push({
+      sectionId: fieldPath,
+      inputText: claim,
+      originalReferences: refs.map(ref => ({ sourceCandidateId: ref.sourceCandidateId, location: ref.location })),
+      addedReferences: candidateRefs,
+      reason: 'A consecutive cited paragraph cluster used a source id that supplied none of those locators. Every exact locator was present in one unique alternative source, and the combined supplied excerpts matched the claim and passed numeric grounding before the source ids were rebound.',
+    })
+    return repairedCluster
+  })
   const repairText = (text: string, sectionId: string, supportingRefs: readonly CompanyMethodEvidenceRef[] = []): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceCandidateId: string, location: string, offset: number, whole: string) => {
     if (allowed.has(`${sourceCandidateId}@${location}`)) return literal
     // Models occasionally truncate the final character of a long official
@@ -1443,11 +1622,11 @@ export function repairUnavailableCompanyMethodCitations<T>(output: T, packets: r
       : 'Unique supplied excerpt at the exact locator from a verified source and title independently matches the claim semantics and numeric grounding; repaired the source-locator pair together.' })
     return `[${replacement.sourceCandidateId}@${replacement.location}]`
   })
-  for (const key of ['markdown', 'answer'] as const) if (typeof copy[key] === 'string') copy[key] = repairText(copy[key] as string, key)
+  for (const key of ['markdown', 'answer'] as const) if (typeof copy[key] === 'string') copy[key] = repairText(repairAdjacentSourceLocatorCluster(copy[key] as string, key), key)
   if (Array.isArray(copy.sections)) copy.sections = copy.sections.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const row = item as Record<string, unknown>
-    return typeof row.markdown === 'string' ? { ...row, markdown: repairText(row.markdown, typeof row.id === 'string' ? row.id : `sections[${index}]`) } : item
+    return typeof row.markdown === 'string' ? { ...row, markdown: repairText(repairAdjacentSourceLocatorCluster(row.markdown, typeof row.id === 'string' ? row.id : `sections[${index}]`), typeof row.id === 'string' ? row.id : `sections[${index}]`) } : item
   })
   if (Array.isArray(copy.findings)) copy.findings = copy.findings.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
@@ -1617,6 +1796,11 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
     const locatorCleanedText = removeBoundLocatorMarkers(finding.text, finding.evidence)
     if (locatorCleanedText !== finding.text) finding = { ...finding, text: locatorCleanedText }
     const initiallyGrounded = grounded(finding.text, finding.evidence)
+    const classifiedRowRefs = exactClassifiedTableRowContextReferences(finding, evidencePackets, input)
+    if (classifiedRowRefs?.length && grounded(finding.text, [...finding.evidence, ...classifiedRowRefs])) {
+      repairs.push({ findingIndex, inputText: finding.text, originalReferences: finding.evidence, addedReferences: classifiedRowRefs, reason: 'The already-cited unit, complete table header, and exact classification heading identify one source-bound row whose split label matches the finding; exact source lines were verified and the full finding passed numeric grounding after adding only the omitted label/value locators.' })
+      return { ...finding, evidence: [...finding.evidence, ...classifiedRowRefs] }
+    }
     const researchInvestment = exactAnnualResearchInvestmentRow(finding.text, finding.evidence, evidencePackets, input)
     if (researchInvestment && grounded(researchInvestment.verificationText, [...finding.evidence, researchInvestment.reference])) {
       repairs.push({ findingIndex, inputText: researchInvestment.verificationText, originalReferences: finding.evidence, addedReferences: [researchInvestment.reference], reason: 'The finding cites the exact adjacent annual-report year header; the unique supplied R&D investment row matches the named periods and reported amounts, and numeric grounding accepts the exact row.' })
@@ -1931,6 +2115,7 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
         const row = Number(excerpt.location.split(':')[1])
         if (numbers(excerpt.text).length < 2) continue
         if (requestedTable && excerptTableKind(packet, excerpt) !== requestedTable) continue
+        if (!claimIncludesExactClassifiedRowLabel(finding.text, packet, excerpt)) continue
         const eventContext = keys(clause).has('placement') ? packet.excerpts.filter((item) => Math.abs(Number(item.location.split(':')[1]) - row) === 1 && keys(item.text).has('placement')) : []
         const context = [...new Map(packet.excerpts.filter((item) => {
           if (!(excerpt.contextLocations ?? []).includes(item.location)) return false
@@ -1999,6 +2184,52 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
     // from an already cited source both matches the claim meaning and resolves
     // that exact diagnostic.
     const initialIssues = validateCompanyNumericGrounding({ markdown: repaired, sources: packetSources, evidenceContexts: evidencePackets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf] }).diagnostics
+    // Product rows sometimes point readers to a separate technology section,
+    // while their exact specifications are already supplied and cited by the
+    // same method. Repair only the optical-module row, only from an already
+    // referenced source, and only when the excerpt states the matching
+    // technology quantity together with its architecture/package context.
+    // In particular, a 400G chip-development statement cannot establish a
+    // 400G module package or architecture.
+    if (sectionId === 'products') {
+      const opticalRows = repaired.split('\n').filter((line) => /^\s*\|\s*光模块\s*\|/.test(line))
+      if (opticalRows.length === 1) {
+        const row = opticalRows[0]!
+        const rowIdentifiers = [...row.matchAll(/(\d+(?:\.\d+)?)\s*([GT])\b/gi)].map((match) => ({ identifier: `${match[1]}${match[2]}`.toUpperCase(), value: Number(match[1]) }))
+        const rowIssues = initialIssues.flatMap((issue) => {
+          const identifier = rowIdentifiers.find((item) => item.value === Math.abs(issue.value))
+          return identifier ? [{ issue, identifier: identifier.identifier }] : []
+        })
+        const candidates = new Map<string, CompanyMethodEvidenceRef>()
+        for (const { identifier } of rowIssues) {
+          const routeContext = identifier.startsWith('400G') ? /封装|QSFP|OSFP|架构/i
+            : identifier.startsWith('800G') ? /DSP|LPO|LRO|QSFP|OSFP|架构/i
+              : identifier.startsWith('1.6T') ? /EML|InP|PIC|OSFP/i
+                : undefined
+          if (!routeContext) continue
+          for (const packet of evidencePackets.filter((candidate) => referencedSources.has(candidate.sourceCandidateId))) for (const excerpt of packet.excerpts) {
+            const compactExcerpt = excerpt.text.replace(/\s+/g, '').toUpperCase()
+            if (!compactExcerpt.includes(identifier) || !routeContext.test(excerpt.text)) continue
+            const ref = { sourceCandidateId: packet.sourceCandidateId, location: excerpt.location }
+            if (!row.includes(`[${ref.sourceCandidateId}@${ref.location}]`)) candidates.set(`${ref.sourceCandidateId}@${ref.location}`, ref)
+          }
+        }
+        if (candidates.size) {
+          const additions = [...candidates.values()]
+          const groundedCandidate = `${repaired.trimEnd()} ${additions.map((ref) => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}${block.endsWith('\n') ? '\n' : ''}`
+          const remaining = validateCompanyNumericGrounding({ markdown: groundedCandidate, sources: packetSources, evidenceContexts: evidencePackets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf] }).diagnostics
+          const repairedTechTokens = new Set(rowIssues.map(({ identifier }) => identifier))
+          const unresolvedTech = remaining.some((issue) => {
+            const identifier = rowIdentifiers.find((item) => item.value === Math.abs(issue.value))?.identifier
+            return identifier !== undefined && repairedTechTokens.has(identifier)
+          })
+          if (!unresolvedTech) {
+            repaired = groundedCandidate
+            repairs.push({ sectionId, inputText: row, originalReferences: [...block.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)].map((match) => ({ sourceCandidateId: match[1]!, location: match[2]! })), addedReferences: additions, reason: 'Exact optical-module technology quantities were matched to supplied excerpts from a source already cited by this method. Each added excerpt includes the matching package or architecture context, and the existing numeric grounding validator accepted the repaired row.' })
+          }
+        }
+      }
+    }
     for (const issue of initialIssues) {
       const numericIndex = repaired.indexOf(issue.token)
       const beforeNumeric = repaired.slice(0, Math.max(0, numericIndex))

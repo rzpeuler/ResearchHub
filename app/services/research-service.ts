@@ -13,6 +13,8 @@ import { runThesisRedTeam } from '../../workflows/thesis-red-team/workflow.ts'
 import type { EventResearchSignalStore } from '../../plugins/daily-intelligence/contracts.ts'
 import type { ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome, ResearchSignalStore } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import { createValuationDataResolver } from '../../plugins/research-acquisition/valuation-data.ts'
+import { createEarningsDataResolver } from '../../plugins/research-acquisition/earnings-data.ts'
 import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
 import { OfficialDisclosureResearchPlugin } from '../../plugins/research-acquisition/official.ts'
 import { GdeltResearchPlugin } from '../../plugins/research-acquisition/gdelt.ts'
@@ -28,7 +30,7 @@ import { getCanonicalResearchSkill } from './research-skill-catalog.ts'
 import { ThesisLifecycleService, type ThesisLifecycleRefreshInput, type ApplicationThesisLifecycleResult, type ThesisLifecycleDecisionReportInput, type ThesisLifecycleDecisionReportResult } from './thesis-lifecycle-service.ts'
 import { ThesisCreateService, type ThesisCreateInput, type ThesisCreateServiceResult } from './thesis-create-service.ts'
 import { triggerThemeScopeImpactPostWrite, type ThemeScopeImpactChecker, type ThemeScopeImpactTriggerResult } from '../../workflows/theme-scope-impact-check/post-write.ts'
-import type { CompanyDeepResearchResolverOptions } from '../../workflows/company-deep-research/contracts.ts'
+import type { CompanyDeepResearchResolverOptions, CompanyDeepResearchValuationResolverFactory, CompanyDeepResearchEarningsResolverFactory } from '../../workflows/company-deep-research/contracts.ts'
 import type { EventResearchDataResolverContext } from '../../workflows/event-research/contracts.ts'
 import type { ThesisRedTeamDataResolverContext } from '../../workflows/thesis-red-team/contracts.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
@@ -175,6 +177,18 @@ export class ResearchService {
       acquisitionDeadlineAt: context.acquisitionDeadlineAt, onProgress: context.onProgress, onCandidatesDiscovered: context.onCandidatesDiscovered })
   }
 
+  private createCompanyValuationResolverFactory(): CompanyDeepResearchValuationResolverFactory {
+    return (context) => this.options.valuationDataResolverFactory
+      ? this.options.valuationDataResolverFactory({ company: context.company, valuationDate: context.valuationDate, ...(context.historicalAsOf === undefined ? {} : { asOf: context.historicalAsOf }), now: context.now, signal: context.signal })
+      : createValuationDataResolver({ company: context.company, valuationDate: context.valuationDate, ...(context.historicalAsOf === undefined ? {} : { historicalAsOf: context.historicalAsOf }), now: context.now, signal: context.signal, akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure })
+  }
+
+  private createCompanyEarningsResolverFactory(): CompanyDeepResearchEarningsResolverFactory {
+    return (context) => this.options.earningsDataResolverFactory
+      ? this.options.earningsDataResolverFactory({ company: context.company, fiscalYear: context.fiscalYear, period: context.period, asOf: context.asOf, now: context.now, signal: context.signal })
+      : createEarningsDataResolver({ company: context.company, fiscalYear: context.fiscalYear, period: context.period, asOf: context.asOf, now: context.now, signal: context.signal, acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare })
+  }
+
   private createEventDataResolverFactory(): (context: EventResearchDataResolverContext) => DataResolver<CompanyResearchDataPayload> {
     return (context) => this.createResearchEvidenceResolver(context, ({ provider, candidates, requirement }) => {
       const allowed = context.onCandidatesDiscovered({ provider, candidates, requirement })
@@ -296,6 +310,8 @@ export class ResearchService {
           company: resolvedCompany,
           ...(securityIdentity === undefined ? {} : { securityIdentity }),
           dataResolverFactory: this.createCompanyDataResolverFactory(),
+          valuationDataResolverFactory: this.createCompanyValuationResolverFactory(),
+          earningsDataResolverFactory: this.createCompanyEarningsResolverFactory(),
           asOf: input.asOf,
           reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')),
           signal: combined.signal,

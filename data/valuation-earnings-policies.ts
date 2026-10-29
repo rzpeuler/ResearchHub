@@ -16,6 +16,12 @@ const valuation: readonly SourcePolicy[] = [
   policy('valuation_peer_candidate_evidence', 'valuation', 'evidence', [candidate('valuation_peer_candidate_evidence', 'eastmoney-peer-comparison', 'akshare.peerComparison', 'evidence', 'EastMoney')], 'valuation-peer-candidate-eastmoney'),
 ]
 
+const companyResearchValuation: readonly SourcePolicy[] = valuation.map((sourcePolicy) => ({
+  ...sourcePolicy,
+  policyId: `${sourcePolicy.policyId}-company-research`,
+  requirementMatch: { ...sourcePolicy.requirementMatch, workflow: 'company-deep-research' },
+}))
+
 const actualMetricIds = ['earnings_actual_revenue', 'earnings_actual_net_profit', 'earnings_actual_gross_margin', 'earnings_actual_operating_cash_flow', 'earnings_actual_eps'] as const
 const earnings: readonly SourcePolicy[] = [
   policy('earnings_official_filing', 'earnings-review', 'document', [candidate('earnings_official_filing', 'cninfo-earnings-filing', 'official.discoverFetchNormalize', 'document', 'CNINFO', 'S0_STATUTORY')], 'earnings-official-filing-cninfo'),
@@ -30,6 +36,20 @@ const earnings: readonly SourcePolicy[] = [
   ], 'earnings-expectations-net-profit-source-ladder-v0.1', 'earnings_expectations'),
 ]
 
+const companyResearchExpectations: readonly SourcePolicy[] = earnings
+  .filter((sourcePolicy) => ['earnings_expectation_eps', 'earnings_expectation_net_profit'].includes(sourcePolicy.requirementMatch.metricId ?? ''))
+  .map((sourcePolicy) => ({
+    ...sourcePolicy,
+    ...(sourcePolicy.requirementMatch.metricId === 'earnings_expectation_eps'
+      ? { candidates: sourcePolicy.candidates.filter(candidate => candidate.operationId !== 'legacy.eastmoneyResearchReport') }
+      : {}),
+    policyId: `${sourcePolicy.policyId}-company-research`,
+    requirementMatch: { ...sourcePolicy.requirementMatch, workflow: 'company-deep-research' },
+    // Company Research needs both existing EPS surfaces for an attributable
+    // variant comparison. Earnings Review keeps its FIRST_VALID policy.
+    ...(sourcePolicy.requirementMatch.metricId === 'earnings_expectation_eps' ? { selectionMode: 'COLLECT_DIVERSE' as const } : {}),
+  }))
+
 const management: readonly SourcePolicy[] = [
   policy('management_communication_documents', 'management-communication-acquisition', 'document', [candidate('management_communication_documents', 'cninfo-official-ir', 'cninfo_official_ir', 'document', 'listed-company', 'S1_OFFICIAL')], 'd2-001-management-communication-documents', 'management_communication_documents'),
   policy('exchange_qa_sse', 'management-communication-acquisition', 'evidence', [candidate('exchange_qa_sse', 'sse-einteraction', 'exchange_qa_sse', 'evidence', 'listed-company', 'S1_OFFICIAL')], 'd2-001-sse-exchange-qa', 'exchange_qa_sse'),
@@ -37,4 +57,4 @@ const management: readonly SourcePolicy[] = [
 ]
 
 /** Existing source routes expressed once as exact Common identities. Executors bind these operation IDs in Runtime composition. */
-export const PHASE2_COMMON_SOURCE_POLICIES: readonly SourcePolicy[] = [...valuation, ...earnings, ...management]
+export const PHASE2_COMMON_SOURCE_POLICIES: readonly SourcePolicy[] = [...valuation, ...companyResearchValuation, ...earnings, ...companyResearchExpectations, ...management]

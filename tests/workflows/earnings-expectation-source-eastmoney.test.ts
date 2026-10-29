@@ -26,6 +26,24 @@ test('projection maps the requested annual EPS horizon into validated EstimatePo
   assert.deepEqual(result.diagnostics, [])
 })
 
+test('native EastMoney proof fingerprints changed values under the same infoCode and stays UNVERIFIED', () => {
+  const first = projectEastmoneyEstimatePoints({ acquisition: acquisition([report('same-code', '1001', [{ fiscalYear: 2026, value: 10, providerField: 'predictThisYearEps' }])]), targetFiscalYear: 2026 })
+  const changed = projectEastmoneyEstimatePoints({ acquisition: acquisition([report('same-code', '1001', [{ fiscalYear: 2026, value: 12, providerField: 'predictThisYearEps' }])]), targetFiscalYear: 2026 })
+  const firstProof = first.pointProofs?.[0]
+  const changedProof = changed.pointProofs?.[0]
+  assert.ok(firstProof)
+  assert.ok(changedProof)
+  assert.equal(firstProof.estimateId, changedProof.estimateId)
+  assert.equal(firstProof.sourceCandidateId, first.estimates[0]?.sourceCandidateIds[0])
+  assert.equal(firstProof.providerObjectId, 'same-code')
+  assert.equal(firstProof.matchedValue, 10)
+  assert.notEqual(firstProof.observedRowHash, changedProof.observedRowHash)
+  assert.notEqual(firstProof.pointFingerprint, changedProof.pointFingerprint)
+  assert.equal(firstProof.basisStatus, 'UNVERIFIED')
+  assert.equal(firstProof.valueVersionStatus, 'UNVERIFIED')
+  assert.equal(firstProof.correctionStatus, 'UNVERIFIED')
+})
+
 test('projection is input-order independent and preserves distinct institutions', () => {
   const first = projectEastmoneyEstimatePoints({ acquisition: acquisition([report('b', 'org-b'), report('a', 'org-a')]), targetFiscalYear: 2026 })
   const second = projectEastmoneyEstimatePoints({ acquisition: acquisition([report('a', 'org-a'), report('b', 'org-b')]), targetFiscalYear: 2026 })

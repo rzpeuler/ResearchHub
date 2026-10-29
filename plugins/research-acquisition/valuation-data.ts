@@ -55,6 +55,17 @@ function marketHistoryWindowEnd(date: string): { readonly startDate: string; rea
   return { startDate: start.toISOString().slice(0, 10).replace(/-/g, ''), endDate: normalizedEndDate.replace(/-/g, '') }
 }
 
+function shanghaiLocalDate(dateTime: string): string {
+  const timestamp = Date.parse(dateTime)
+  if (!Number.isFinite(timestamp)) return dateTime.slice(0, 10)
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(timestamp)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value
+  const year = part('year')
+  const month = part('month')
+  const day = part('day')
+  return year && month && day ? `${year}-${month}-${day}` : dateTime.slice(0, 10)
+}
+
 function marketProviderFailure(error: unknown): SourceExecutionResult<ValuationDataPayload> {
   const message = error instanceof Error ? error.message : String(error)
   const status: 'TIMEOUT' | 'RATE_LIMITED' | 'ACCESS_DENIED' | 'PARSE_ERROR' | 'SOURCE_ERROR' = /timeout|timed out|ETIMEDOUT|AbortError/i.test(message)
@@ -135,7 +146,9 @@ export function createValuationDataResolver(options: ValuationDataCompositionOpt
   let marketCalendar: Promise<MarketTradingCalendarInput | undefined> | undefined
   const loadMarketCalendar = () => {
     if (!marketCalendar) marketCalendar = (async () => {
-      const range = marketHistoryWindowEnd(options.valuationDate)
+      // Coverage must include the Shanghai-local as-of date even when its UTC date is earlier.
+      // The quote request remains bounded by its own period end below.
+      const range = marketHistoryWindowEnd(shanghaiLocalDate(options.valuationDate))
       try {
         const rows = await options.akshare?.tradingCalendar?.({ symbol: 'calendar', startDate: range.startDate, endDate: range.endDate })
         const toIsoDay = (value: string) => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`

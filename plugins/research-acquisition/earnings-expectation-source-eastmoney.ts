@@ -3,12 +3,16 @@ import type { NormalizedResearchSource, ResearchProviderOutcome } from './contra
 import type { EastmoneyReportAcquisitionResult, EastmoneyResearchReportRecord } from './expectations/contracts.ts'
 import { validateEstimatePoint } from '../../skills/earnings-review/expectations/matching.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
+import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
+import { createEarningsEstimatePointProof, type EarningsEstimatePointProof } from './earnings-expectation-point-proof.ts'
 
-export const EASTMONEY_EPS_UNIT = 'CNY_per_share' as const
+export const EASTMONEY_EPS_UNIT = EPS_PER_SHARE_UNIT
 
 export interface EstimateProjectionResult {
   readonly sources: readonly NormalizedResearchSource[]
   readonly estimates: readonly EstimatePoint[]
+  /** Plugin-local current-row bindings; deliberately not part of EstimatePoint. */
+  readonly pointProofs?: readonly EarningsEstimatePointProof[]
   readonly institutions: readonly {
     readonly institutionKey: string
     readonly name: string
@@ -42,6 +46,7 @@ export function projectEastmoneyEstimatePoints(input: { readonly acquisition: Ea
   const diagnostics: string[] = [...input.acquisition.diagnostics]
   const sourcesByCandidateId = new Set(input.acquisition.sources.map((source) => source.candidate.candidateId))
   const estimates: EstimatePoint[] = []
+  const pointProofs: EarningsEstimatePointProof[] = []
   const institutions = new Map<string, { readonly institutionKey: string; readonly name: string; readonly providerCode: string }>()
   const records = input.acquisition.records.slice().sort((left, right) => left.infoCode.localeCompare(right.infoCode))
   if (input.acquisition.forecastBaseYear !== undefined && (input.targetFiscalYear < input.acquisition.forecastBaseYear || input.targetFiscalYear > input.acquisition.forecastBaseYear + 2)) diagnostics.push(`eastmoney_unsupported_target_fiscal_year:${input.targetFiscalYear}`)
@@ -62,6 +67,22 @@ export function projectEastmoneyEstimatePoints(input: { readonly acquisition: Ea
       const validation = validateEstimatePoint(point)
       if (validation.length > 0) { diagnostics.push(...validation.map((item) => `${point.estimateId}:${item}`)); continue }
       estimates.push(point)
+      pointProofs.push(createEarningsEstimatePointProof({
+        estimateId: point.estimateId,
+        sourceCandidateId: candidateId,
+        provider: 'eastmoney-reportapi',
+        providerObjectId: record.infoCode,
+        matchedField: forecast.providerField,
+        matchedMetric: point.metric,
+        matchedValue: forecast.value,
+        matchedUnit: point.unit,
+        matchedPeriod: point.fiscalPeriod,
+        matchedInstitutionKey: point.institutionKey,
+        matchedPublishedAt: point.publishedAt,
+        observedRow: record,
+        snapshotCapturedAt: input.acquisition.sources.find((source) => source.candidate.candidateId === candidateId)!.retrievedAt,
+        snapshotSealedAt: input.acquisition.sources.find((source) => source.candidate.candidateId === candidateId)!.retrievedAt,
+      }))
       institutions.set(point.institutionKey, { institutionKey: point.institutionKey, name: institutionName(record), providerCode: record.orgCode })
     }
   }
@@ -69,6 +90,7 @@ export function projectEastmoneyEstimatePoints(input: { readonly acquisition: Ea
   return {
     sources: input.acquisition.sources.slice().sort((left, right) => left.candidate.candidateId.localeCompare(right.candidate.candidateId)),
     estimates,
+    pointProofs: pointProofs.sort((left, right) => left.estimateId.localeCompare(right.estimateId)),
     institutions: [...institutions.values()].sort((left, right) => left.institutionKey.localeCompare(right.institutionKey)),
     diagnostics: uniqueSorted(diagnostics),
     providerOutcome: input.acquisition.providerOutcome,

@@ -61,50 +61,55 @@ async function runScenario(scenario: Scenario) {
   } finally { await rm(root,{recursive:true,force:true}) }
 }
 
-test('new accepted statutory annual report refreshes every stale complete method within two attempts', async () => {
+test('synthetic P0-19 gaps block the report before a supplemental annual-report refresh pass', async () => {
   const {result,analysis,calls} = await runScenario('added-official')
-  assert.equal(result.status,'completed',result.errors.join(';'))
+  assert.equal(result.status,'blocked',result.errors.join(';'))
+  assert.ok(result.report, 'The fail-closed report is retained when unsupported scenario inputs prevent refresh')
+  assert.equal(calls.length,COMPANY_RESEARCH_METHOD_IDS.length, 'Only the initial atomic method pass runs before the unsupported report is blocked')
   for (const id of COMPANY_RESEARCH_METHOD_IDS) {
     const methodCalls = calls.filter(call=>call.skillId===id)
-    assert.equal(methodCalls.length,2,id)
-    assert.ok(!methodCalls[0]!.evidenceIds.includes('official-new'))
-    assert.ok(methodCalls[1]!.evidenceIds.includes('official-new'),id)
+    assert.equal(methodCalls.length,1,id)
+    assert.ok(!methodCalls[0]!.evidenceIds.includes('official-new'),id)
     const method = analysis.methodResults.find(method=>method.skillId===id)!
-    assert.equal(method.attempts,2)
+    assert.equal(method.attempts,1)
     assert.equal(method.status,'complete')
-    assert.ok(method.diagnostics.some(diagnostic=>diagnostic.code==='EVIDENCE_REFRESH_REQUIRED'))
+    assert.ok(!method.diagnostics.some(diagnostic=>diagnostic.code.startsWith('EVIDENCE_REFRESH')))
   }
 })
 
-test('same candidate conflict cannot promote a new report or refresh unrelated completed methods', async () => {
+test('synthetic P0-19 gaps block before a same-candidate supplemental conflict can be considered', async () => {
   const {result,analysis,calls} = await runScenario('conflict')
-  assert.equal(result.status,'completed',result.errors.join(';'))
-  assert.equal(analysis.sourceConflicts.length,1)
-  assert.equal(calls.length,11)
+  // The P0-19 quality gate blocks this synthetic fixture before supplemental
+  // collection. The same-candidate conflict path is therefore not exercised.
+  assert.equal(result.status,'blocked',result.errors.join(';'))
+  assert.match(result.errors.join(';'),/SCENARIO_SET_INCOMPLETE|VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES/)
+  assert.equal(analysis.sourceConflicts.length,0)
+  assert.equal(calls.length,COMPANY_RESEARCH_METHOD_IDS.length)
   assert.ok(analysis.methodResults.every(method=>!method.diagnostics.some(d=>d.code.startsWith('EVIDENCE_REFRESH'))))
 })
 
 test('new nonperiodic evidence does not trigger official-report refresh', async () => {
   const {calls,analysis} = await runScenario('noncore')
-  assert.equal(calls.length,11)
+  assert.equal(calls.length,COMPANY_RESEARCH_METHOD_IDS.length)
   assert.ok(analysis.methodResults.every(method=>!method.diagnostics.some(d=>d.code.startsWith('EVIDENCE_REFRESH'))))
 })
 
-test('new official evidence fails closed when an earlier complete method already spent two attempts', async () => {
+test('method retries stay within the two-attempt budget when synthetic P0-19 inputs remain blocked', async () => {
   const {result,analysis,calls} = await runScenario('exhausted')
   assert.equal(result.status,'blocked')
   const history = analysis.methodResults.find(method=>method.skillId==='company_history_strategy')!
   assert.equal(history.attempts,2)
-  assert.equal(history.status,'insufficient_evidence')
+  assert.equal(history.status,'complete', 'The internal method retry yields a valid method result; no supplemental evidence refresh runs')
   assert.ok(history.sections.length,'Keep the previously produced analysis for inspection')
-  assert.ok(history.diagnostics.some(d=>d.code==='EVIDENCE_REFRESH_BUDGET_EXHAUSTED'))
+  assert.ok(!history.diagnostics.some(d=>d.code==='EVIDENCE_REFRESH_BUDGET_EXHAUSTED'))
   assert.equal(calls.filter(call=>call.skillId==='company_history_strategy').length,2)
   assert.ok(analysis.methodResults.every(method=>method.attempts<=2))
 })
 
 test('official reports consumed in the first successful pass require no redundant refresh', async () => {
   const {result,analysis,calls,discoveries} = await runScenario('initial-official')
-  assert.equal(result.status,'completed',result.errors.join(';'))
+  assert.equal(result.status,'blocked',result.errors.join(';'))
+  assert.ok(result.report, 'The report is persisted while unsupported P0-19 inputs remain blocked')
   assert.equal(discoveries,1)
   assert.equal(calls.length,10)
   assert.ok(analysis.methodResults.every(method=>method.attempts===1 && method.status==='complete'))
@@ -112,7 +117,7 @@ test('official reports consumed in the first successful pass require no redundan
 
 test('new public web page with an annual-report title does not trigger statutory refresh', async () => {
   const {calls,analysis} = await runScenario('public-page')
-  assert.equal(calls.length,11)
-  assert.ok(calls.at(-1)!.evidenceIds.includes('public-web-new'),'Public page was actually accepted and supplied')
+  assert.equal(calls.length,COMPANY_RESEARCH_METHOD_IDS.length, 'A non-statutory page does not trigger another semantic method pass')
+  assert.ok(calls.every(call=>!call.evidenceIds.includes('public-web-new')),'Public web evidence cannot stand in for a new statutory annual report')
   assert.ok(analysis.methodResults.every(method=>!method.diagnostics.some(d=>d.code.startsWith('EVIDENCE_REFRESH'))))
 })

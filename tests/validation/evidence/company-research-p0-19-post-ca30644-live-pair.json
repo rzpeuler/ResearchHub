@@ -1,0 +1,148 @@
+{
+  "evidenceType": "sanitized-live-acceptance-summary",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "ca30644520e2cae462c50052c48d4b3ac3bb3835",
+  "runtime": "Real Runtime HTTP API launched from the root checkout code with the saved model selection and isolated disposable Knowledge Bases",
+  "modelSelection": {
+    "provider": "openai-codex",
+    "modelId": "gpt-6-luna"
+  },
+  "writeKnowledge": false,
+  "acceptance": "NOT_ACCEPTED",
+  "notes": [
+    "Both runs are blocked and this pair is not P0-19 acceptance.",
+    "Both valuation sections passed after the Shanghai-local calendar coverage repair; EastMoney price history returned a configured ProxyError and Tencent supplied the accepted fallback.",
+    "Bull/Base/Bear remains blocked because no source-backed operating-driver plan is available. Variant Perception remains blocked because expectation value versions are unverified.",
+    "Workflow semantic review did not run for either report because other structural sections remained blocked (reviewAttempts=0, reviewRounds=0).",
+    "Raw reports, analysis sidecars, provider payloads, and source content remain local under ignored runtime-data/company-quality-acceptance/2026-10-28-p0-19-* directories."
+  ],
+  "runs": [
+    {
+      "company": {
+        "symbol": "002594",
+        "name": "BYD"
+      },
+      "runId": "002fe266-507b-4d20-a58b-cd0815247cf5",
+      "reportId": "company-research-002594-002fe266-507b-4d20-a58b-cd0815247cf5",
+      "asOf": "2026-10-27T18:49:10.748Z",
+      "status": "blocked",
+      "coreCoverage": {
+        "completed": 15,
+        "required": 19
+      },
+      "failedSections": [
+        "products",
+        "technologies",
+        "bull-base-bear",
+        "variant-perception"
+      ],
+      "failedMethods": [
+        {
+          "skillId": "product_technology_analysis",
+          "status": "failed",
+          "attempts": 2,
+          "diagnosticCodes": [
+            "NUMERIC_GROUNDING_ERROR",
+            "FORMAT_ERROR"
+          ]
+        }
+      ],
+      "otherAtomicMethods": "9/9 complete",
+      "valuation": {
+        "sectionPassed": true,
+        "eastMoneyPrice": "PROXY_ERROR",
+        "tencentPrice": "SUCCESS",
+        "eps": "SUCCESS",
+        "bvps": "SUCCESS"
+      },
+      "quantitativeBlockers": [
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_UNVERIFIED"
+      ],
+      "semanticReview": {
+        "attempts": 0,
+        "rounds": 0
+      },
+      "knowledgeUnchanged": true,
+      "knowledgeHashes": {
+        "manifest.yaml": "674cdad87bc3b883020dcc430ea28f3b6064f4948005259209be8ffefaa8766c",
+        "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+        "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "localReportDirectory": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-byd-ca30644/"
+    },
+    {
+      "company": {
+        "symbol": "002384",
+        "name": "Dongshan Precision"
+      },
+      "runId": "5c0f9e18-825b-4799-9e6a-df45ce18088d",
+      "reportId": "company-research-002384-5c0f9e18-825b-4799-9e6a-df45ce18088d",
+      "asOf": "2026-10-27T18:41:35.241Z",
+      "status": "blocked",
+      "coreCoverage": {
+        "completed": 17,
+        "required": 19
+      },
+      "failedSections": [
+        "bull-base-bear",
+        "variant-perception"
+      ],
+      "atomicMethods": "10/10 complete",
+      "methodDiagnostics": {
+        "business_driver_analysis": [
+          "attempt 1: REFERENCE_ERROR",
+          "attempt 2: complete"
+        ],
+        "company_risk_analysis": [
+          "complete"
+        ]
+      },
+      "valuation": {
+        "sectionPassed": true,
+        "eastMoneyPrice": "PROXY_ERROR",
+        "tencentPrice": "SUCCESS",
+        "eps": "SUCCESS",
+        "bvps": "SUCCESS"
+      },
+      "quantitativeBlockers": [
+        "SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE",
+        "VARIANT_EXPECTATION_VALUE_UNVERIFIED"
+      ],
+      "semanticReview": {
+        "attempts": 0,
+        "rounds": 0
+      },
+      "knowledgeUnchanged": true,
+      "knowledgeHashes": {
+        "manifest.yaml": "5f62a93a47af3ced7ffcdd7f745081e097d6569c83825a8a31c603f1da98676b",
+        "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+        "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "localReportDirectory": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-dongshan-ca30644/"
+    }
+  ],
+  "regression": {
+    "node": {
+      "command": "npm run test:node",
+      "total": 3189,
+      "passed": 3168,
+      "failed": 21,
+      "baselineFailureIdentities": 21,
+      "addedFailureIdentities": 0,
+      "disappearedFailureIdentities": 0,
+      "baselineEvidence": "tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json"
+    },
+    "client": {
+      "command": "npm run client:test",
+      "total": 223,
+      "passed": 218,
+      "failed": 5,
+      "failureIdentitiesMatchKnownBaseline": true
+    },
+    "typecheck": true,
+    "clientTypecheck": true,
+    "clientBuild": true,
+    "clientBuildAdvisory": "Existing main JavaScript chunk is over 500 kB"
+  }
+}

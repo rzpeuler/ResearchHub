@@ -1,0 +1,48 @@
+{
+  "evidenceType": "sanitized-manual-side-by-side-review",
+  "reviewedAt": "2026-10-28",
+  "sourceRevision": "da166c0c37d5139115c61ce6fa3b096747eeef45",
+  "disposition": "PARTIAL_NOT_ACCEPTED",
+  "artifacts": [
+    {
+      "label": "Hermes BYD Task 1",
+      "path": "C:\\Program Files\\Hermes Agent CN Desktop\\data\\hermes-home\\skills\\research\\equity-research\\reports\\002594_首次覆盖_Task1_20260726.md",
+      "reportDate": "2026-07-26",
+      "sha256": "197f45154bdafa990642086cd2a377a42f965efab4b697d1d0cda12bc0703be0",
+      "majorSections": 8
+    },
+    {
+      "label": "ResearchHub BYD",
+      "path": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-byd-da166c0/002594-company-research-002594-1ce13b6c-4fe3-4a64-a984-9a2355b75036.md",
+      "runId": "1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "reportId": "company-research-002594-1ce13b6c-4fe3-4a64-a984-9a2355b75036",
+      "asOf": "2026-10-27T19:03:34.731Z",
+      "sha256": "5a40ece740f29da9c9ed736b957376f393cb4842c08cfe4d006f37e2d01dceac",
+      "sections": 19,
+      "passed": 17,
+      "failed": ["bull-base-bear", "variant-perception"]
+    }
+  ],
+  "comparison": {
+    "readability": "Hermes is shorter and easier to skim. ResearchHub is more detailed and source-located, but citation density and repeated evidence inventories reduce scanability.",
+    "thesis": "Hermes offers a concise directional conclusion but does not state a falsifiable condition with source-bound counterevidence. ResearchHub separates support, counterevidence, invalidation conditions and follow-up indicators; its independent semantic review did not run because two structural sections remain blocked.",
+    "valuation": "Hermes has no dedicated valuation section. ResearchHub computes a dated FY2025 historical reference PE with formula and local input sensitivity; it is not a forward valuation, value range or target price.",
+    "scenarios": "Hermes has no source-bound Bear/Base/Bull calculation or sensitivity model. ResearchHub correctly leaves the section blocked because sourced target-year operating assumptions are unavailable.",
+    "expectationGap": "Hermes has no two-surface expectation comparison. ResearchHub displays current THS/EastMoney FY2026 EPS samples, but marks historical value versions unverified and does not accept the channel delta as a valid expectation-gap conclusion. Some EastMoney sample rows have much earlier publication dates and markedly different scales; this is a stale-vintage/scale anomaly risk requiring source-version review, not an accepted market expectation.",
+    "monitoring": "Hermes has risk descriptions but no dedicated monitoring checklist with cadence, trigger, baseline and thesis linkage. ResearchHub provides nine checks with cadence and conditional triggers; some explicitly lack numeric thresholds because sources do not provide them."
+  },
+  "provenance": {
+    "hermesSourceLabel": "Sina Finance / public information",
+    "hermesDisclaimerStatesSomeDataUseEstimatesOrPublicKnowledge": true,
+    "hermesClaimsCopiedIntoResearchHub": false,
+    "researchHubKnowledgeWrite": false,
+    "researchHubKnowledgeUnchanged": true,
+    "researchHubReviewAttempts": 0,
+    "researchHubReviewRounds": 0
+  },
+  "limitations": [
+    "Hermes predates the ResearchHub as-of date by about three months and has no comparable valuation or forecast chapters.",
+    "This is a readability and evidence review of the inspected artifacts; it cannot establish the accuracy of unsupported Hermes estimates or substitute for the ResearchHub Workflow semantic gate.",
+    "No side-by-side valuation or expectation-gap acceptance is possible while ResearchHub has only historical reference PE and unverified expectation vintages."
+  ]
+}

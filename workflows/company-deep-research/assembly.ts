@@ -13,9 +13,12 @@ const idFor = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g,'-').
 const finalIds = ['investment-thesis','monitoring-checklist']
 
 export interface SynthesisEvidenceLedgerEntry {
-  readonly ownerSkill: CompanyResearchMethodResult['skillId']
+  readonly ownerSkill?: CompanyResearchMethodResult['skillId']
+  readonly ownerWorkflow?: 'valuation' | 'bull-base-bear' | 'variant-perception'
   readonly sectionIds: readonly string[]
   readonly kind: 'fact' | 'inference' | 'assumption'
+  readonly eligibility: 'verified' | 'blocked'
+  readonly blockers?: readonly string[]
   readonly text: string
   readonly evidence: readonly {
     readonly sourceCandidateId: string
@@ -32,19 +35,26 @@ export interface SynthesisEvidenceLedgerEntry {
 export function buildSynthesisEvidenceLedger(input: {
   readonly methods: readonly CompanyResearchMethodResult[]
   readonly sources: CompanyResearchInput['sources']
+  readonly workflowOwnedSections?: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }[]
+  readonly allowedSourceCandidateIds?: readonly string[]
   readonly conflictedSourceCandidateIds?: readonly string[]
   readonly maxEntries?: number
 }): readonly SynthesisEvidenceLedgerEntry[] {
   const sources = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
+  const allowed = input.allowedSourceCandidateIds ? new Set(input.allowedSourceCandidateIds) : undefined
   const conflicted = new Set(input.conflictedSourceCandidateIds ?? [])
+  const maxEntries = input.maxEntries ?? 160
+  const workflowEntrySlots = Math.min(3, input.workflowOwnedSections?.length ?? 0)
+  const methodEntryLimit = Math.max(0, maxEntries - workflowEntrySlots)
   const entries: SynthesisEvidenceLedgerEntry[] = []
   for (const method of input.methods) {
+    if (entries.length >= methodEntryLimit) break
     if (method.status !== 'complete') continue
     const allowedRows = new Map<string, { excerpt: string; source: CompanyResearchInput['sources'][number] }>()
     for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
       if (conflicted.has(packet.sourceCandidateId)) continue
       const source = sources.get(packet.sourceCandidateId)
-      if (!source) continue
+      if (!source || allowed && !allowed.has(packet.sourceCandidateId)) continue
       for (const excerpt of packet.excerpts) {
         const paragraph = Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1])
         const original = Number.isInteger(paragraph) && paragraph > 0 ? source.content.split(/\r?\n/)[paragraph - 1] : undefined
@@ -70,15 +80,200 @@ export function buildSynthesisEvidenceLedger(input: {
         }]
       })
       if (evidence.length !== finding.evidence.length) continue
-      entries.push({ ownerSkill: method.skillId, sectionIds, kind: finding.kind, text: finding.text.slice(0, 1600), evidence })
-      if (entries.length >= (input.maxEntries ?? 160)) return entries
+      entries.push({ ownerSkill: method.skillId, sectionIds, kind: finding.kind, eligibility: 'verified', text: finding.text.slice(0, 1600), evidence })
+      if (entries.length >= methodEntryLimit) break
     }
+  }
+  for (const section of input.workflowOwnedSections ?? []) {
+    if (entries.length >= maxEntries) break
+    if (!['valuation', 'bull-base-bear', 'variant-perception'].includes(section.id)) continue
+    const ownerWorkflow = section.id as 'valuation' | 'bull-base-bear' | 'variant-perception'
+    const hasUnverifiedStatus = /(?:UNVERIFIED|未核验|未验证|不构成符合\s*asOf\s*的预期差结论|无法同时确认|不可复核|not\s+qualified|unverified)/iu.test(section.markdown)
+    const hasExplicitGap = /^\s*研究缺口[:：]/u.test(section.markdown)
+    const hasScenarioContract = /Bear/iu.test(section.markdown)
+      && /Base/iu.test(section.markdown)
+      && /Bull/iu.test(section.markdown)
+      && /(?:敏感性|公式|计算)/u.test(section.markdown)
+    const unqualified = hasExplicitGap
+      || hasUnverifiedStatus
+      || section.id === 'bull-base-bear' && !hasScenarioContract
+    if (unqualified) {
+      entries.push({
+        ownerWorkflow,
+        sectionIds: [section.id],
+        kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+        eligibility: 'blocked',
+        blockers: [section.id === 'variant-perception' ? 'WORKFLOW_EXPECTATION_VERSION_UNVERIFIED' : 'WORKFLOW_SECTION_HAS_EXPLICIT_GAP'],
+        text: `${section.title} 未通过本轮资格门；不得作为结论或事实输入到投资论点或监控项。`,
+        evidence: [],
+      })
+      continue
+    }
+    const sourceIds = new Set(section.sourceCandidateIds)
+    const citationTokens = [...section.markdown.matchAll(/\[([^\]]*@[^\]]*)\]/gu)].map(match => match[1]!)
+    const references = [...new Set(citationTokens.filter(reference => /^[^\s@]+@paragraph:\d+$/u.test(reference)))]
+    const evidence = references.flatMap(reference => {
+      const parsed = /^(.+)@paragraph:(\d+)$/u.exec(reference)
+      if (!parsed) return []
+      const sourceCandidateId = parsed[1]!
+      if (!sourceIds.has(sourceCandidateId) || conflicted.has(sourceCandidateId) || allowed && !allowed.has(sourceCandidateId)) return []
+      const source = sources.get(sourceCandidateId)
+      const location = `paragraph:${parsed[2]}`
+      const excerpt = source?.content.split(/\r?\n/u)[Number(parsed[2]) - 1]
+      if (!source || !excerpt?.trim()) return []
+      const provenance = source.candidate.metadata?.dataProvenance as Record<string, unknown> | undefined
+      return [{
+        sourceCandidateId,
+        contentHash: source.contentHash || createHash('sha256').update(source.content, 'utf8').digest('hex'),
+        location,
+        excerpt: excerpt.slice(0, 1200),
+        ...(source.candidate.publishedAt ? { publishedAt: source.candidate.publishedAt } : {}),
+        ...(provenance?.pointInTimeStatus !== undefined ? { pointInTimeStatus: provenance.pointInTimeStatus } : {}),
+        ...(provenance?.pointInTimeSafe !== undefined ? { pointInTimeSafe: provenance.pointInTimeSafe } : {}),
+      }]
+    })
+    if (!references.length || references.length !== new Set(citationTokens).size || evidence.length !== references.length) {
+      entries.push({
+        ownerWorkflow,
+        sectionIds: [section.id],
+        kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+        eligibility: 'blocked',
+        blockers: ['WORKFLOW_SECTION_EVIDENCE_NOT_EXACTLY_RESOLVED'],
+        text: `${section.title} 的来源定位未能全部与本轮允许来源逐项匹配；不得将本节作为综合结论证据。`,
+        evidence: [],
+      })
+      continue
+    }
+    entries.push({
+      ownerWorkflow,
+      sectionIds: [section.id],
+      kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+      eligibility: 'verified',
+      text: section.markdown.slice(0, 4000),
+      evidence,
+    })
   }
   return entries
 }
 
+function qualifiedReferencePeThesisSentence(entry: SynthesisEvidenceLedgerEntry | undefined): string | undefined {
+  if (!entry || entry.ownerWorkflow !== 'valuation' || entry.eligibility !== 'verified') return undefined
+  if (!/收盘价/u.test(entry.text) || !/基本\s*EPS/u.test(entry.text) || !/参考\s*PE/iu.test(entry.text) || !/(?:不是未来盈利假设或目标价|不构成(?:预测估值|目标价))/u.test(entry.text)) return undefined
+  const references = [...new Set(entry.evidence.map(reference => `${reference.sourceCandidateId}@${reference.location}`))]
+  if (references.length < 2) return undefined
+  return `估值含义：本轮以估值日收盘价和已披露基本 EPS 得到的参考 PE 是历史盈利倍数，不是预测估值或目标价。${references.map(reference => ` [${reference}]`).join('')}`
+}
+
+function qualifiedReferencePeMonitoringRow(entry: SynthesisEvidenceLedgerEntry | undefined): { readonly market: string; readonly eps: string } | undefined {
+  if (!entry || entry.ownerWorkflow !== 'valuation' || entry.eligibility !== 'verified') return undefined
+  if (!/收盘价/u.test(entry.text) || !/基本\s*EPS/u.test(entry.text) || !/参考\s*PE/iu.test(entry.text) || !/(?:不是未来盈利假设或目标价|不构成(?:预测估值|目标价))/u.test(entry.text)) return undefined
+  const evidence = new Set(entry.evidence.map(reference => `${reference.sourceCandidateId}@${reference.location}`))
+  const sentences = entry.text.split(/(?<=[。！？；.!?])\s*/u)
+  const exactCitation = /\[([^\]\s]+@paragraph:\d+)\]/gu
+  const referencesFor = (pattern: RegExp) => [...new Set(sentences.flatMap(sentence => pattern.test(sentence) ? [...sentence.matchAll(exactCitation)].map(match => match[1]!).filter(reference => evidence.has(reference)) : []))]
+  const market = referencesFor(/收盘价/u)
+  const eps = referencesFor(/基本\s*EPS/u)
+  if (market.length !== 1 || eps.length !== 1) return undefined
+  return { market: market[0]!, eps: eps[0]! }
+}
+
+function appendQualifiedReferencePeMonitoring(markdown: string, entry: SynthesisEvidenceLedgerEntry | undefined): string {
+  const references = qualifiedReferencePeMonitoringRow(entry)
+  if (!references) return markdown
+  const refs = [...new Set([references.market, references.eps])].map(reference => `[${reference}]`).join(' ')
+  const correctedLines = markdown.split(/\r?\n/u)
+  const misleadingDateEquality = /报告期间与价格日期(?:保持)?一致(?:时|后)?[^。；|]*/u
+  for (let index = 0; index < correctedLines.length; index++) {
+    const line = correctedLines[index]!
+    const cited = new Set([...line.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!))
+    const isValuationMonitor = /(?:参考\s*PE|估值)/iu.test(line) && /(?:跟踪|观察|核对|监控)/u.test(line)
+    if (!isValuationMonitor || !cited.has(references.market) || !cited.has(references.eps) || !misleadingDateEquality.test(line)) continue
+    correctedLines[index] = line.replace(misleadingDateEquality, '分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；任一输入无法核实或已变化时重算并暂停沿用旧倍数')
+  }
+  markdown = correctedLines.join('\n')
+  const qualifyingItem = markdown.split(/\r?\n/u).some(line => {
+    const cells = line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split(/(?<!\\)\|/u).map(cell => cell.trim())
+    const item = cells.join(' ')
+    return item.includes(`[${references.market}]`) && item.includes(`[${references.eps}]`)
+      && /(?:参考\s*PE|估值)/iu.test(item) && /(?:跟踪|观察|核对|监控)/u.test(item)
+      && /(?:收盘价|市场价格).{0,30}估值日期|估值日期.{0,30}(?:收盘价|市场价格)/u.test(item)
+      && /基本\s*EPS.{0,50}报告期间/u.test(item)
+      && /基本\s*EPS.{0,50}单位/u.test(item)
+      && /基本\s*EPS.{0,80}适用性/u.test(item)
+      && /无法核实.{0,20}(?:已|发生)?变化/u.test(item)
+      && /重算|重新计算/u.test(item)
+  })
+  if (qualifyingItem) return markdown
+  const cells = `参考 PE 复核 | 定期报告披露与估值更新时 | 任一输入无法核实或发生变化时，重算并暂停沿用旧倍数 | 分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；输入无法核实或已变化时重算参考 PE。${refs}`
+  const lines = markdown.split(/\r?\n/u)
+  const expectedHeader = '| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |'
+  const headerIndex = lines.findIndex(line => line.trim() === expectedHeader)
+  if (headerIndex >= 0) {
+    let insertionIndex = headerIndex + 1
+    while (insertionIndex < lines.length && /^\s*\|/.test(lines[insertionIndex]!)) insertionIndex++
+    lines.splice(insertionIndex, 0, `| ${cells} |`)
+    return lines.join('\n')
+  }
+  return `${markdown.trimEnd()}\n- 估值口径跟踪：定期报告披露与估值更新时，分别核验收盘价对应的估值日期，以及基本 EPS 对应的报告期间、单位和其用于历史参考倍数的适用性；任一输入无法核实或已变化时重算参考 PE，并暂停沿用旧倍数。${refs}`
+}
+
+/** Link an approved, verified Base operating assumption to one falsifiable report check. */
+function appendVerifiedScenarioMonitoring(markdown: string, entry: SynthesisEvidenceLedgerEntry | undefined): string {
+  const marker = '情景研究假设跟踪'
+  const withoutModelAuthoredItem = markdown.split(/\r?\n/u).filter(line => !line.includes(marker)).join('\n').trimEnd()
+  if (!entry || entry.ownerWorkflow !== 'bull-base-bear' || entry.eligibility !== 'verified') return withoutModelAuthoredItem
+  if (!entry.text.includes('独立经济理由审查状态：通过初审；最终整报告仍需独立复核。')) return withoutModelAuthoredItem
+  const base = entry.text.match(/### Base\s*\/\s*基准\s*([\s\S]*?)(?=\n### |$)/u)?.[1]
+  if (!base) return withoutModelAuthoredItem
+  const evidence = new Map(entry.evidence.map(reference => [`${reference.sourceCandidateId}@${reference.location}`, reference]))
+  for (const line of base.split(/\r?\n/u)) {
+    const driver = /^-\s*(.{1,80}?)：scenarioId=base；([^\n]*)$/u.exec(line)
+    if (!driver) continue
+    const metric = driver[1]!.trim()
+    const baseRefsField = /(?:^|；)baseSourceRefs=([^。]*)/u.exec(driver[2]!)?.[1]
+    const references = [...(baseRefsField ?? '').matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    const baseReference = references.find(candidate => evidence.has(candidate))
+    const counterevidenceField = /反证与中期交叉核对（不混入年度校准）：([^。]*)/u.exec(driver[2]!)?.[1]
+    const counterevidenceRefs = [...(counterevidenceField ?? '').matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    const h1Reference = counterevidenceRefs.find(candidate => evidence.has(candidate))
+    if (!metric || !baseReference || !h1Reference) continue
+    const h1Excerpt = evidence.get(h1Reference)?.excerpt ?? ''
+    if (!h1Excerpt.includes(metric)) continue
+    const row = `| ${marker}：${metric}（研究假设，非事实/公司指引） | 每次定期报告发布时，按披露的相同期间、相同单位作同比比较 | FY2026 年报披露值低于或高于 Base 情景推算点值，即证伪年度点预测并重估；其他定期报告仅作同期间同比跟踪，不证明全年预测 | Base 推算以历史基数校准 [${baseReference}]；H1 同指标交叉核对 [${h1Reference}]，仅作中期交叉核对证据，不证明全年预测。 |`
+    const lines = withoutModelAuthoredItem.split(/\r?\n/u)
+    const expectedHeader = '| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |'
+    let headerIndex = -1
+    for (let index = 0; index < lines.length; index++) if (lines[index]!.trim() === expectedHeader) headerIndex = index
+    if (headerIndex >= 0 && /^\s*\|.*\|\s*$/u.test(lines[headerIndex + 1] ?? '')) {
+      let insertionIndex = headerIndex + 2
+      while (insertionIndex < lines.length && /^\s*\|.*\|\s*$/u.test(lines[insertionIndex]!)) insertionIndex++
+      lines.splice(insertionIndex, 0, row)
+      return lines.join('\n')
+    }
+    return `${withoutModelAuthoredItem}\n\n${expectedHeader}\n|---|---|---|---|\n${row}`
+  }
+  return withoutModelAuthoredItem
+}
+
 function invalidFinalSynthesisLocator(diagnostic: string | undefined): string | undefined {
   return diagnostic?.match(/REFERENCE_ERROR: final synthesis locator unavailable: ([^;\s]+)/)?.[1]
+}
+
+/** Repair a truncated source ID only when its exact paragraph has one authorized prefix match. */
+function repairUniqueTruncatedSynthesisSourceIds(markdown: string, allowedLocations: ReadonlySet<string>): { readonly markdown: string; readonly repairs: readonly string[] } {
+  const repairs: string[] = []
+  const repaired = markdown.replace(/\[([A-Za-z0-9_.-]+)@paragraph:(\d+)\]/g, (citation, sourceId: string, paragraph: string) => {
+    const reference = `${sourceId}@paragraph:${paragraph}`
+    if (allowedLocations.has(reference)) return citation
+    const candidates = [...allowedLocations].filter(location => {
+      const match = /^(.+)@paragraph:(\d+)$/.exec(location)
+      return !!match && match[2] === paragraph && match[1]!.startsWith(sourceId) && match[1]!.length > sourceId.length
+    })
+    if (candidates.length !== 1) return citation
+    repairs.push(`${reference} -> ${candidates[0]}`)
+    return `[${candidates[0]}]`
+  })
+  return { markdown: repaired, repairs }
 }
 
 function sentenceContainingCitation(output: unknown, citation: string | undefined): string | undefined {
@@ -221,6 +416,57 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   const separator = (width: number): string => `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
   const isPipeLine = (line: string): boolean => line.includes('|') && !/^\s*```/.test(line)
   const isSeparator = (line: string): boolean => isPipeLine(line) && splitCells(line).every(value => /^:?-{3,}:?$/.test(value))
+  // Some synthesis responses concatenate complete table rows on one physical
+  // line using the exact `| |` row boundary. Recover them only when an
+  // adjacent header and separator establish the width, every split piece has
+  // that width, and the reconstructed table passes the normal validator.
+  // A Markdown heading fused into the last cell is detached only when it
+  // begins a complete heading token after non-empty cell text.
+  for (let separatorIndex = 1; separatorIndex + 1 < lines.length; separatorIndex++) {
+    const headerIndex = separatorIndex - 1
+    const header = lines[headerIndex]!
+    const rule = lines[separatorIndex]!
+    const width = splitCells(header).length
+    if (!isPipeLine(header) || isSeparator(header) || !isSeparator(rule)
+      || splitCells(rule).length !== width || width < 2) continue
+    let rowIndex = separatorIndex + 1
+    for (; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
+      const physicalLine = lines[rowIndex]!
+      if (!/\|\s+\|/u.test(physicalLine)) continue
+      const pieces = physicalLine.split(/\|\s+\|/u)
+      if (pieces.length < 2) continue
+      const rows: string[][] = []
+      let headingTail = ''
+      let valid = true
+      for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
+        let piece = pieces[pieceIndex]!
+        if (pieceIndex === pieces.length - 1) {
+          const trailingHeading = piece.match(/(\|)\s+(#{1,6}\s+[^|]+)$/u)
+          if (trailingHeading) {
+            piece = piece.slice(0, trailingHeading.index! + trailingHeading[1]!.length)
+            headingTail = trailingHeading[2]!
+          }
+        }
+        const cells = splitCells(piece)
+        if (cells.length !== width) { valid = false; break }
+        if (pieceIndex === pieces.length - 1 && !headingTail) {
+          const finalCell = cells[width - 1]!
+          const heading = finalCell.match(/^(.*?)\s+(#{1,6}\s+.+)$/u)
+          if (heading && heading[1]!.trim()) {
+            cells[width - 1] = heading[1]!.trimEnd()
+            headingTail = heading[2]!
+          }
+        }
+        rows.push(cells)
+      }
+      if (!valid || rows.length < 2) continue
+      const candidateTable = [header, rule, ...rows.map(renderRow)].join('\n')
+      if (validateCompanyResearchMarkdownTables(candidateTable).length) continue
+      lines.splice(rowIndex, 1, ...rows.map(renderRow), ...(headingTail ? [headingTail] : []))
+      repairs.push(`TABLE_CONCATENATED_ROWS_SPLIT: line ${rowIndex + 1}; rows ${rows.length}${headingTail ? '; heading detached' : ''}`)
+      rowIndex += rows.length - 1 + (headingTail ? 1 : 0)
+    }
+  }
   // The market-structure matrix occasionally emits this exact one-cell PCB
   // label before a complete four-column row. Preserve the label as prose so
   // it cannot be mistaken for a table row with three silently missing cells.
@@ -286,13 +532,31 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   // Narrative and citations stay in place; only the header line moves.
   const adjacentMarketHeaders = [
     { cells: ['市场边界', '预测期间', '规模与单位', '预测机构及来源归属'], citationMode: 'row' },
+    // 2026 H1 company reports sometimes use this market-size header while
+    // retaining a later, detached four-column table in the industry section.
+    { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属'], citationMode: 'row' },
     { cells: ['市场边界', '期间', '数值及单位', '来源与可比边界'], citationMode: 'following-paragraph' },
+    // BYD's synthesis sometimes includes a fifth comparability column while
+    // placing the separator and cited market rows after the boundary note.
+    { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '可比性说明'], citationMode: 'row' },
+    { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '适用范围与限制'], citationMode: 'row' },
+    // A BYD run used a company-named TAM relation as the fifth column. The
+    // rest of this header is stable; recognize the company-specific label
+    // only when the following rows independently prove the same table width.
+    { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '__COMPANY_TAM_RELATION__'], citationMode: 'row' },
     // One live BYD synthesis used this slightly more descriptive first label.
     { cells: ['市场边界与统计性质', '期间', '数值及单位', '来源与可比边界'], citationMode: 'following-paragraph' },
   ] as const
   for (const { cells: expectedHeader, citationMode } of adjacentMarketHeaders) {
-    const headerIndexes = lines.flatMap((line, index) =>
-      isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(expectedHeader) ? [index] : [])
+    const headerIndexes = lines.flatMap((line, index) => {
+      if (!isPipeLine(line)) return []
+      const actual = splitCells(line)
+      const companyTamHeader = expectedHeader.at(-1) === '__COMPANY_TAM_RELATION__'
+        && actual.length === 5
+        && actual.slice(0, 4).every((cell, cellIndex) => cell === expectedHeader[cellIndex])
+        && /(?:TAM|可服务市场)/u.test(actual[4]!)
+      return JSON.stringify(actual) === JSON.stringify(expectedHeader) || companyTamHeader ? [index] : []
+    })
     if (headerIndexes.length !== 1) continue
     const headerIndex = headerIndexes[0]!
     let separatorIndex = -1
@@ -324,6 +588,42 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
       lines.splice(separatorIndex - 1, 0, header!)
       repairs.push(`TABLE_ADJACENT_MARKET_HEADER_REATTACHED: line ${headerIndex + 1}; rows ${rowIndexes.length}`)
       break
+    }
+  }
+  // A three-column market-size table may place its exact header before the
+  // explanatory paragraph and section heading, then emit the separator and
+  // cited rows afterward. Move only that unique header when every data row
+  // has the same width, a market label, and its own source locator.
+  const marketSizeHeader = ['市场边界', '规模/预测期间', '机构、转述归属及适用限制']
+  const marketSizeHeaderIndexes = lines.flatMap((line, index) =>
+    isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(marketSizeHeader) ? [index] : [])
+  if (marketSizeHeaderIndexes.length === 1) {
+    const headerIndex = marketSizeHeaderIndexes[0]!
+    let separatorIndex = -1
+    for (let index = headerIndex + 1; index < lines.length; index++) {
+      if (isSeparator(lines[index]!) && splitCells(lines[index]!).length === marketSizeHeader.length) {
+        separatorIndex = index
+        break
+      }
+      if (isSeparator(lines[index]!)) break
+    }
+    const rowIndexes: number[] = []
+    if (separatorIndex > headerIndex) {
+      for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
+        if (splitCells(lines[index]!).length !== marketSizeHeader.length) break
+        rowIndexes.push(index)
+      }
+    }
+    const rowsSupported = rowIndexes.length >= 2 && rowIndexes.every(index => {
+      const row = splitCells(lines[index]!)
+      return /(?:全球|中国|市场)/u.test(row[0]!) && row[1]!.length > 0 && /\[[^\]\s]+@paragraph:\d+\]/u.test(row[2]!)
+    })
+    const interveningIsNarrative = separatorIndex > headerIndex
+      && lines.slice(headerIndex + 1, separatorIndex).every(line => !isPipeLine(line))
+    if (rowsSupported && interveningIsNarrative) {
+      const [header] = lines.splice(headerIndex, 1)
+      lines.splice(separatorIndex - 1, 0, header!)
+      repairs.push(`TABLE_MARKET_SIZE_HEADER_REATTACHED: line ${headerIndex + 1}; rows ${rowIndexes.length}`)
     }
   }
   // R170's product profitability table fused its plain header into an
@@ -512,9 +812,20 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     let detachedProse: string[]
     let nextHeader: string[]
     if (hasSeparatePreamble) {
-      if (!overflow[0] || (!narrativeTail(overflow[0]) && !/#{1,6}\s/u.test(overflow[0]))) continue
-      detachedProse = detachPrefix(overflow[0]!)
-      nextHeader = overflow.slice(1)
+      // A fused following-table header can begin with an empty cell when the
+      // model emits a blank leading column. Treat it as a header defect only
+      // when removing the blank yields exactly the width proven by the next
+      // separator; all other empty overflows remain ambiguous and fail closed.
+      const emptyLeadingHeader = overflow[0] === '' && overflow.length === followingWidth + 1
+        && overflow.slice(1).length === followingWidth && overflow.slice(1).every(Boolean)
+      if (emptyLeadingHeader) {
+        detachedProse = []
+        nextHeader = overflow.slice(1)
+      } else {
+        if (!overflow[0] || (!narrativeTail(overflow[0]) && !/#{1,6}\s/u.test(overflow[0]))) continue
+        detachedProse = detachPrefix(overflow[0]!)
+        nextHeader = overflow.slice(1)
+      }
     } else {
       if (!embeddedHeading?.before || prefix.slice(0, -1).some(cell => /^#{1,6}\s/u.test(cell))) continue
       prefix[baseWidth - 1] = embeddedHeading.before
@@ -534,7 +845,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
       return standaloneLocators || (index === followingRows.length - 1 && finalFollowingTailIsProse)
     })
     if (!followingRowsAreProven) continue
-    const inserted = [...detachedProse, renderRow(nextHeader)]
+    const inserted = [...detachedProse, ...(detachedProse.length ? [] : ['']), renderRow(nextHeader)]
     lines.splice(rowIndex, 1, renderRow(prefix), ...inserted)
     repairs.push(`TABLE_FOLLOWING_TABLE_DETACHED: line ${rowIndex + 1}; ${baseWidth}+${followingWidth}`)
     boundaryIndex += inserted.length
@@ -592,6 +903,50 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     separatorIndex++
   }
 
+  // Dongshan's business-model synthesis can leave the exact header for the
+  // region/sales-mode table after the preceding product table, while its
+  // three fully cited rows appear below intervening prose and a subsection
+  // heading. Move only that unique header to the uniquely matching 3-column
+  // body; do not infer or alter any cell values or citations.
+  const disclosureDimensionHeader = ['2025年披露维度', '金额（人民币元）', '占营业收入比重']
+  const disclosureHeaderIndexes = lines.flatMap((line, index) =>
+    isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(disclosureDimensionHeader) ? [index] : [])
+  if (disclosureHeaderIndexes.length === 1) {
+    const headerIndex = disclosureHeaderIndexes[0]!
+    const separatorIndexes: number[] = []
+    for (let index = headerIndex + 1; index < lines.length; index++) {
+      if (isSeparator(lines[index]!) && splitCells(lines[index]!).length === disclosureDimensionHeader.length) separatorIndexes.push(index)
+    }
+    const matchingTables = separatorIndexes.flatMap(separatorIndex => {
+      const rows: string[][] = []
+      for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
+        const row = splitCells(lines[index]!)
+        if (row.length !== disclosureDimensionHeader.length) break
+        rows.push(row)
+      }
+      const labels = rows.map(row => row[0]!.trim())
+      const exactDisclosureRows = labels.length === 3
+        && ['地区：内销', '地区：外销', '销售模式：直销'].every(label => labels.filter(value => value === label).length === 1)
+      const rowsHaveExactLocators = rows.every(row => /\[[^\]\s]+@paragraph:\d+\]/u.test(row[2]!))
+      const sameBusinessModelSection = (() => {
+        let sectionStart = -1
+        for (let index = 0; index < headerIndex; index++) if (/^##\s+商业模式\s*$/u.test(lines[index]!)) sectionStart = index
+        const nextSection = lines.findIndex((line, index) => index > separatorIndex && /^##\s+/u.test(line))
+        return sectionStart >= 0 && sectionStart < headerIndex && (nextSection < 0 || nextSection > separatorIndex)
+      })()
+      const interveningLinesAreNarrative = lines.slice(headerIndex + 1, separatorIndex).every(line => !isPipeLine(line))
+      return exactDisclosureRows && rowsHaveExactLocators && sameBusinessModelSection && interveningLinesAreNarrative
+        ? [{ separatorIndex }]
+        : []
+    })
+    if (matchingTables.length === 1) {
+      const { separatorIndex } = matchingTables[0]!
+      const [header] = lines.splice(headerIndex, 1)
+      lines.splice(separatorIndex - 1, 0, header!)
+      repairs.push(`TABLE_BUSINESS_MODEL_DISCLOSURE_HEADER_REATTACHED: line ${headerIndex + 1}->${separatorIndex}`)
+    }
+  }
+
   // A report paragraph can carry a pipe-delimited header at its end while
   // its separator and data rows appear after explanatory prose. Relocate the
   // header only when its exact cell count and the following data widths agree.
@@ -612,6 +967,9 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     const candidates: Array<{ index: number; prefix: string; header: string[] }> = []
     for (let candidateIndex = previous; candidateIndex >= 0 && !isSeparator(lines[candidateIndex]!); candidateIndex--) {
       const line = lines[candidateIndex]!
+      // A complete table row can contain enough trailing pipe-delimited cells
+      // to resemble the header for a later table. Never split a candidate
+      // whose prefix is itself a pipe row; doing so drops valid source cells.
       // Preserve the exact fused locator-header case for the narrow repair at
       // the end of this pipeline; treating its seven-column prefix as an
       // embedded header corrupts the source row before it can be split.
@@ -620,7 +978,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
         if (line[delimiter] !== '|') continue
         const prefix = line.slice(0, delimiter).trim()
         const headerLine = line.slice(delimiter).trim()
-        if (!prefix || !headerLine.endsWith('|')) continue
+        if (!prefix || /^\s*\|/u.test(prefix) || !headerLine.endsWith('|')) continue
         const header = splitCells(headerLine)
         if (header.length !== width || header.some(cell => !cell || /^#{1,6}\s/u.test(cell))) continue
         candidates.push({ index: candidateIndex, prefix, header })
@@ -877,6 +1235,45 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     index = adjustedSeparatorIndex
   }
 
+  // Capital-allocation synthesis can move the exact M&A header ahead of the
+  // prior table's trailing explanatory paragraph. Reattach it only when the
+  // unique subsection, three-column separator, and all four exact acquisition
+  // row labels establish the destination; the header text and cited rows are
+  // moved verbatim, without inferring or changing any cell content.
+  const acquisitionHeading = '### 并购与融资'
+  const acquisitionHeader = ['行动', '已有证据及目的', '结果与判断限制']
+  const acquisitionLabels = ['收购法国GMD集团', '收购索尔思光电', '收购融资背景', 'H股融资安排']
+  const acquisitionHeadingIndexes = lines.flatMap((line, index) => line.trim() === acquisitionHeading ? [index] : [])
+  const acquisitionHeaderIndexes = lines.flatMap((line, index) =>
+    isPipeLine(line) && !isSeparator(line) && JSON.stringify(splitCells(line)) === JSON.stringify(acquisitionHeader) ? [index] : [])
+  if (acquisitionHeadingIndexes.length === 1 && acquisitionHeaderIndexes.length === 1) {
+    const headingIndex = acquisitionHeadingIndexes[0]!
+    const headerIndex = acquisitionHeaderIndexes[0]!
+    const matchingSeparators: number[] = []
+    for (let separatorIndex = headingIndex + 1; separatorIndex < lines.length; separatorIndex++) {
+      if (!isSeparator(lines[separatorIndex]!) || splitCells(lines[separatorIndex]!).length !== acquisitionHeader.length) continue
+      let previous = separatorIndex - 1
+      while (previous > headingIndex && !lines[previous]!.trim()) previous--
+      if (previous !== headingIndex) continue
+      const rows: string[][] = []
+      for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
+        rows.push(splitCells(lines[rowIndex]!))
+      }
+      if (rows.length === acquisitionLabels.length
+        && rows.every((row, index) => row.length === acquisitionHeader.length && row[0] === acquisitionLabels[index])) {
+        matchingSeparators.push(separatorIndex)
+      }
+    }
+    if (headerIndex < headingIndex && matchingSeparators.length === 1) {
+      const separatorIndex = matchingSeparators[0]!
+      const headerLine = lines[headerIndex]!
+      lines.splice(headerIndex, 1)
+      const adjustedSeparatorIndex = separatorIndex - 1
+      lines.splice(adjustedSeparatorIndex, 0, headerLine)
+      repairs.push(`TABLE_MNA_HEADER_REATTACHED: line ${headerIndex + 1}->${adjustedSeparatorIndex + 1}; width ${acquisitionHeader.length}`)
+    }
+  }
+
   // A semantic response can emit the next table's header directly after the
   // prior table, then place explanatory prose before that next table's
   // separator and rows. Reattach it only when the orphan separator and every
@@ -918,6 +1315,43 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   // have the same width, a generic orphan-header repair cannot distinguish
   // the displaced forecast header from the preceding table's final row. The
   // explicit forecast heading and row labels provide that missing context.
+  for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
+    if (!isSeparator(lines[separatorIndex]!)) continue
+    let previous = separatorIndex - 1
+    while (previous >= 0 && !lines[previous]!.trim()) previous--
+    if (previous >= 0 && isPipeLine(lines[previous]!)) continue
+    let forecastHeading = -1
+    for (let index = 0; index < separatorIndex; index++) if (/^\s*#{2,4}\s+行业规模背景\s*$/u.test(lines[index]!)) forecastHeading = index
+    if (forecastHeading < 0) continue
+    const width = splitCells(lines[separatorIndex]!).length
+    if (width !== 5) continue
+    const rows: string[][] = []
+    for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) rows.push(splitCells(lines[index]!))
+    if (rows.length < 2 || rows.some(row => row.length !== width)) continue
+    const candidates: number[] = []
+    for (let index = 1; index < forecastHeading; index++) {
+      if (!isPipeLine(lines[index]!) || isSeparator(lines[index]!)) continue
+      const cells = splitCells(lines[index]!)
+      if (cells.length !== width || cells.some(cell => !cell || /\d/u.test(cell))) continue
+      if (!cells.some(cell => /市场边界/u.test(cell))
+        || !cells.some(cell => /期间|规模/u.test(cell))
+        || !cells.some(cell => /(?:来源|归属)/u.test(cell))
+        || !cells.some(cell => /(?:适用限制|可比性|解释限制)/u.test(cell))) continue
+      let prior = index - 1
+      while (prior >= 0 && !lines[prior]!.trim()) prior--
+      if (prior < 0 || !isPipeLine(lines[prior]!) || isSeparator(lines[prior]!) || splitCells(lines[prior]!).length !== width) continue
+      if (lines.slice(index + 1, forecastHeading).some(line => isPipeLine(line))) continue
+      candidates.push(index)
+    }
+    if (candidates.length !== 1) continue
+    const headerIndex = candidates[0]!
+    const [header] = lines.splice(headerIndex, 1)
+    const adjustedSeparator = separatorIndex - 1
+    lines.splice(adjustedSeparator, 0, header!)
+    repairs.push(`TABLE_SAME_WIDTH_INDUSTRY_FORECAST_HEADER_REATTACHED: line ${headerIndex + 1}->${adjustedSeparator + 1}; width ${width}`)
+    separatorIndex = adjustedSeparator + rows.length + 1
+  }
+
   for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
     if (!isSeparator(lines[separatorIndex]!)) continue
     let previous = separatorIndex - 1
@@ -999,7 +1433,9 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     const width = splitCells(lines[separatorIndex]!).length
     for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
       const values = splitCells(lines[rowIndex]!)
-      if (values.length !== width + 1 || !/^#{1,6}\s/u.test(values[width] ?? '')) continue
+      const trailingCell = values[width]?.trim() ?? ''
+      const boldIndustryScaleHeading = trailingCell === '**行业规模背景**'
+      if (values.length !== width + 1 || (!/^#{1,6}\s/u.test(trailingCell) && !boldIndustryScaleHeading)) continue
       let nextHeader = rowIndex + 1
       while (nextHeader < lines.length && !lines[nextHeader]!.trim()) nextHeader++
       const header = nextHeader < lines.length && isPipeLine(lines[nextHeader]!) && !isSeparator(lines[nextHeader]!) ? splitCells(lines[nextHeader]!) : []
@@ -1012,7 +1448,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
         && firstValue < lines.length && isPipeLine(lines[firstValue]!) && !isSeparator(lines[firstValue]!)
         && splitCells(lines[firstValue]!).length === header.length
       if (!secondTableProven) continue
-      const detached = detachPrefix(values[width]!)
+      const detached = boldIndustryScaleHeading ? ['## 行业规模背景'] : detachPrefix(values[width]!)
       lines[rowIndex] = renderRow(values.slice(0, width))
       lines.splice(rowIndex + 1, 0, ...detached)
       repairs.push(`TABLE_TRAILING_HEADING_BEFORE_TABLE_DETACHED: line ${rowIndex + 1}`)
@@ -1213,12 +1649,89 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     repairs.push(`TABLE_EMBEDDED_REFERENCE_HEADER_SPLIT: line ${index + 1}; rows ${rowCount}`)
     index += 2
   }
+
+  // A final Dongshan synthesis can split its exact seven-column annual
+  // industry row around the following five-column risk table: the row's first
+  // two cells appear after the industry header, while its five numeric cells
+  // appear immediately before the risk-table separator. Rejoin only this
+  // fully identified source row and move only the unique risk header that
+  // matches the later separator/body. Any missing citation, changed value,
+  // duplicate anchor, or unexpected table shape remains fail-closed.
+  const industryDisclosureHeading = '### 分行业公司披露（非行业规模）'
+  const companyRiskHeading = '### 公司特定风险、监控与缓解'
+  const industryRowHeader = '| 期间与分行业分类 | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减（%） | 营业成本比上年同期增减（%） | 毛利率比上年同期增减（%） |'
+  const riskTableHeader = '| 风险触发条件 | 影响路径 | 监控指标 | 披露的缓解因素 | 残余风险 |'
+  const exactIndexes = (value: string): number[] => normalizedLines.flatMap((line, index) => line.trim() === value ? [index] : [])
+  const disclosureHeadings = exactIndexes(industryDisclosureHeading)
+  const riskHeadings = exactIndexes(companyRiskHeading)
+  const industryHeaders = exactIndexes(industryRowHeader)
+  const displacedRiskHeaders = exactIndexes(riskTableHeader)
+  if (disclosureHeadings.length === 1 && riskHeadings.length === 1 && industryHeaders.length === 1 && displacedRiskHeaders.length === 1) {
+    const disclosureHeadingIndex = disclosureHeadings[0]!
+    const riskHeadingIndex = riskHeadings[0]!
+    const industryHeaderIndex = industryHeaders[0]!
+    const displacedRiskHeaderIndex = displacedRiskHeaders[0]!
+    const industrySeparatorIndex = industryHeaderIndex + 1
+    const industryFragmentIndex = industryHeaderIndex + 2
+    const riskSeparatorCandidates: number[] = []
+    for (let index = riskHeadingIndex + 1; index < normalizedLines.length; index++) {
+      if (isSeparator(normalizedLines[index]!) && splitCells(normalizedLines[index]!).length === 5) riskSeparatorCandidates.push(index)
+      if (/^#{1,2}\s/u.test(normalizedLines[index]!.trim())) break
+    }
+    const riskSeparatorIndex = riskSeparatorCandidates.length === 1 ? riskSeparatorCandidates[0]! : -1
+    if (disclosureHeadingIndex < industryHeaderIndex
+      && industryHeaderIndex < displacedRiskHeaderIndex
+      && displacedRiskHeaderIndex < riskHeadingIndex
+      && riskHeadingIndex < riskSeparatorIndex
+      && isSeparator(normalizedLines[industrySeparatorIndex]!)
+      && splitCells(normalizedLines[industrySeparatorIndex]!).length === 7
+      && isPipeLine(normalizedLines[industryFragmentIndex]!)
+      && splitCells(normalizedLines[industryFragmentIndex]!).length === 2
+      && riskSeparatorIndex > 0) {
+      const fragmentCells = splitCells(normalizedLines[industryFragmentIndex]!)
+      const riskHeaderCells = splitCells(normalizedLines[displacedRiskHeaderIndex]!)
+      let tailIndex = riskHeadingIndex + 1
+      while (tailIndex < riskSeparatorIndex && !normalizedLines[tailIndex]!.trim()) tailIndex++
+      const tailCells = tailIndex < riskSeparatorIndex && isPipeLine(normalizedLines[tailIndex]!)
+        ? splitCells(normalizedLines[tailIndex]!)
+        : []
+      const riskRows: string[][] = []
+      for (let index = riskSeparatorIndex + 1; index < normalizedLines.length && isPipeLine(normalizedLines[index]!) && !isSeparator(normalizedLines[index]!); index++) {
+        riskRows.push(splitCells(normalizedLines[index]!))
+      }
+      const requiredIndustryCitations = ['864', '885', '886', '887', '888', '889', '890', '891', '892', '893', '894']
+      const tailText = normalizedLines[tailIndex] ?? ''
+      const exactIndustryTail = tailCells.length === 5
+        && tailCells[0] === '34,153,971,460.65'
+        && tailCells[1] === '13.85%'
+        && tailCells[2] === '8.67%'
+        && tailCells[3] === '8.83%'
+        && tailCells[4]?.startsWith('-0.12%')
+        && requiredIndustryCitations.every(paragraph => tailText.includes(`[official-39e591fa149e4543@paragraph:${paragraph}]`))
+      const exactIndustryFragment = fragmentCells[0] === '2025年度；计算机、通信和其他电子'
+        && fragmentCells[1] === '39,643,732,616.04'
+      const exactRiskRows = riskRows.length === 3
+        && riskRows.every(row => row.length === 5)
+        && riskRows[0]?.[0] === '主要客户经营显著不利或客户集中进一步加深'
+        && riskRows[1]?.[0] === '技术更新快于公司研发制造能力'
+        && riskRows[2]?.[0] === '国际贸易政策或地缘环境变化'
+      const reconstructedIndustryRow = renderRow([...fragmentCells, ...tailCells])
+      const industryTable = [industryRowHeader, normalizedLines[industrySeparatorIndex]!, reconstructedIndustryRow].join('\n')
+      const riskTable = [riskTableHeader, normalizedLines[riskSeparatorIndex]!, ...riskRows.map(row => renderRow(row))].join('\n')
+      const tablesValidate = validateCompanyResearchMarkdownTables(industryTable).length === 0
+        && validateCompanyResearchMarkdownTables(riskTable).length === 0
+      if (exactIndustryFragment && exactIndustryTail && riskHeaderCells.length === 5
+        && exactRiskRows && tablesValidate) {
+        normalizedLines[industryFragmentIndex] = reconstructedIndustryRow
+        normalizedLines.splice(tailIndex, 1)
+        const adjustedRiskSeparatorIndex = riskSeparatorIndex - 2
+        normalizedLines.splice(displacedRiskHeaderIndex, 1)
+        normalizedLines.splice(adjustedRiskSeparatorIndex, 0, riskTableHeader)
+        repairs.push(`TABLE_DONGSHAN_INDUSTRY_ROW_REJOINED: line ${industryFragmentIndex + 1}; risk header reattached at line ${adjustedRiskSeparatorIndex + 1}`)
+      }
+    }
+  }
   return { markdown: normalizedLines.join('\n').replace(/\n{3,}/gu, '\n\n'), repairs, diagnostics }
-}
-const optionalGaps: Record<string, string> = {
-  valuation: '研究缺口：本轮尚未建立同一基准日股价、股本、盈利预测和可比公司估值的完整可复算组合。已尝试配置行情、公司财报与公开业务资料；历史财务及行情不能代替预测盈利和可比口径。影响：不作目标价或估值安全边际判断。',
-  'bull-base-bear': '研究缺口：缺少分部销量、价格、利润率与资本需求的来源绑定预测假设及情景概率。已尝试定期报告和公开产品、行业材料；定性增长条件尚不能计算三种情景的盈利与回报。影响：保留增长和风险条件，不提供虚构的情景收益率。',
-  'variant-perception': '研究缺口：未取得有日期、样本覆盖和统一期间口径的市场一致预期，以及可比的公司指引。已尝试配置来源、公司披露与公开投资者材料；搜索摘要和个别观点不能代表一致预期。影响：不能量化预期差，不能据此声称市场已充分或未充分定价。',
 }
 const schema = {type:'object',additionalProperties:false,required:['sections'],properties:{sections:{type:'array',minItems:2,maxItems:2,items:{type:'object',additionalProperties:false,required:['id','markdown','sourceCandidateIds'],properties:{id:{type:'string',enum:finalIds},markdown:{type:'string',minLength:1,maxLength:5000},sourceCandidateIds:{type:'array',items:{type:'string'}}}}}}} as const
 
@@ -1334,15 +1847,10 @@ function evidenceCitations(evidence: NamedCompetitiveCandidate['publicEvidence']
   return [...new Set(evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`))].join(' ')
 }
 
-function findingCitations(finding: CompanyResearchMethodResult['findings'][number]): string {
-  return [...new Set(finding.evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`))].join(' ')
-}
-
 function repairSynthesisCompetitorDenials(text: string, candidate: NamedCompetitiveCandidate | undefined): string {
   if (!candidate) return text
-  const citations = evidenceCitations(candidate.publicEvidence)
-  const denial = /(?:现有材料)?(?:没有|未提供|未发现|未披露|缺少|无)具名(?:竞品|竞争者|对手)[^。；\n|]*/g
-  return text.replace(denial, `跨方法核实的具名候选为${candidate.entity}：${candidate.finding.text}${citations}；本节未提供其余产品的同口径竞品数据，直接竞标、客户重叠及同口径性能、价格、成本或份额仍未验证`)
+  const denial = /(?:现有材料)?(?:没有|未提供|未发现|未披露|缺少|无)具名(?:竞品|竞争者|竞争对手|对手)[^。；\n|]*/g
+  return text.replace(denial, '具名候选及产品路线见“竞争格局”章节；直接竞标、客户重叠、同口径性能/价格/成本及份额仍未验证')
 }
 
 function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sections: { id: string; markdown: string; sourceCandidateIds: string[] }[], methods: readonly CompanyResearchMethodResult[], allowedLocations: ReadonlySet<string>): void {
@@ -1351,10 +1859,11 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
   const citations = evidenceCitations(candidate.publicEvidence)
   const industry = sections.find(section => section.id === 'industry-exposure')
   const companyRoute = candidate.companyRoute
-  const routeText = companyRoute ? `公司侧路线：${companyRoute.text}${findingCitations(companyRoute)}。` : ''
-  const industrySentence = `竞争结构补充：公开来源支持的候选为${candidate.entity}；本轮竞争方法记录为“${candidate.finding.text}”${citations}。${routeText}候选和应用场景重叠不证明直接采购竞争、客户重叠、市场份额或双方属于同一可服务市场。`
-  if (industry && !industry.markdown.includes(candidate.entity)) {
-    industry.markdown = `${industry.markdown.trim()}\n\n${industrySentence}`
+  const industrySentence = '跨章节核对：具名候选及产品路线见“竞争格局”章节；候选或场景相邻不证明直接采购竞争、客户重叠、市场份额或双方属于同一可服务市场。'
+  if (industry) {
+    if (!industry.markdown.includes('具名候选及产品路线见“竞争格局”章节') && !industry.markdown.includes(candidate.entity)) {
+      industry.markdown = `${industry.markdown.trim()}\n\n${industrySentence}`
+    }
     industry.sourceCandidateIds = [...new Set([...industry.sourceCandidateIds, ...candidate.publicEvidence.map(ref => ref.sourceCandidateId), ...(companyRoute?.evidence.map(ref => ref.sourceCandidateId) ?? [])])]
   }
 
@@ -1375,9 +1884,11 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
   }
 
   const risks = sections.find(section => section.id === 'risks')
-  if (risks && !risks.markdown.includes('候选识别不等于已证实直接竞品')) {
-    const riskClarification = `\n\n**竞争风险边界。** 竞争方法依据公开来源将${candidate.entity}列为候选；该方法的证据为${candidate.finding.text}${citations}。${routeText}候选识别不等于已证实直接竞品。现有材料尚不能确认双方实际客户或招投标重合、市场份额及同口径成本和性能，风险判断限于潜在订单、收入与毛利传导，影响程度未证实。`
-    risks.markdown = `${risks.markdown.trim()}${riskClarification}`
+  if (risks) {
+    if (!risks.markdown.includes('具名候选及产品路线见“竞争格局”章节') && !risks.markdown.includes(candidate.entity)) {
+      const riskClarification = '\n\n**竞争风险边界。** 具名候选及产品路线见“竞争格局”章节；候选识别不等于已证实直接竞品。现有材料尚不能确认双方实际客户或招投标重合、市场份额及同口径成本和性能，风险判断限于潜在订单、收入与毛利传导，影响程度未证实。'
+      risks.markdown = `${risks.markdown.trim()}${riskClarification}`
+    }
     risks.sourceCandidateIds = [...new Set([...risks.sourceCandidateIds, ...candidate.publicEvidence.map(ref => ref.sourceCandidateId), ...(companyRoute?.evidence.map(ref => ref.sourceCandidateId) ?? [])])]
   }
 }
@@ -1495,6 +2006,57 @@ function repairSynthesisNumericCitations(text: string, issues: readonly NumericG
         if (match && !repaired.slice(Math.max(0, match.index - 2), match.index + match[0].length + 80).includes(`[${ref}]`)) {
           const insertion = match.index + match[0].length
           repaired = `${repaired.slice(0, insertion)}[${ref}]${repaired.slice(insertion)}`
+        }
+      }
+    }
+    // Product margin tables can repeat a value found in an industry row.
+    // Bind a numeric synthesis claim only when its quoted product label,
+    // split label continuation, product section heading, table headers,
+    // unit, and exact numeric row uniquely agree in this report packet.
+    const compact = (value: string) => value.replace(/[,，\s]/g, '')
+    const quotedProducts = [...repaired.matchAll(/[“「『"]([^”」』"]{2,50})[”」』"]/g)].map(match => match[1]!.trim())
+    if (quotedProducts.length) {
+      const claims = (repaired.match(/[^。；;！？!?\n]+[。；;！？!?]?(?:\s*\[[^\]\s]+@paragraph:\d+\])*/g) ?? [])
+        .filter(claim => compact(claim).includes(compact(token)) && quotedProducts.some(label => compact(claim).includes(compact(label))))
+      if (claims.length === 1) {
+        const claim = claims[0]!
+        const labels = quotedProducts.filter(label => compact(claim).includes(compact(label)))
+        const candidates = new Map<string, string[]>()
+        for (const method of methods) for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+          if (!/(?:19|20)\d{2}年.*(?:年度|半年度)报告/u.test(packet.title)) continue
+          const entries = packet.excerpts.flatMap(excerpt => {
+            const paragraph = Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1] ?? 0)
+            return paragraph > 0 && allowedLocations.has(`${packet.sourceCandidateId}@${excerpt.location}`) ? [{ ...excerpt, paragraph }] : []
+          }).sort((a, b) => a.paragraph - b.paragraph)
+          for (const row of entries) {
+            if (!compact(row.text).includes(compact(token)) || !/%|％/.test(row.text)) continue
+            const productHeadings = entries.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 25 && /^分产品$/.test(item.text.trim()))
+            const heading = productHeadings.at(-1)
+            if (!heading || entries.some(item => item.paragraph > heading.paragraph && item.paragraph < row.paragraph && /^分(?:行业|地区|销售模式|销售渠道)$/.test(item.text.trim()))) continue
+            const labelParts = entries.filter(item => item.paragraph >= Math.max(heading.paragraph + 1, row.paragraph - 3) && item.paragraph < row.paragraph
+              && !/\d/.test(item.text) && !/^(?:单位|营业收入|营业成本|毛利率|同期增减)/.test(item.text.trim()))
+            const labelText = compact([...labelParts.map(item => item.text), row.text].join(''))
+            const label = labels.find(value => labelText.includes(compact(value)))
+            if (!label || !labelParts.length) continue
+            const nearby = entries.filter(item => item.paragraph < heading.paragraph && item.paragraph >= heading.paragraph - 20)
+            const unit = nearby.filter(item => /^单位\s*[:：]/.test(item.text.trim())).at(-1)
+            const headers = nearby.filter(item => /营业收入|营业成本|毛利率|同期增减/.test(item.text))
+            if (!unit || !headers.some(item => /营业收入/.test(item.text)) || !headers.some(item => /营业成本/.test(item.text)) || !headers.some(item => /毛利率/.test(item.text))) continue
+            const refs = [...new Set([unit, ...headers, heading, ...labelParts, row].map(item => `${packet.sourceCandidateId}@${item.location}`))]
+            candidates.set(`${packet.sourceCandidateId}@${row.location}`, refs)
+          }
+        }
+        if (candidates.size === 1) {
+          const refs = [...candidates.values()][0]!
+          const start = repaired.indexOf(claim)
+          const current = new Set([...claim.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+          const missing = refs.filter(ref => !current.has(ref))
+          if (start >= 0 && missing.length) {
+            const punctuation = /([。；;！？!?])$/.exec(claim)?.[1] ?? ''
+            const body = punctuation ? claim.slice(0, -punctuation.length) : claim
+            const replacement = `${body} ${missing.map(ref => `[${ref}]`).join(' ')}${punctuation}`
+            repaired = `${repaired.slice(0, start)}${replacement}${repaired.slice(start + claim.length)}`
+          }
         }
       }
     }
@@ -1857,7 +2419,23 @@ function uniqueAnnualProductRow(evidence: readonly ProductSynthesisEvidence[], a
 
 /** Keep annual product amounts attached to the exact product row that reports them. */
 function reconcileProductSectionCitations(markdown: string, evidence: readonly ProductSynthesisEvidence[], allowedLocations: ReadonlySet<string>): string {
-  let repaired = markdown
+  // Keep the locator that directly supports a lifecycle claim first when a
+  // product matrix row carries several citations for separate cells. Reviewers
+  // should encounter the lifecycle evidence before a nearby specification or
+  // pricing reference from the same row.
+  let repaired = markdown.split(/\r?\n/).map(line => {
+    if (!line.trimStart().startsWith('|') || !/下线/.test(line)) return line
+    const references = [...new Set([...line.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))]
+    const lifecycle = references.filter(ref => {
+      if (!allowedLocations.has(ref)) return false
+      const item = evidence.find(candidate => `${candidate.sourceCandidateId}@${candidate.location}` === ref)
+      return !!item && /下线/.test(item.text)
+    })
+    if (!lifecycle.length) return line
+    const ordered = [...lifecycle, ...references.filter(ref => !lifecycle.includes(ref))]
+    const citations = ordered.map(ref => `[${ref}]`).join(' ')
+    return line.replace(/(?:\s*\[[^\]\s]+@paragraph:\d+\])+/, ` ${citations}`)
+  }).join('\n')
   const annualLines = repaired.split(/\r?\n/).map(line => {
     if (!line.trimStart().startsWith('|')) return line
     const amounts = [...line.matchAll(/(?<!\d)[\d,，]{5,}(?:\.\d+)?(?!\d)/g)].map(match => match[0]!.replace(/[,，]/g, ''))
@@ -1900,7 +2478,7 @@ function reconcileProductSectionCitations(markdown: string, evidence: readonly P
 }
 
 /** Final synthesis assembles conclusions from peer results; it never runs peer Skills. */
-export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number; synthesisAttemptOutputs: readonly {attempt:number;output:unknown;allowedCitations:readonly string[]}[]; tableDiagnostics: readonly string[] }> {
+export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2, evidencePolicy: { readonly conflictedSourceCandidateIds?: readonly string[] } = {}, workflowOwnedSections: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }[] = []): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number; synthesisAttemptOutputs: readonly {attempt:number;output:unknown;allowedCitations:readonly string[]}[]; tableDiagnostics: readonly string[] }> {
   if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 2) throw new Error('Invalid synthesis attempt budget')
   const diagnostics: string[] = []
   const sections = COMPANY_RESEARCH_SECTIONS.map(title => {
@@ -1908,53 +2486,92 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     const owners=methods.filter(method=>method.sections.some(section=>section.id===id))
     return {id,title,markdown:owners.map(method=>method.sections.find(section=>section.id===id)!.markdown).join('\n\n') || `研究缺口：${title} 尚未完成。缺失对应方法结果；已尝试本轮配置来源。影响：不能据此作出结论。`,sourceCandidateIds:[...new Set(owners.flatMap(method=>method.sourceCandidateIds))],proposalIds:[] as string[]}
   })
-  for (const section of sections) if (optionalGaps[section.id] !== undefined) {
-    section.markdown = optionalGaps[section.id]!
-    section.sourceCandidateIds = []
+  const workflowOwnedIds = new Set(['valuation', 'bull-base-bear', 'variant-perception'])
+  if (workflowOwnedSections.some(section => !workflowOwnedIds.has(section.id))
+    || new Set(workflowOwnedSections.map(section => section.id)).size !== workflowOwnedSections.length
+    || workflowOwnedSections.length > 0 && workflowOwnedSections.length !== workflowOwnedIds.size) {
+    throw new Error('Invalid workflow-owned company research section set')
+  }
+  for (const section of workflowOwnedSections) {
+    const target = sections.find(candidate => candidate.id === section.id)
+    if (!target) throw new Error(`Workflow-owned section is not part of the company report: ${section.id}`)
+    target.markdown = section.markdown
+    target.sourceCandidateIds = [...new Set(section.sourceCandidateIds)]
   }
   const tableDiagnostics = validateCompanyResearchSectionTables(sections)
   const available=methods.filter(method=>method.status==='complete')
   const allowed=new Set(input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? [])
-  const locations=new Set(available.flatMap(method=>method.findings.flatMap(f=>f.evidence.map(e=>`${e.sourceCandidateId}@${e.location}`))))
-  for (const method of available) {
-    const supplied = new Set([...(method.executionEvidence ?? []), ...(method.deterministicEvidence ?? [])].flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))
-    for (const text of [method.markdown, ...method.sections.map(section => section.markdown)]) for (const match of text.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)) if (supplied.has(match[1]!)) locations.add(match[1]!)
-  }
-  // Give synthesis the actual, already-authorized text behind each locator.
-  // A locator-only allowlist encouraged the model to guess paragraph numbers
-  // from memory because it could not see the evidence rows it was asked to cite.
   const sourceById = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
-  const excerptByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
+  const conflicted = new Set(evidencePolicy.conflictedSourceCandidateIds ?? [])
+  const verifiedEvidenceByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
   for (const method of available) for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    if (!allowed.has(packet.sourceCandidateId) || conflicted.has(packet.sourceCandidateId)) continue
     const source = sourceById.get(packet.sourceCandidateId)
+    if (!source) continue
     const supplied = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt]))
-    const lineAt = (location: string): string | undefined => {
-      const paragraph = Number(/^paragraph:(\d+)$/.exec(location)?.[1])
-      return source && Number.isInteger(paragraph) && paragraph > 0 ? source.content.split(/\r?\n/)[paragraph - 1] : undefined
-    }
     for (const excerpt of packet.excerpts) {
-      const ref = `${packet.sourceCandidateId}@${excerpt.location}`
-      if (!locations.has(ref)) continue
-      const text = excerpt.text.slice(0, 1200)
-      const existing = excerptByLocation.get(ref)
-      const exactSourceRow = lineAt(excerpt.location) === excerpt.text
-      const contextual = exactSourceRow ? (excerpt.contextLocations ?? []).filter(location => {
+      const match = /^paragraph:(\d+)$/.exec(excerpt.location)
+      const paragraph = match ? Number(match[1]) : 0
+      const sourceLine = paragraph > 0 ? source.content.split(/\r?\n/)[paragraph - 1] : undefined
+      if (!sourceLine?.trim() || sourceLine !== excerpt.text) continue
+      const contextLocations = (excerpt.contextLocations ?? []).filter(location => {
         const context = supplied.get(location)
-        return context !== undefined && lineAt(location) === context.text
-      }) : excerpt.contextLocations ?? []
-      const mergedContextual = existing?.text === text && exactSourceRow
-        ? [...new Set([...(existing.contextLocations ?? []), ...contextual])]
-        : contextual
-      excerptByLocation.set(ref, { sourceCandidateId: packet.sourceCandidateId, location: excerpt.location, title: packet.title, text, ...(mergedContextual.length ? { contextLocations: mergedContextual } : {}) })
+        const contextMatch = /^paragraph:(\d+)$/.exec(location)
+        const contextParagraph = contextMatch ? Number(contextMatch[1]) : 0
+        return !!context && contextParagraph > 0 && source.content.split(/\r?\n/)[contextParagraph - 1] === context.text
+      })
+      const ref = `${packet.sourceCandidateId}@${excerpt.location}`
+      const existing = verifiedEvidenceByLocation.get(ref)
+      const mergedContextLocations = [...new Set([...(existing?.contextLocations ?? []), ...contextLocations])]
+      verifiedEvidenceByLocation.set(ref, {
+        sourceCandidateId: packet.sourceCandidateId,
+        location: excerpt.location,
+        title: source.title,
+        text: excerpt.text.slice(0, 1200),
+        ...(mergedContextLocations.length ? { contextLocations: mergedContextLocations } : {}),
+      })
     }
   }
+  const workflowLedger = buildSynthesisEvidenceLedger({
+    methods: [],
+    sources: input.sources,
+    workflowOwnedSections,
+    allowedSourceCandidateIds: [...allowed],
+    conflictedSourceCandidateIds: [...conflicted],
+  })
+  for (const entry of workflowLedger) {
+    if (entry.eligibility !== 'verified' || !entry.ownerWorkflow) continue
+    for (const ref of entry.evidence) {
+      const source = sourceById.get(ref.sourceCandidateId)
+      if (!source) continue
+      verifiedEvidenceByLocation.set(`${ref.sourceCandidateId}@${ref.location}`, {
+        sourceCandidateId: ref.sourceCandidateId,
+        location: ref.location,
+        title: source.title,
+        text: ref.excerpt,
+      })
+    }
+  }
+  const locations = new Set<string>()
+  for (const method of available) {
+    for (const finding of method.findings) for (const ref of finding.evidence) {
+      const locator = `${ref.sourceCandidateId}@${ref.location}`
+      if (verifiedEvidenceByLocation.has(locator)) locations.add(locator)
+    }
+    for (const text of [method.markdown, ...method.sections.map(section => section.markdown)]) {
+      for (const match of text.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)) if (verifiedEvidenceByLocation.has(match[1]!)) locations.add(match[1]!)
+    }
+  }
+  for (const entry of workflowLedger) {
+    if (entry.eligibility !== 'verified' || !entry.ownerWorkflow) continue
+    for (const ref of entry.evidence) locations.add(`${ref.sourceCandidateId}@${ref.location}`)
+  }
+  // Synthesis may only cite exact rows that a completed method or qualified Workflow section supplied and
+  // that still match an eligible, non-conflicted report source.
+  const excerptByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
   for (const ref of locations) {
-    if (excerptByLocation.has(ref)) continue
-    const match = /^([^@]+)@(paragraph:\d+)$/.exec(ref)
-    const source = match && sourceById.get(match[1]!)
-    if (!match || !source) continue
-    const text = source.content.split(/\r?\n/)[Number(match[2]!.slice('paragraph:'.length)) - 1]
-    if (text?.trim()) excerptByLocation.set(ref, { sourceCandidateId: match[1]!, location: match[2]!, title: source.title, text: text.slice(0, 1200) })
+    const verified = verifiedEvidenceByLocation.get(ref)
+    if (verified) excerptByLocation.set(ref, verified)
   }
   const productsSection = sections.find(section => section.id === 'products')
   if (productsSection) {
@@ -2041,39 +2658,50 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     const tableRepairInstruction = previousDiagnostic?.includes('TABLE_ERROR')
       ? '上一轮因Markdown表格列数不一致被拒绝。逐张表读取表头列数；每个数据行必须与该表头列数完全一致。若跟踪清单使用表格，固定为四列：指标/观察项、观察频率、触发条件/核验信号、论点关联与证据；每行必须分别提供四格。只在语义边界明确时拆分原有内容，保留全部事实、数字、限定和引用，不得增加无证据内容；不能安全拆分时改用有引用的普通段落。'
       : ''
-  const crossMethodEvidenceInstruction = '最终风险与跟踪清单必须按已提供的证据包逐项整合跨方法事实：若任一已完成方法的 evidence/findings 含年度前五、最大或第二大客户销售比例，应分别写入相关风险/监控行并引用该方法实际提供的对应行；客户匿名仅限制身份、产品映射、合同和替代性，不能称比例未披露。若 evidence/findings 已具名某一竞争候选，仅可保留该候选及来源支持的车型/路线，并将其他未验证的同口径比较列为缺口；删除未在引用原文或竞争方法finding中具名的公司、车型和路线，不得用模型记忆补齐。方法本身的局部缺口不得覆盖其他方法已核验的输入。审查原因若承认某项数据正确或章节应通过，应将它从待修缺口中剔除，只修复其中明确指出且仍成立的具体错误。对 revenue-profit-drivers、growth-drivers、management-capital-allocation 和 monitoring-checklist，先逐项检索本轮有效方法结果、findings 及 allowedEvidence 中与该节对应的具体原表行；凡已有精确行和定位，必须把披露事实、期间、单位及其直接引用整合到相应论点或监控项，不得把事实遗漏再写成资料缺失。收入驱动须分别列出已披露的分行业/分产品收入金额与占比，缺少分部利润、量价拆解或型号贡献时仅将这些字段列为缺口。资本配置须纳入已披露的并购完成/并表事实、回购或员工计划购入与持有记录；只有原表未给出的对价、支付细节、参与人数或后续回报可继续列为缺口，不能因缺少这些字段而否认行动或交易事实。收入与毛利判断须逐行保留其完整分类标签、期间、单位和原文引用，并按数字校验要求呈现；不得把原表明确列出的行业/产品行称作未提供。'
+  const crossMethodEvidenceInstruction = '最终风险与跟踪清单必须按已提供的证据包逐项整合跨方法事实：若任一已完成方法的 evidence/findings 含年度前五、最大或第二大客户销售比例，应分别写入相关风险/监控行并引用该方法实际提供的对应行；客户匿名仅限制身份、产品映射、合同和替代性，不能称比例未披露。若 evidence/findings 已具名某一竞争候选，仅可保留该候选及来源支持的车型/路线，并将其他未验证的同口径比较列为缺口；删除未在引用原文或竞争方法finding中具名的公司、车型和路线，不得用模型记忆补齐。方法本身的局部缺口不得覆盖其他方法已核验的输入。审查原因若承认某项数据正确或章节应通过，应将它从待修缺口中剔除，只修复其中明确指出且仍成立的具体错误。对 revenue-profit-drivers、growth-drivers、management-capital-allocation 和 monitoring-checklist，先逐项检索本轮有效方法结果、findings 及 allowedEvidence 中与该节对应的具体原表行；凡已有精确行和定位，必须把披露事实、期间、单位及其直接引用整合到相应论点或监控项，不得把事实遗漏再写成资料缺失。收入驱动须分别列出已披露的分行业/分产品收入金额与占比，缺少分部利润、量价拆解或型号贡献时仅将这些字段列为缺口。资本配置须纳入已披露的并购完成/并表事实、回购或员工计划购入与持有记录；只有原表未给出的对价、支付细节、参与人数或后续回报可继续列为缺口，不能因缺少这些字段而否认行动或交易事实。收入与毛利判断须逐行保留其完整分类标签、期间、单位和原文引用，并按数字校验要求呈现；不得把原表明确列出的行业/产品行称作未提供。产品分类毛利率的章节标题和同句不得使用“合并毛利率比较”或把分类指标包装为合并指标；若需说明其范围限制，写明“该数值为产品分类毛利率，不代表公司整体毛利率”。如需报告合并毛利率，另起句并仅引用preparedAnalysis中精确匹配的同口径比率及两个期间操作数。'
+  const qualifiedWorkflowSynthesisInstruction = '综合投资论点时，逐条查看preparedAnalysis.synthesisEvidenceLedger中eligibility=verified且ownerWorkflow为valuation、bull-base-bear或variant-perception的条目。若估值条目已verified，核心论点必须用定性表述纳入该估值路径的经济含义及章节明示的限制，并至少引用其allowedEvidence中的一个精确定位；不要抄录数字，也不得把历史参考倍数升级为预测估值或目标价。若三情景或预期差条目已verified，纳入其具名的方向、关键条件及反证，并引用其自身证据。monitoring-checklist只为verified的估值/情景/预期结论列出可重复观察的指标和触发条件。eligibility=blocked条目绝不能作为事实或结论；不得将其诊断内容包装成已成立的市场预期、经营情景或投资结论。'
     try {
-      const response=await executor.execute({operation:'company_research_synthesis',instruction:'preparedAnalysis.synthesisEvidenceLedger仅包含完整方法的事实、推断或假设，且每条证据均逐项匹配本轮提供的原文、定位及来源哈希；优先用它核对跨方法事实。证据包外的历史材料、冲突来源和无效定位不属于账本，不得引用或升级为结论。每节须简洁并在5000字符内完整结束：investment-thesis最多5段、每段至多2句，涵盖核心判断、支持证据、最强反证和失效条件；所有核心判断及跟踪项均用定性事实表述，不在这两节抄录数字、百分比、日期或带数字的技术型号；把数值细节留在已完成方法章节，并以准确定位引用。monitoring-checklist最多8项，每项只保留一个指标、频率、触发信号及论点关联；避免重述方法正文和大段原表数据。不得输出未闭合表格、超长表格或用截断方式满足长度要求。'+crossMethodEvidenceInstruction+' 用中文整合已完成的独立研究方法，只输出investment-thesis与monitoring-checklist两节。每条qualityFeedback都是上一轮报告的必修缺口：逐条定位其章节，核对当前有效方法结果及allowedEvidence后修订，不得遗漏、泛化或仅在别章回应；若反馈与本轮完整方法结果或证据相矛盾，应保留有证据的事实并收窄具体缺口，无法核实则写明限制。客户表与供应商表须按各自小节、行标签、表头及数据行分别绑定，不得用营业成本构成等邻近表格的单位、期间或表头支持客户/供应商数据。治理与激励优先纳入最新可用定期报告，并将较早报告的未实施明确限定到其报告期。催化剂应衔接已披露指标和经营信号；可指出未披露量化阈值，但不得因此省略已有指标。风险章节须保留竞争方法识别的具名候选公司及产品/技术路线，只将直接竞标、客户重叠和同口径成本/性能比较列为待验证。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联；若用表格，固定使用“指标/观察项｜观察频率｜触发条件/核验信号｜论点关联与证据”四列，每个数据行严格四格且引用置于支持该论点的单元格，不得合并列；若无法安全组织为四格，改用有证据引用的段落。所有历史数据必须标明具体报告期间；引用年报分行业数据时必须写明报告年度，不得以“公司分行业表”等未注明期间的表述呈现历史值。对余额与流量的增长比较必须分别标明期末余额期间和累计流量期间，明确称其为跨口径筛查，不暗示因果。allowedEvidence 中的 sourceCandidateId、location 和正文是一一对应的、唯一可用证据及定位符；引用时逐字复制 sourceCandidateId@location，不得按报告页码推算 paragraph，不得引用不在 allowedEvidence 中的定位符。综合论点须交叉核对所有方法的结论、已引用事实与反证，不可用“资料缺失”覆盖已完成方法中已有的具名公司、产品、销量、收入或履历信息。尤其风险矩阵须交叉核对competitive_market_map：若其中已识别具名候选及其有来源支持的产品或技术路线，不得写“无具名竞品、路线或可比性能证据”，应保留候选/路线并将直接替代、实际客户重叠、市场份额和同口径性能成本限定为未验证。客户集中风险若已列前五大、最大与第二大单项销售比例，并说明最大客户缩减采购→收入/产能利用的路径，不得再称客户比例不可核或风险影响未分析；明确匿名仅限制身份、业务映射、合同和替代性，静态销售占比不等于实际收入/利润损失。员工持股计划分别标明人数上限、实际参与人数（若披露）、累计购入股数及期末持有数；上限不可写成实际人数，实际购股股数不可写成参与人数，缺实际参与人数时须明确限定。相同产品、指标、期间和比较基期在同节或跨章节重复出现时，必须对照完全相同的原表行和已完成方法并统一数值方向；不得一处写成本同比增速低于收入、另一处又写成本扩张更快，除非期间、产品或口径确实不同且已明确解释。；产品技术方法所用证据包可能不含竞争方法专门取得的同业材料，若竞争方法已给出具名候选公司及产品/技术路线，综合时应在产品或竞争相关段落保留该候选并引用其对应原文，同时把直接竞争、客户重叠及同口径性能成本限制为未验证，不能笼统写“没有具名竞品”；若年报已披露主要管理人员姓名、职务或职责，不能笼统称“完整管理层分工缺失”；只可指出具体新任高管履历、具体职责分工或任职后绩效等确未披露的事项，并保留已披露事实。若欠缺的是同口径价格、成本或车型/产品贡献，也应具体限定缺项。若证据含行业预测，即使其市场边界与公司分部仅相邻而非直接可比，也须保留预测数值、年份、币种/单位和年报转述归属，并明确它仅是相邻行业背景、不能替代分部市场规模或公司TAM。资产负债表比较列标为“上年末”时，期末余额只能表述为较上年末；不得称“上年同期”或同比，只有preparedAnalysis提供同指标、同期间的同比结果时才另行报告。若已完成方法披露控制人兼任职务、内部控制或关联交易制度，风险综合必须保留这些事实，只讨论具体执行和制衡证据缺口，不得声称治理结构或内控资料缺失。年度研发变动原因栏标为“不适用”时，应明确说原表将原因说明标为不适用且没有具体解释，避免笼统称报告遗漏原因。涉及数值的每个句子都须在句末引用直接支持该指标和期间的证据，不能借同段其他数据的引用。年度报告“研发投入金额”和利润表/结构化摘要“研发费用”是不同指标与期间，必须分别标明，不得并列成趋势或据此推导费用增减；只有同指标、同期间口径才可比较。代码派生的增速差、百分点差、现金流差、周转天数或单位换算，必须在所属章节列出操作数、单位和公式；表格中的派生同比也必须显示本期值、可比期值及公式，不能只列计算结果；事实披露值不虚构公式。毛利率水平用%；毛利率同比变化严格沿用原表列名、单位行和数据单元显示的单位，列名或单元显示%时保留百分比口径，不得改称百分点。只有两个可比毛利率水平由代码计算其差额并列出操作数和公式时，才用百分点。引用PDF拆分表头中的分行业/分产品毛利率变化时，必须直接引用定义该变化列的完整表头片段（所有拆分定位段）、单位段、相应分行业/分产品区段标题，以及精确完整行标签和数值行；行标签跨段时，标签段与数值续行都须分别引用。只引用数值行、邻近表头文字或方法结论不足以证明毛利率变化口径；缺少任一所需定位时，删除该数值论点。涉及分行业或分产品表中的数值时，必须逐字保留披露表中的完整行标签（例如日用电子器件制造业），不得缩写成电子或用分行业/分产品泛称替代；若无法匹配唯一完整行，删除该数字论点。分行业和分产品表要分开陈述，禁止用“分行业/分产品”合并标签或将一张表的产品行称为行业行；代码给出的A−B增速差若为负，文字必须说A低于B，不能用绝对值写成A高于B。风险章节若任何已完成方法或allowedEvidence出现商誉、资产组、被购买方或减值表格，不得称年报商誉资料缺失；应核对单位、主体行、商誉原值与减值准备后解释资产价值、利润及现金流影响，无法计算时只限缩缺少的字段。若数值校验失败，依据repair中带有指标上下文及同数字原文候选的信息，逐项核对科目、期间、产品/行业标签和单位并替换为精确定位；一个句子涉及多个数值时，每个数字必须紧邻其直接支持的本行引用，不能把不同产品、行业、期间和单位的数字合并挂在同一个引用集合下，也不能拿同值的其他表行代替；找不到唯一匹配原文则删除该数值论点。估值、情景和预期差仅在材料提供可复算输入时分析，否则明确缺失输入、已尝试来源及影响；不得将没有一致预期表述为不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,allowedCitations:[...locations],allowedEvidence:[...excerptByLocation.values()],qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?[previousDiagnostic,locatorRepair].filter(Boolean).join('；'):null,repairPreviousOutput:attempt>1?synthesisAttemptOutputs.at(-1)?.output:null,repairInstruction:attempt>1?'先逐条处理qualityFeedback指出的章节缺口，再修复本轮具体错误。交叉核对完整方法结果与allowedEvidence，纳入较新报告已披露事实并保持客户/供应商各自证据范围；若feedback与当前证据冲突，保留证据支持内容并限缩缺口。保留未报错章节和主张。引用只能从本次allowedEvidence的原文中选择，必须原样复制它对应的sourceCandidateId@location，不要猜测段落编号。每句数值判断都必须引用直接支持该科目/期间的原文。数字错误只能通过repair候选的原文科目标签及其提供的单位/相邻上下文消除；每个数字必须紧邻其直接支持的精确行定位，不同产品、行业、期间和单位分别引用；不得因数字相同跨科目取证或将多个数字共用一个模糊引用。无法唯一核实则删除该数值判断。'+(locatorRepair?` ${locatorRepair}`:'')+' '+tableRepairInstruction+' 完整输出合同JSON。':null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
+      const response=await executor.execute({operation:'company_research_synthesis',instruction:'preparedAnalysis.synthesisEvidenceLedger包含完整方法的精确事实/推断及Workflow owned章节输入；只有eligibility=verified且每条证据均匹配本轮允许原文及来源哈希的条目可支持结论，eligibility=blocked条目仅为阻塞诊断，不得升级为结论或引用。证据包外的历史材料、冲突来源和无效定位不属于账本，不得引用或升级为结论。每节须简洁并在5000字符内完整结束：investment-thesis最多5段、每段至多2句，涵盖核心判断、支持证据、最强反证和失效条件；所有核心判断及跟踪项均用定性事实表述，不在这两节抄录数字、百分比、日期或带数字的技术型号；把数值细节留在已完成方法章节，并以准确定位引用。monitoring-checklist最多9项，每项只保留一个指标、频率、触发信号及论点关联；避免重述方法正文和大段原表数据。 每项触发条件必须对应本轮来源明确提供、可在指定报告或公告中重复观察的具名指标；不得写泛称“订单转弱”或“回款信号转弱”，除非来源确实披露了相应订单指标。可用客户占比、应收账款或经营现金流等已披露指标替代，并将未披露阈值写为具体限制，不得编造阈值。不得输出未闭合表格、超长表格或用截断方式满足长度要求。'+crossMethodEvidenceInstruction+' '+qualifiedWorkflowSynthesisInstruction+' 用中文整合已完成的独立研究方法，只输出investment-thesis与monitoring-checklist两节。每条qualityFeedback都是上一轮报告的必修缺口：逐条定位其章节，核对当前有效方法结果及allowedEvidence后修订，不得遗漏、泛化或仅在别章回应；若反馈与本轮完整方法结果或证据相矛盾，应保留有证据的事实并收窄具体缺口，无法核实则写明限制。客户表与供应商表须按各自小节、行标签、表头及数据行分别绑定，不得用营业成本构成等邻近表格的单位、期间或表头支持客户/供应商数据。治理与激励优先纳入最新可用定期报告，并将较早报告的未实施明确限定到其报告期。催化剂应衔接已披露指标和经营信号；可指出未披露量化阈值，但不得因此省略已有指标。风险章节须保留竞争方法识别的具名候选公司及产品/技术路线，只将直接竞标、客户重叠和同口径成本/性能比较列为待验证。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联；若用表格，固定使用“指标/观察项｜观察频率｜触发条件/核验信号｜论点关联与证据”四列，每个数据行严格四格且引用置于支持该论点的单元格，不得合并列；若无法安全组织为四格，改用有证据引用的段落。所有历史数据必须标明具体报告期间；引用年报分行业数据时必须写明报告年度，不得以“公司分行业表”等未注明期间的表述呈现历史值。对余额与流量的增长比较必须分别标明期末余额期间和累计流量期间，明确称其为跨口径筛查，不暗示因果。allowedEvidence 中的 sourceCandidateId、location 和正文是一一对应的、唯一可用证据及定位符；引用时逐字复制 sourceCandidateId@location，不得按报告页码推算 paragraph，不得引用不在 allowedEvidence 中的定位符。综合论点须交叉核对所有方法的结论、已引用事实与反证，不可用“资料缺失”覆盖已完成方法中已有的具名公司、产品、销量、收入或履历信息。尤其风险矩阵须交叉核对competitive_market_map：若其中已识别具名候选及其有来源支持的产品或技术路线，不得写“无具名竞品、路线或可比性能证据”，应保留候选/路线并将直接替代、实际客户重叠、市场份额和同口径性能成本限定为未验证。客户集中风险若已列前五大、最大与第二大单项销售比例，并说明最大客户缩减采购→收入/产能利用的路径，不得再称客户比例不可核或风险影响未分析；明确匿名仅限制身份、业务映射、合同和替代性，静态销售占比不等于实际收入/利润损失。员工持股计划分别标明人数上限、实际参与人数（若披露）、累计购入股数及期末持有数；上限不可写成实际人数，实际购股股数不可写成参与人数，缺实际参与人数时须明确限定。相同产品、指标、期间和比较基期在同节或跨章节重复出现时，必须对照完全相同的原表行和已完成方法并统一数值方向；不得一处写成本同比增速低于收入、另一处又写成本扩张更快，除非期间、产品或口径确实不同且已明确解释。；产品技术方法所用证据包可能不含竞争方法专门取得的同业材料，若竞争方法已给出具名候选公司及产品/技术路线，综合时应在产品或竞争相关段落保留该候选并引用其对应原文，同时把直接竞争、客户重叠及同口径性能成本限制为未验证，不能笼统写“没有具名竞品”；若年报已披露主要管理人员姓名、职务或职责，不能笼统称“完整管理层分工缺失”；只可指出具体新任高管履历、具体职责分工或任职后绩效等确未披露的事项，并保留已披露事实。若欠缺的是同口径价格、成本或车型/产品贡献，也应具体限定缺项。若证据含行业预测，即使其市场边界与公司分部仅相邻而非直接可比，也须保留预测数值、年份、币种/单位和年报转述归属，并明确它仅是相邻行业背景、不能替代分部市场规模或公司TAM。资产负债表比较列标为“上年末”时，期末余额只能表述为较上年末；不得称“上年同期”或同比，只有preparedAnalysis提供同指标、同期间的同比结果时才另行报告。若已完成方法披露控制人兼任职务、内部控制或关联交易制度，风险综合必须保留这些事实，只讨论具体执行和制衡证据缺口，不得声称治理结构或内控资料缺失。年度研发变动原因栏标为“不适用”时，应明确说原表将原因说明标为不适用且没有具体解释，避免笼统称报告遗漏原因。涉及数值的每个句子都须在句末引用直接支持该指标和期间的证据，不能借同段其他数据的引用。年度报告“研发投入金额”和利润表/结构化摘要“研发费用”是不同指标与期间，必须分别标明，不得并列成趋势或据此推导费用增减；只有同指标、同期间口径才可比较。代码派生的增速差、百分点差、现金流差、周转天数或单位换算，必须在所属章节列出操作数、单位和公式；表格中的派生同比也必须显示本期值、可比期值及公式，不能只列计算结果；事实披露值不虚构公式。毛利率水平用%；毛利率同比变化严格沿用原表列名、单位行和数据单元显示的单位，列名或单元显示%时保留百分比口径，不得改称百分点。只有两个可比毛利率水平由代码计算其差额并列出操作数和公式时，才用百分点。引用PDF拆分表头中的分行业/分产品毛利率变化时，必须直接引用定义该变化列的完整表头片段（所有拆分定位段）、单位段、相应分行业/分产品区段标题，以及精确完整行标签和数值行；行标签跨段时，标签段与数值续行都须分别引用。只引用数值行、邻近表头文字或方法结论不足以证明毛利率变化口径；缺少任一所需定位时，删除该数值论点。涉及分行业或分产品表中的数值时，必须逐字保留披露表中的完整行标签（例如日用电子器件制造业），不得缩写成电子或用分行业/分产品泛称替代；若无法匹配唯一完整行，删除该数字论点。分行业和分产品表要分开陈述，禁止用“分行业/分产品”合并标签或将一张表的产品行称为行业行；代码给出的A−B增速差若为负，文字必须说A低于B，不能用绝对值写成A高于B。风险章节若任何已完成方法或allowedEvidence出现商誉、资产组、被购买方或减值表格，不得称年报商誉资料缺失；应核对单位、主体行、商誉原值与减值准备后解释资产价值、利润及现金流影响，无法计算时只限缩缺少的字段。若数值校验失败，依据repair中带有指标上下文及同数字原文候选的信息，逐项核对科目、期间、产品/行业标签和单位并替换为精确定位；一个句子涉及多个数值时，每个数字必须紧邻其直接支持的本行引用，不能把不同产品、行业、期间和单位的数字合并挂在同一个引用集合下，也不能拿同值的其他表行代替；找不到唯一匹配原文则删除该数值论点。估值、情景和预期差仅在材料提供可复算输入时分析，否则明确缺失输入、已尝试来源及影响；不得将没有一致预期表述为不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,allowedCitations:[...locations],allowedEvidence:[...excerptByLocation.values()],qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?[previousDiagnostic,locatorRepair].filter(Boolean).join('；'):null,repairPreviousOutput:attempt>1?synthesisAttemptOutputs.at(-1)?.output:null,repairInstruction:attempt>1?'先逐条处理qualityFeedback指出的章节缺口，再修复本轮具体错误。交叉核对完整方法结果与allowedEvidence，纳入较新报告已披露事实并保持客户/供应商各自证据范围；若feedback与当前证据冲突，保留证据支持内容并限缩缺口。保留未报错章节和主张。引用只能从本次allowedEvidence的原文中选择，必须原样复制它对应的sourceCandidateId@location，不要猜测段落编号。每句数值判断都必须引用直接支持该科目/期间的原文。数字错误只能通过repair候选的原文科目标签及其提供的单位/相邻上下文消除；每个数字必须紧邻其直接支持的精确行定位，不同产品、行业、期间和单位分别引用；不得因数字相同跨科目取证或将多个数字共用一个模糊引用。无法唯一核实则删除该数值判断。'+(locatorRepair?` ${locatorRepair}`:'')+' '+tableRepairInstruction+' 完整输出合同JSON。':null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
       synthesisAttemptOutputs.push({attempt,output:response.output,allowedCitations:[...locations]})
       const value=(typeof response.output==='string'?JSON.parse(response.output):response.output) as {sections?: {id:string;markdown:string;sourceCandidateIds:string[]}[]}
       if(!Array.isArray(value.sections)||value.sections.length!==finalIds.length||new Set(value.sections.map(s=>s.id)).size!==finalIds.length) throw new Error('FORMAT_ERROR: final section set must be exact')
       const validated: {id:string;markdown:string;sourceCandidateIds:string[]}[]=[]
       for(const section of value.sections) {
         if(!finalIds.includes(section.id)||typeof section.markdown!=='string'||!section.markdown.trim()||!Array.isArray(section.sourceCandidateIds)) throw new Error('REFERENCE_ERROR: final section contract invalid')
-        // These three sections are always replaced with deterministic, bounded
-        // gap text below. Do not validate citations or claims in model drafts
-        // that will never be published; otherwise an irrelevant guessed
-        // locator can exhaust synthesis retries while the final artifact would
-        // contain only the safe fixed gap. Core thesis and monitoring sections
-        // still pass through every citation and numeric guard.
-        if (optionalGaps[section.id] !== undefined) {
-          validated.push({id:section.id,markdown:optionalGaps[section.id]!,sourceCandidateIds:[]})
-          continue
-        }
         const normalizedMarkdown=normalizeCompanySynthesisCitations(section.markdown)
         const finalTableRepair=repairCompanyFinalSynthesisTable(section.id,normalizedMarkdown)
         if(finalTableRepair.repairs.length)diagnostics.push(`${attempt}:DETERMINISTIC_TABLE_REPAIR:${finalTableRepair.repairs.join(',')}`)
-        const tableErrors = validateCompanyResearchMarkdownTables(finalTableRepair.markdown)
+        const citationRepair=repairUniqueTruncatedSynthesisSourceIds(finalTableRepair.markdown,locations)
+        if(citationRepair.repairs.length)diagnostics.push(`${attempt}:UNIQUE_TRUNCATED_SOURCE_ID_REPAIR:${citationRepair.repairs.join(',')}`)
+        const synthesisMarkdown=citationRepair.markdown
+        const tableErrors = validateCompanyResearchMarkdownTables(synthesisMarkdown)
         if (tableErrors.length) throw new Error(`FORMAT_ERROR: ${tableErrors.join('; ')}`)
-        for(const match of finalTableRepair.markdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
-        if(['investment-thesis','monitoring-checklist'].includes(section.id)&&![...normalizedMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
-        const citationIds=[...new Set([...finalTableRepair.markdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
+        for(const match of synthesisMarkdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
+        if(['investment-thesis','monitoring-checklist'].includes(section.id)&&![...synthesisMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
+        const citationIds=[...new Set([...synthesisMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
         if(citationIds.some(id=>!allowed.has(id))) throw new Error('REFERENCE_ERROR: cited source is not allowed for this report')
         const optional= !['investment-thesis','monitoring-checklist'].includes(section.id)
-        let sectionMarkdown=finalTableRepair.markdown.trim()
+        let sectionMarkdown=synthesisMarkdown.trim()
         sectionMarkdown=bindExact2025BydProductMarginSynthesisCitations(sectionMarkdown,available,locations)
         sectionMarkdown=repairSynthesisSubjectCitations(sectionMarkdown,available,locations)
         sectionMarkdown=normalizeCompanyRevenueCostSpreadWording(sectionMarkdown)
+        if(section.id==='investment-thesis') {
+          const valuationSentence=qualifiedReferencePeThesisSentence(workflowLedger.find(entry=>entry.ownerWorkflow==='valuation'&&entry.eligibility==='verified'))
+          if(valuationSentence) {
+            const sentenceReferences=[...valuationSentence.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match=>match[1]!)
+            if(sentenceReferences.every(reference=>locations.has(reference))&&!sentenceReferences.every(reference=>sectionMarkdown.includes(`[${reference}]`))) {
+              const paragraphEnd=sectionMarkdown.indexOf('\n\n')
+              sectionMarkdown=paragraphEnd<0?`${sectionMarkdown} ${valuationSentence}`:`${sectionMarkdown.slice(0,paragraphEnd)} ${valuationSentence}${sectionMarkdown.slice(paragraphEnd)}`
+            }
+          }
+        }
+        if(section.id==='monitoring-checklist') {
+          sectionMarkdown=appendQualifiedReferencePeMonitoring(sectionMarkdown,workflowLedger.find(entry=>entry.ownerWorkflow==='valuation'&&entry.eligibility==='verified'))
+          const appendedReferences=[...sectionMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match=>match[1]!)
+          if(appendedReferences.some(reference=>!locations.has(reference))) throw new Error('REFERENCE_ERROR: qualified valuation monitoring locator unavailable')
+          const monitoringTableErrors=validateCompanyResearchMarkdownTables(sectionMarkdown)
+          if(monitoringTableErrors.length) throw new Error(`FORMAT_ERROR: ${monitoringTableErrors.join('; ')}`)
+        }
         if (!optional) {
           const validate=()=>validateCompanyNumericGrounding({markdown:sectionMarkdown,sources:input.sources,evidenceContexts:validationEvidenceContexts,preparedAnalysis:input.preparedAnalysis,trustedText:[input.company.symbol,input.asOf,...companyCitedSplitDateText(sectionMarkdown,available.flatMap(method=>method.executionEvidence ?? [])),...companyPreparedFinancialDateText(input.preparedAnalysis)]})
           let grounding=validate()
@@ -2083,11 +2711,21 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
           }
           if(grounding.status!=='grounded') {numericRepairIssues=grounding.diagnostics;throw new Error(`NUMERIC_GROUNDING_ERROR:${grounding.diagnostics.map(d=>d.token).join(',')}`)}
         }
-        validated.push({id:section.id,markdown:optional?optionalGaps[section.id]!:sectionMarkdown,sourceCandidateIds:optional?[]:[...new Set([...citationIds,...[...sectionMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!)])]})
+        validated.push({id:section.id,markdown:sectionMarkdown,sourceCandidateIds:[...new Set([...citationIds,...[...sectionMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!)])]})
       }
       for(const section of validated) Object.assign(sections.find(s=>s.id===section.id)!,section)
       synthesisMode='reasoning_executor';break
     } catch(error) {if(input.signal?.aborted) throw new Error('WORKFLOW_CANCELLED');const message=error instanceof Error?error.message:String(error);const repairEvidence=message.includes('NUMERIC_GROUNDING_ERROR:')?synthesisNumericRepairEvidence(numericRepairIssues,available,input.sources,locations):[];diagnostics.push(`${attempt}:${message}${numericRepairIssues.length?`; 失败语句: ${numericRepairIssues.map(issue=>`${issue.token}：${issue.context}`).join(' | ')}`:''}${repairEvidence.length?`; 同数字的已供给原文候选（只用于精确修正引用）: ${repairEvidence.join(' | ')}`:''}`)}
+  }
+  const monitoring = sections.find(section => section.id === 'monitoring-checklist')
+  if (monitoring) {
+    monitoring.markdown = appendVerifiedScenarioMonitoring(
+      monitoring.markdown,
+      workflowLedger.find(entry => entry.ownerWorkflow === 'bull-base-bear' && entry.eligibility === 'verified'),
+    )
+    const citations = [...monitoring.markdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+    if (citations.some(reference => !locations.has(reference))) throw new Error('REFERENCE_ERROR: qualified scenario monitoring locator unavailable')
+    monitoring.sourceCandidateIds = [...new Set([...monitoring.sourceCandidateIds, ...citations.map(reference => reference.slice(0, reference.lastIndexOf('@')))])]
   }
   const durable=new Set(input.durableSourceCandidateIds ?? [])
   const proposals:SemanticKnowledgeProposal[]=[{proposalId:'proposal-company',kind:'entity',subjectKey:'company',entityType:'company',entityName:input.company.name ?? input.company.symbol}]

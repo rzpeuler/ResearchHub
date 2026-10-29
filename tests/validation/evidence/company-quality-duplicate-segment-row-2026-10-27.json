@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "capturedAt": "2026-10-27",
+  "sourceCommit": "816ecaa0386d828c9b10857940b91295aa0a7b74",
+  "change": {
+    "summary": "Preserve a business-driver finding's exact cited segment row when an adjacent industry/product table repeats the same numeric values.",
+    "syntheticRegression": {
+      "command": "node --import tsx --test --test-name-pattern='business-driver classification binds the exact industry row' tests/skills/company-methods.test.ts",
+      "result": "1/1 passed",
+      "fixture": "Synthetic filing rows 727-732 are embedded in tests/skills/company-methods.test.ts; the industry and product rows intentionally repeat the same values."
+    }
+  },
+  "validation": {
+    "methodTests": {
+      "command": "node --import tsx --test tests/skills/company-methods.test.ts",
+      "result": "139 tests; 139 passed; 0 failed"
+    },
+    "typecheck": "npm run typecheck: passed",
+    "diffCheck": "git diff --check: passed"
+  },
+  "liveReadOnlyRuns": {
+    "model": "openai-codex/gpt-6-luna",
+    "knowledgeWrite": false,
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "7aa81f92-ab93-4cc8-9033-a81a308ddbca",
+        "reportId": "company-research-002594-7aa81f92-ab93-4cc8-9033-a81a308ddbca",
+        "status": "blocked",
+        "coreChecks": "12/19",
+        "businessDriverMethod": "failed both attempts; the incorrect-family duplicate product row was selected despite the cited exact industry row",
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "2a2aee5fb1359d3d77813c8ce10fa5e9efbdffee0bcdc7353a97c209abe9fd0e",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      },
+      {
+        "symbol": "002384",
+        "runId": "104fd193-3c1a-45a9-aaf6-c60c6a71e3f6",
+        "reportId": "company-research-002384-104fd193-3c1a-45a9-aaf6-c60c6a71e3f6",
+        "status": "blocked",
+        "coreChecks": "17/19",
+        "businessDriverMethod": "completed",
+        "remainingBlockers": [
+          "Bull/Base/Bear operating scenario inputs lack attributable source evidence",
+          "Variant Perception forecast value vintage remains unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "c8645317593b59fb5acdfa77fe517c717a9b707ebd6d5a385a070900a641f912",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    ],
+    "rawReportsProviderBodiesAndDisposableKnowledgeIncluded": false
+  },
+  "acceptance": {
+    "p0Status": "incomplete",
+    "reason": "Both real reports remain blocked; this run predates the duplicate-row repair, and independent semantic review and Hermes comparison are still outstanding."
+  }
+}

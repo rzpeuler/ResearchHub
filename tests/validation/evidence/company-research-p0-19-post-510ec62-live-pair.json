@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-27",
+  "executionClass": "root Runtime/API with saved openai-codex/gpt-6-luna configuration; real providers; separate disposable Knowledge Bases",
+  "writeKnowledge": false,
+  "acceptance": "blocked",
+  "summary": "Both reports passed 17/19 structural checks; scenario inputs lack attributable located evidence and estimate value versions are unverified. Workflow semantic review was not reached.",
+  "cases": [
+    {
+      "symbol": "002594",
+      "runId": "f499d4f3-fa29-499e-8c23-67ec113a8822",
+      "reportId": "company-research-002594-f499d4f3-fa29-499e-8c23-67ec113a8822",
+      "terminalStatus": "blocked",
+      "sourceRevision": "510ec62f25650cf852e37433a976c64f3a3c8858",
+      "reportSha256": "0f4736055e743027500000ef896ce07fd8dca4c00073ebbd88ab08e87c093c20",
+      "sectionChecks": [
+        {
+          "sectionId": "company-overview",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-model",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-segments",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "revenue-profit-drivers",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "products",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "technologies",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "industry-exposure",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "supply-chain",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "competition",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "financial-quality",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "growth-drivers",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "management-capital-allocation",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "catalysts",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "risks",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "valuation",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "bull-base-bear",
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "sectionId": "investment-thesis",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "monitoring-checklist",
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methodResults": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "attempts": 2
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attempts": 2
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attempts": 2
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attempts": 1
+        }
+      ],
+      "synthesis": {
+        "mode": "reasoning_executor",
+        "attempts": 1,
+        "diagnosticCodes": []
+      },
+      "semanticReview": {
+        "attempts": 0,
+        "rounds": 0,
+        "reached": false
+      },
+      "verifiedValuationInputLocators": [
+        "company-valuation-market-002594-2026-10-27@paragraph:1",
+        "official-f7c8d23d2829a5e8@paragraph:231"
+      ],
+      "thesisContainsAllVerifiedValuationLocators": true,
+      "checklistContainsAllVerifiedValuationLocators": true,
+      "knowledgeBase": {
+        "mode": "readonly",
+        "unchanged": true,
+        "before": {
+          "manifest.yaml": "ed20dfd1682339ce9773361e6ce0be64ad6d9ceea34f82607da92d5130a5bf25",
+          "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "ed20dfd1682339ce9773361e6ce0be64ad6d9ceea34f82607da92d5130a5bf25",
+          "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    },
+    {
+      "symbol": "002384",
+      "runId": "0abdf335-7a20-41b9-8059-86f28e7e48f2",
+      "reportId": "company-research-002384-0abdf335-7a20-41b9-8059-86f28e7e48f2",
+      "terminalStatus": "blocked",
+      "sourceRevision": "510ec62f25650cf852e37433a976c64f3a3c8858",
+      "reportSha256": "30ab98b39cc329050b1914e6b058f421ebe6eadd64d5ff7aa0c977a8ea3bcdcc",
+      "sectionChecks": [
+        {
+          "sectionId": "company-overview",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-model",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "business-segments",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "revenue-profit-drivers",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "products",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "technologies",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "industry-exposure",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "supply-chain",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "competition",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "financial-quality",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "growth-drivers",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "management-capital-allocation",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "catalysts",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "risks",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "valuation",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "bull-base-bear",
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ]
+        },
+        {
+          "sectionId": "variant-perception",
+          "passed": false,
+          "reasons": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        {
+          "sectionId": "investment-thesis",
+          "passed": true,
+          "reasons": []
+        },
+        {
+          "sectionId": "monitoring-checklist",
+          "passed": true,
+          "reasons": []
+        }
+      ],
+      "methodResults": [
+        {
+          "skillId": "company_history_strategy",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "business_model_map",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "product_technology_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "business_driver_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "financial_quality_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "market_structure_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "competitive_market_map",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "management_governance_analysis",
+          "status": "complete",
+          "attempts": 1
+        },
+        {
+          "skillId": "capital_allocation_review",
+          "status": "complete",
+          "attempts": 2
+        },
+        {
+          "skillId": "company_risk_analysis",
+          "status": "complete",
+          "attempts": 1
+        }
+      ],
+      "synthesis": {
+        "mode": "reasoning_executor",
+        "attempts": 2,
+        "diagnosticCodes": [
+          "NUMERIC_GROUNDING_ERROR"
+        ]
+      },
+      "semanticReview": {
+        "attempts": 0,
+        "rounds": 0,
+        "reached": false
+      },
+      "verifiedValuationInputLocators": [
+        "company-valuation-market-002384-2026-10-27@paragraph:1",
+        "official-39e591fa149e4543@paragraph:233"
+      ],
+      "thesisContainsAllVerifiedValuationLocators": true,
+      "checklistContainsAllVerifiedValuationLocators": false,
+      "knowledgeBase": {
+        "mode": "readonly",
+        "unchanged": true,
+        "before": {
+          "manifest.yaml": "ed20dfd1682339ce9773361e6ce0be64ad6d9ceea34f82607da92d5130a5bf25",
+          "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        },
+        "after": {
+          "manifest.yaml": "ed20dfd1682339ce9773361e6ce0be64ad6d9ceea34f82607da92d5130a5bf25",
+          "registry\\assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry\\raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    }
+  ]
+}

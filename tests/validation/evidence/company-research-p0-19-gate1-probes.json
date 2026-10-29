@@ -1,0 +1,152 @@
+{
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "probeDate": "2026-10-27",
+  "asOf": "2026-10-27T00:24:00.000Z",
+  "mode": "read-only DataResolver probes; no Knowledge writes",
+  "rawBodiesIncluded": false,
+  "numericEstimateValuesIncluded": false,
+  "companies": [
+    {
+      "symbol": "002594",
+      "name": "BYD",
+      "valuation": {
+        "marketClose": {
+          "status": "AVAILABLE",
+          "observationDate": "2026-10-26",
+          "currency": "CNY",
+          "adjustmentMethod": "UNADJUSTED",
+          "pointInTimeSafe": true,
+          "attempts": [
+            { "provider": "EastMoney", "status": "SOURCE_ERROR", "category": "PROXY_ERROR" },
+            { "provider": "Tencent", "status": "SUCCESS", "fallbackLevel": "FALLBACK_1" }
+          ]
+        },
+        "fy2025Eps": {
+          "status": "AVAILABLE",
+          "periodEnd": "2025-12-31",
+          "provider": "EastMoney via AKShare",
+          "valueVersion": "UNVERIFIED",
+          "pointInTimeSafe": false,
+          "reason": "Aggregator historical numeric revision is not identified"
+        },
+        "filingBackedFy2025BasicEps": {
+          "status": "AVAILABLE",
+          "value": 3.58,
+          "unit": "CNY/share",
+          "sourceCandidateId": "official-f7c8d23d2829a5e8",
+          "location": "paragraph:231",
+          "filingSection": "主要会计数据和财务指标",
+          "publicationDate": "2026-03-27",
+          "directlyDisclosed": true
+        },
+        "fy2025Bvps": {
+          "status": "AVAILABLE",
+          "periodEnd": "2025-12-31",
+          "provider": "EastMoney via AKShare",
+          "valueVersion": "UNVERIFIED",
+          "pointInTimeSafe": false,
+          "reason": "Aggregator historical numeric revision is not identified"
+        },
+        "fy2025Publication": {
+          "status": "AVAILABLE",
+          "provider": "CNINFO",
+          "publishedAt": "2026-03-27T16:00:00.000Z",
+          "pointInTimeSafe": true
+        },
+        "peerCandidates": {
+          "status": "AVAILABLE",
+          "provider": "EastMoney",
+          "rowCount": 8,
+          "pointInTimeSafe": false,
+          "reason": "Rows have no observed or publication date; comparable basis is not established"
+        }
+      },
+      "expectations": {
+        "targetPeriod": "2026-FY",
+        "provider": "Tonghuashun / THS",
+        "eps": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 10, "publicationDateRange": ["2026-09-10", "2026-10-17"] },
+        "netProfit": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 10, "publicationDateRange": ["2026-09-10", "2026-10-17"] },
+        "consensusCoverageQualified": true,
+        "consensusSnapshotsBuilt": 2,
+        "selectedInstitutionsPerMetric": 10,
+        "unitCountPerMetric": 1,
+        "reason": "Existing consensus builder selected the latest point-in-time estimate per institution; both EPS and net-profit snapshots met the minimum count of two with one common unit"
+      },
+      "issuerGuidance": {
+        "status": "NOT_ESTABLISHED",
+        "reason": "No matching, dated 2026-FY quantitative guidance surface was established in the audited report evidence"
+      }
+    },
+    {
+      "symbol": "002384",
+      "name": "Dongshan Precision",
+      "valuation": {
+        "marketClose": {
+          "status": "AVAILABLE",
+          "observationDate": "2026-10-26",
+          "currency": "CNY",
+          "adjustmentMethod": "UNADJUSTED",
+          "pointInTimeSafe": true,
+          "attempts": [
+            { "provider": "EastMoney", "status": "SOURCE_ERROR", "category": "PROXY_ERROR" },
+            { "provider": "Tencent", "status": "SUCCESS", "fallbackLevel": "FALLBACK_1" }
+          ]
+        },
+        "fy2025Eps": {
+          "status": "AVAILABLE",
+          "periodEnd": "2025-12-31",
+          "provider": "EastMoney via AKShare",
+          "valueVersion": "UNVERIFIED",
+          "pointInTimeSafe": false,
+          "reason": "Aggregator historical numeric revision is not identified"
+        },
+        "filingBackedFy2025BasicEps": {
+          "status": "AVAILABLE",
+          "value": 0.79,
+          "unit": "CNY/share",
+          "sourceCandidateId": "official-39e591fa149e4543",
+          "location": "paragraph:233",
+          "filingSection": "主要会计数据和财务指标",
+          "publicationDate": "2026-04-21",
+          "directlyDisclosed": true
+        },
+        "fy2025Bvps": {
+          "status": "AVAILABLE",
+          "periodEnd": "2025-12-31",
+          "provider": "EastMoney via AKShare",
+          "valueVersion": "UNVERIFIED",
+          "pointInTimeSafe": false,
+          "reason": "Aggregator historical numeric revision is not identified"
+        },
+        "fy2025Publication": {
+          "status": "AVAILABLE",
+          "provider": "CNINFO",
+          "publishedAt": "2026-04-21T16:00:00.000Z",
+          "pointInTimeSafe": true
+        },
+        "peerCandidates": {
+          "status": "AVAILABLE",
+          "provider": "EastMoney",
+          "rowCount": 8,
+          "pointInTimeSafe": false,
+          "reason": "Rows have no observed or publication date; comparable basis is not established"
+        }
+      },
+      "expectations": {
+        "targetPeriod": "2026-FY",
+        "provider": "Tonghuashun / THS",
+        "eps": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 6, "publicationDateRange": ["2026-04-27", "2026-08-28"] },
+        "netProfit": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 6, "publicationDateRange": ["2026-04-27", "2026-08-28"] },
+        "consensusCoverageQualified": true,
+        "consensusSnapshotsBuilt": 2,
+        "selectedInstitutionsPerMetric": 6,
+        "unitCountPerMetric": 1,
+        "reason": "Existing consensus builder selected the latest point-in-time estimate per institution; both EPS and net-profit snapshots met the minimum count of two with one common unit"
+      },
+      "issuerGuidance": {
+        "status": "NOT_ESTABLISHED",
+        "reason": "No matching, dated 2026-FY quantitative guidance surface was established in the audited report evidence"
+      }
+    }
+  ]
+}

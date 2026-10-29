@@ -164,6 +164,11 @@ function directionBefore(text: string, index: number): -1 | 1 {
   if (/年初余额[^。；;\n|]{0,30}本年增加[^。；;\n|]{0,20}本年减少[^。；;\n|]{0,20}年末余额[^。；;\n|]{0,30}[:：][^。；;\n|]*$/.test(clause)) return 1
   const before = clause.slice(-24).split(/[。；;，,\n|]/).at(-1) ?? ''
   if (/(?<!非|正)负(?:数)?\s*$/.test(before)) return -1
+  // A positive spread may be described after contrasting one growth rate
+  // with another that declined (for example, "收入增长与现金流下降之间的
+  // 增速背离为68.5972个百分点"). The decline describes one operand; once
+  // the clause names the divergence result, it no longer supplies that result's sign.
+  if (/背离(?:为|达|约为)\s*$/.test(before)) return 1
   if (/(?:下降|减少|下滑|降)(?:至|到)\s*(?:约|大约)?\s*$/.test(before)) return 1
   // A source table header such as “毛利率比上年同期增减” is a neutral
   // change-column label. Do not read its final “减” as a negative direction;
@@ -176,7 +181,14 @@ function directionBefore(text: string, index: number): -1 | 1 {
     const remaining = before.slice(direction.index! + direction[0].length)
     // A conjunction-only numeric list still shares its explicit direction:
     // "分别下降1.82和2.06个百分点". Completed units or new prose end it.
-    if (!/^\s*(?:约)?-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?(?:\s*(?:和|及|、)\s*-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?)*\s*(?:和|及|、)\s*$/.test(remaining)) return 1
+    const sharedNumericList = /^\s*(?:约)?-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?(?:\s*(?:和|及|、)\s*-?[\d,，]+(?:\.\d+)?\s*(?:亿元|万元|元|个?百分点|[%％])?)*\s*(?:和|及|、)\s*$/
+    // Separately marked percentages also share a preceding direction when
+    // each enumerated value repeats its own approximation marker, e.g.
+    // "分别同比下降约7.13%、约21.24%及约20.54%". Keep this grammar limited
+    // to a percent-only list so intervening prose or a new metric cannot
+    // inherit the direction.
+    const sharedPercentList = /^\s*(?:约|大约)?-?[\d,，]+(?:\.\d+)?\s*[%％](?:\s*(?:和|及|、)\s*(?:约|大约)?-?[\d,，]+(?:\.\d+)?\s*[%％])*(?:\s*(?:和|及|、)\s*(?:约|大约)?)?\s*$/
+    if (!sharedNumericList.test(remaining) && !sharedPercentList.test(remaining)) return 1
   }
   return direction && /下降|减少|下滑|净流出|净减少|^降$/.test(direction[0]) ? -1 : 1
 }
@@ -571,6 +583,12 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
       const contextualCurrencyUnit = unitText ? /万亿|亿元|百万元|万元|千元|元/.exec(unitText)?.[0] : undefined
       const currencyScale = remunerationRow ? undefined : localUnit ? monetaryScales[localUnit] : contextualCurrencyUnit ? monetaryScales[contextualCurrencyUnit] : citedCustomerSupplierUnit ? monetaryScales[citedCustomerSupplierUnit] : globalScale
       const rawTokens = numericTokens(text).filter((token) => !token.technologyUnit)
+      // Some official PDF rows place the unit in the metric label rather than
+      // after each value, e.g. "研发投入占营业收入比例（%） 4.56 23.71".
+      // Bind those bare row values to percent only when the same cited row
+      // explicitly declares a percentage unit. Explicit "个百分点" values
+      // remain distinct and are not reclassified.
+      const declaredPercentMetric = /(?:比例|占比|比重|毛利率|净利率|资产负债率|负债率|收益率|增长率|变动率|周转率)\s*[（(]\s*[%％]\s*[）)]/.exec(text)
       const tokens = rawTokens.map(token => {
         const isReportingYear = !token.magnitude && /(?:19|20)\d{2}\s*(?:年|年度)/.test(text.slice(token.index, token.index + token.token.length + 4))
         const afterToken = text.slice(token.index + token.token.length).trimStart()
@@ -581,7 +599,10 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
         }) && /^(?:乘用车|商用车)\s+[\d,，]+\s+[\d,，]+\s+[\d,，]+\s+[\d,，]+(?:\.\d+)?\s*$/.test(text)
         const vehicleAmountIndex = vehicleSalesHeader ? rawTokens.at(-1)?.index : undefined
         const vehicleCountCell = vehicleSalesHeader && token.index !== vehicleAmountIndex
-        return { ...token, ...(token.currencyScale === undefined && currencyScale !== undefined && !token.rateUnit && !isReportingYear && !isExplicitCount && !vehicleCountCell ? {currencyScale, value: token.rawValue * currencyScale} : {}), sourceCandidateId: candidateId }
+        const declaredRateUnit = !token.rateUnit && declaredPercentMetric && token.index > declaredPercentMetric.index
+          ? 'percent' as const
+          : undefined
+        return { ...token, ...(declaredRateUnit ? { rateUnit: declaredRateUnit } : {}), ...(token.currencyScale === undefined && currencyScale !== undefined && !token.rateUnit && !isReportingYear && !isExplicitCount && !vehicleCountCell ? {currencyScale, value: token.rawValue * currencyScale} : {}), sourceCandidateId: candidateId }
       })
       // A margin-change column can report its change as a raw percent cell.
       // Preserve the source's displayed unit; do not silently reinterpret it

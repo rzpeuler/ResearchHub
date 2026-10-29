@@ -2,6 +2,8 @@
 
 export type ExpectationMetric = 'revenue' | 'net_profit' | 'eps' | 'gross_margin' | (string & {})
 
+export const EPS_PER_SHARE_UNIT = 'CNY_per_share' as const
+
 export interface EstimatePoint {
   readonly estimateId: string
   readonly metric: ExpectationMetric

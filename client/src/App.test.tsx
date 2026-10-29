@@ -282,7 +282,7 @@ describe('Homepage shell', () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input); calls.push(`${init?.method ?? 'GET'} ${path}`)
       if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
-      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'earnings_review', label: 'Earnings Review', intentDescription: 'Review earnings', inputSchema: {}, requiredInputs: ['symbol'], outputContract: 'ResearchReport', knowledgeEffects: [] }] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
@@ -306,7 +306,10 @@ describe('Homepage shell', () => {
     expect(screen.getByRole('button', { name: 'Open review result' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open Research Report' }))
     await waitFor(() => expect(calls).toContain('GET /api/research-reports/report-nvda-fy26-q1'))
-    expect(await screen.findByRole('heading', { name: 'report-nvda-fy26-q1' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'NVDA-20261009' })).toBeTruthy()
+    expect(screen.queryByText('run-result-1')).toBeNull()
+    fireEvent.click(screen.getByText('Workflow execution history'))
+    expect(await screen.findByText('run-result-1')).toBeTruthy()
   })
 
   it('shows delayed terminal result and Bundle without requiring a mounted Knowledge Base', async () => {
@@ -1178,6 +1181,35 @@ describe('Homepage shell', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Reports' }))
     expect(await screen.findByRole('heading', { name: 'Research Reports' })).toBeTruthy()
     expect(screen.getByText('No persisted Research Reports')).toBeTruthy()
+  })
+
+  it('uses verified company names and generated dates in the Workflow-grouped report catalog', async () => {
+    const summary = { reportId: 'company-research-002640-run-secret', reportType: 'company_research', subjectRefs: ['entity:company-002640'], generatedAt: '2026-10-21T18:40:00.000Z', asOf: '2026-10-21T18:00:00.000Z', workflowRunId: 'run-secret', knowledgeBaseRevision: 4, sourceCount: 1, claimCount: 1, sectionCount: 1, methodology: 'bounded', verifiedName: 'Company Alpha' }
+    const legacySummary = { ...summary, reportId: 'company-research-002594-legacy-run', subjectRefs: ['entity:company-002594'], generatedAt: '2026-10-20T18:40:00.000Z', workflowRunId: 'legacy-run-secret', verifiedName: undefined }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'company_research', label: 'Company Research', displayNameZh: '公司深度研究', intentDescription: 'Research a company', inputSchema: {}, requiredInputs: ['symbol'], outputContract: 'ResearchReport', knowledgeEffects: [] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [summary, legacySummary] })
+      if (path === `/api/research-reports/${summary.reportId}`) return json({ ...summary, verifiedSecurityIdentity: { symbol: '002640', exchange: 'SZ', verifiedName: 'Company Alpha' }, sourceRefs: ['source:annual'], claimRefs: ['claim:one'], sections: [{ id: 'summary', title: 'Summary', markdown: 'Company findings.' }] })
+      if (path === `/api/research-reports/${legacySummary.reportId}`) return json({ ...legacySummary, verifiedSecurityIdentity: { symbol: '002594', exchange: 'SZ', verifiedName: 'Company Legacy' }, sourceRefs: ['source:annual'], claimRefs: ['claim:two'], sections: [{ id: 'summary', title: 'Summary', markdown: 'Legacy company findings.' }] })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.click(await screen.findByRole('link', { name: 'Reports' }))
+    const catalogItem = await screen.findByRole('button', { name: /Company Alpha-20261021/ })
+    expect(await screen.findByRole('button', { name: /Company Legacy-20261020/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /002594/ })).toBeNull()
+    expect(screen.getByText('Company Research')).toBeTruthy()
+    expect(document.getElementById('reports-title')?.classList.contains('visually-hidden')).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+    fireEvent.click(catalogItem)
+    expect(await screen.findByRole('heading', { name: 'Company Alpha-20261021' })).toBeTruthy()
+    expect(screen.queryByText(/run-secret|company-research-002640-run-secret/)).toBeNull()
   })
 
   it('renders the Daily Brief reader as a read-only route', async () => {

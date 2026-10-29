@@ -111,9 +111,8 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
     // bind each split product label to the value continuation it names.
     if (options.purpose === 'business_model_map' || options.purpose === 'business_driver_analysis') {
       const family = (PURPOSE_QUERY_FAMILIES[options.purpose] ?? []).indexOf(SEGMENT)
-      const productAnchors = options.purpose === 'business_model_map' ? scores.filter(row => row.text.trim() === '分产品'
+      const productAnchors = scores.filter(row => row.text.trim() === '分产品'
         && scores.some(prior => prior.index < row.index && prior.index >= row.index - 24 && /营业收入构成/.test(prior.text)))
-        : []
       const productBundles = productAnchors.map(anchor => {
         const rows = scores.filter(row => row.index > anchor.index && row.index <= anchor.index + 12
           && /\d[\d,，]*(?:\.\d+)?\s+\d+(?:\.\d+)?%/.test(row.text))
@@ -122,7 +121,7 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
           indices.push(dataRow.index)
           const splitLabel = scores.find(row => row.index === dataRow.index - 1 && row.text.length <= 80 && !/\d/.test(row.text)
             && (/(?:汽车|产品|业务).*(?:、|及|和|与|相关)$/.test(row.text)
-              || (row.text.trim() === '手机部件、组装' && /^及其他产品\s+\d/.test(dataRow.text))))
+              || (['手机部件、组', '手机部件、组装'].includes(row.text.trim()) && /^及其他产品\s+\d/.test(dataRow.text))))
           if (splitLabel) {
             indices.push(splitLabel.index)
             tableHeaderContexts.set(dataRow.index, [...new Set([...(tableHeaderContexts.get(dataRow.index) ?? []), splitLabel.index])])
@@ -134,6 +133,42 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
         if (period) indices.push(period.index)
         return { family, indices: [...new Set(indices)] }
       }).filter(bundle => bundle.indices.length > 1)
+      // The revenue-composition table has separate industry and product
+      // classifications. Preserve the complete annual/interim industry slice
+      // (caption, unit/period/column headings, section marker, row labels and
+      // numeric rows) independently of the product slice. Equal amounts in
+      // those sections do not make their classifications interchangeable.
+      const industryRevenueBundles = options.purpose === 'business_driver_analysis'
+        ? scores.flatMap(anchor => {
+          if (!/营业收入构成/.test(anchor.text)) return []
+          const industry = scores.find(row => row.index > anchor.index && row.index <= anchor.index + 24
+            && row.text.trim() === '分行业'
+            && !scores.some(between => between.index > anchor.index && between.index < row.index
+              && /^分(?:产品|地区|销售模式)$/.test(between.text.trim())))
+          if (!industry) return []
+          const nextClassification = scores.find(row => row.index > industry.index && row.index <= industry.index + 24
+            && /^分(?:产品|行业|地区|销售模式)$/.test(row.text.trim()))?.index ?? industry.index + 24
+          const headerRows = scores.filter(row => row.index >= anchor.index && row.index <= industry.index
+            && /营业收入构成|单位\s*[：:]|(?:19|20)\d{2}\s*年|金额|占营业收入|同比增减/.test(row.text))
+          const unit = headerRows.some(row => /^单位\s*[：:]/.test(row.text))
+          const period = headerRows.some(row => /^(?:19|20)\d{2}\s*年/.test(row.text))
+          const dataRows = scores.filter(row => row.index > industry.index && row.index < nextClassification
+            && row.index <= industry.index + 24
+            && (row.text.match(/\d[\d,，]*(?:\.\d+)?/g)?.length ?? 0) >= 2)
+          if (!unit || !period || !headerRows.some(row => /占营业收入|金额/.test(row.text)) || !dataRows.length) return []
+          const indices = new Set<number>([...headerRows.map(row => row.index), industry.index])
+          for (const dataRow of dataRows) {
+            indices.add(dataRow.index)
+            for (let prior = dataRow.index - 1; prior > industry.index && prior >= dataRow.index - 4; prior--) {
+              const label = scores.find(row => row.index === prior)
+              if (!label || /\d|单位|营业收入|营业成本|分产品|分行业|分地区|同比增减/.test(label.text)) break
+              indices.add(prior)
+            }
+            tableHeaderContexts.set(dataRow.index, [...new Set([...(tableHeaderContexts.get(dataRow.index) ?? []), ...headerRows.map(row => row.index), industry.index])])
+          }
+          return [{ family, indices: [...indices] }]
+        })
+        : []
       // Carry the complete same-period industry and product revenue/cost/margin
       // tables into both methods. Driver conclusions require the split headers
       // and industry rows even when the product table has identical amounts.
@@ -169,7 +204,7 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
         }
         return { family, indices: [...new Set([...(unit ? [unit.index] : []), ...(period ? [period.index] : []), ...splitHeaders.map(row => row.index), anchor.index, ...labelIndices, ...rows.map(row => row.index) ])] }
       }).filter((bundle): bundle is {family:number;indices:number[]} => Boolean(bundle && bundle.indices.length > 2))
-      const relevantBundles = options.purpose === 'business_model_map' ? [...productBundles, ...marginBundles] : marginBundles
+      const relevantBundles = [...industryRevenueBundles, ...productBundles, ...marginBundles]
       const productEvidenceIndices = [...new Set(relevantBundles.flatMap(bundle => bundle.indices))]
       if (productEvidenceIndices.length) criticalBundles.unshift({ family, indices: productEvidenceIndices })
     }
@@ -422,7 +457,8 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
       const governanceFamily = [INTERNAL_CONTROL_AUDIT, RELATED_TRANSACTION_POLICY, CONTROLLER_GOVERNANCE].includes(familyPattern)
       const employeePlanFamily = familyPattern === EMPLOYEE_PLAN && ['management_governance_analysis', 'capital_allocation_review'].includes(options.purpose ?? '')
       const customerConcentrationFamily = familyPattern === CUSTOMERS && ['company_risk_analysis', 'business_model_map', 'financial_quality_analysis', 'market_structure_analysis'].includes(options.purpose ?? '')
-      const familyAllowanceOverride = family === goodwillFamilyIndex ? Math.max(allowance, Math.min(2400, Math.floor(sourceBudget * 0.6))) : governanceFamily ? Math.max(allowance, Math.min(2400, Math.floor(sourceBudget * 0.75))) : employeePlanFamily ? Math.max(allowance, Math.min(1600, Math.floor(sourceBudget * 0.25))) : customerConcentrationFamily ? Math.max(allowance, Math.min(1800, Math.floor(sourceBudget * 0.25))) : allowance
+      const businessDriverSegmentFamily = options.purpose === 'business_driver_analysis' && familyPattern === SEGMENT
+      const familyAllowanceOverride = businessDriverSegmentFamily ? Math.max(allowance, Math.min(3400, Math.floor(sourceBudget * 0.85))) : family === goodwillFamilyIndex ? Math.max(allowance, Math.min(2400, Math.floor(sourceBudget * 0.6))) : governanceFamily ? Math.max(allowance, Math.min(2400, Math.floor(sourceBudget * 0.75))) : employeePlanFamily ? Math.max(allowance, Math.min(1600, Math.floor(sourceBudget * 0.25))) : customerConcentrationFamily ? Math.max(allowance, Math.min(1800, Math.floor(sourceBudget * 0.25))) : allowance
       const bundle = candidates.find((rows) => admitted.size + rows.filter((row) => !admitted.has(row.location)).length <= maxCriticalExcerpts && rows.reduce((sum, row) => sum + (admitted.has(row.location) ? 0 : row.text.length), 0) <= familyAllowanceOverride)
       if (!bundle) continue
       const cost = bundle.reduce((sum, row) => sum + (admitted.has(row.location) ? 0 : row.text.length), 0)

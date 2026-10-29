@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
+import { COMPANY_CORE_SECTION_IDS, COMPANY_SECTION_OWNER_KIND, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, repairCompanyIndustryExposureRowsFromMethod, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
 
 test('product analysis carries paired annual category revenue and margin rows, never adjacent industry rows',()=>{
@@ -59,7 +59,7 @@ test('classification repair restores a uniquely sourced industry label and adds 
     {sourceCandidateId:'annual',location:'paragraph:3',text:'行业甲 100.00 80.00'},
     {sourceCandidateId:'annual',location:'paragraph:4',text:'分产品'},
     {sourceCandidateId:'annual',location:'paragraph:5',text:'产品乙 100.00 80.00'},
-  ]}]}
+    ]}]}
   const original='半年报分行业收入表中，行业甲本期收入100元；产品乙收入100元。[annual@paragraph:4] [annual@paragraph:5]'
   const input=[{id:'revenue-profit-drivers',markdown:original,sourceCandidateIds:['annual']}]
   const result=reconcileCompanyDriverClassificationLabels({sections:input,methodResults:[method]})
@@ -94,7 +94,13 @@ const sections = () => COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: id 
   ? '公司产品对应服务器PCB细分市场，行业预测显示需求增长；但缺少公司可服务市场边界和份额，因此不能据行业总量推算公司TAM。[annual-report@paragraph:1]'
   : id === 'competition'
     ? '与中际旭创相比，公司披露光模块产品路线和客户类型，但没有同口径成本和份额数据，因此无法判断竞争胜负。[annual-report@paragraph:1]'
-    : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: ['annual-report'] }))
+    : id === 'valuation'
+      ? '截至2026-10-26收盘价为100 CNY/share；FY2025基本EPS为10 CNY/share；PE = 100 ÷ 10 = 10.0x。[annual-report@paragraph:1]'
+      : id === 'bull-base-bear'
+        ? 'Bear 情景采用披露的出货量下降条件；Base 情景采用已披露的出货量与单位毛利；Bull 情景采用已披露的产品组合改善条件。敏感性按来源支持的单位毛利上下变化逐项重算经营贡献，不以共识 EPS 极值替代经营驱动。[annual-report@paragraph:1]'
+        : id === 'variant-perception'
+          ? 'FY2026 EPS预期比较：研究面A为10元/股，研究面B为9元/股；历史数值版本状态为 VERIFIED，差额为1元/股。[annual-report@paragraph:1] [consensus-report@paragraph:1]'
+    : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: id === 'variant-perception' ? ['annual-report', 'consensus-report'] : ['annual-report'] }))
 
 
 test('2025 market figures transcribed from an older annual report remain labeled as historical forecasts',()=>{
@@ -151,6 +157,22 @@ test('domain quality gate allows a cited, bounded peer comparison or specific ev
 
   value[competition] = { ...value[competition]!, markdown: '公司披露光模块及电子电路产品路线，材料未提供分业务同口径竞品、价格成本、份额及客户重叠信息，因此竞争位置和利润影响无法判断。[annual-report@paragraph:5]' }
   assert.ok(!evaluateCompanyResearchContent({ sections: value, methodResults: [] }).issues.includes('competition:INSUFFICIENT_COMPETITIVE_ANALYSIS'))
+})
+test('domain quality gate accepts a cited multi-company product comparison matrix without prose comparator wording', () => {
+  const value = sections()
+  const competition = COMPANY_CORE_SECTION_IDS.indexOf('competition')
+  value[competition] = { ...value[competition]!, markdown: [
+    '| 比较维度 | 东山精密 | 鹏鼎控股 | 结论及限制 |',
+    '|---|---|---|---|',
+    '| 产品路线 | 柔性、刚性及刚柔结合电路板 [issuer@paragraph:62] | 各类PCB设计、制造 [peer@paragraph:37] | 产品路线交集，粒度不同 |',
+    '| 客户与应用 | 消费电子、汽车、通信 [issuer@paragraph:274] | 通讯、消费电子、汽车 [peer@paragraph:209] | 场景交集不证明共同客户 |',
+    '| 成本与技术 | 未提供同口径性能、良率及成本 | 自述快速、高质量、低成本 [peer@paragraph:75] | 无法判断竞争胜负 |',
+  ].join('\n'), sourceCandidateIds: ['issuer', 'peer'] }
+  const result = evaluateCompanyResearchContent({ sections: value, methodResults: [] })
+  assert.ok(!result.issues.includes('competition:INSUFFICIENT_COMPETITIVE_ANALYSIS'), JSON.stringify(result.issues))
+  value[competition] = { ...value[competition]!, markdown: value[competition]!.markdown.replace(/\[[^\]]+@paragraph:\d+\]/g, 'no citation') }
+  const unsupported = evaluateCompanyResearchContent({ sections: value, methodResults: [] })
+  assert.ok(unsupported.issues.includes('competition:INSUFFICIENT_COMPETITIVE_ANALYSIS'))
 })
 test('consolidated gross margin is recalculated from exact statutory income-statement rows', () => {
   const method: CompanyResearchMethodResult = {skillId:'financial_quality_analysis',status:'complete',attempts:1,answer:'毛利率水平上升。',markdown:'结构化合并毛利率由13.59%至20.15%。',sections:[],findings:[],sourceCandidateIds:['akshare'],limitations:[],risks:[],diagnostics:[],deterministicEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'CNINFO',excerpts:[
@@ -413,7 +435,54 @@ test('content gate rejects a currency unit asserted in the same sentence as an e
   value[index] = { ...value[index]!, markdown: '商誉原值63,399；单位行未提供，金额单位无法核实。' }
   assert.ok(!evaluateCompanyResearchContent({ sections: value }).issues.includes('risks:UNVERIFIED_CURRENCY_UNIT_ASSERTED'))
 })
-test('optional valuation gaps do not block core completion', () => { assert.equal(evaluateCompanyResearchContent({ sections: [...sections(), { id: 'valuation', markdown: '研究缺口：无法获取估值基础', sourceCandidateIds: [] }] }).passed, true) })
+test('all 19 stable sections are required and explicitly owned by methods or Workflow', () => {
+  assert.equal(COMPANY_CORE_SECTION_IDS.length, 19)
+  assert.deepEqual(Object.keys(COMPANY_SECTION_OWNER_KIND).sort(), [...COMPANY_CORE_SECTION_IDS].sort())
+  assert.deepEqual(COMPANY_CORE_SECTION_IDS.slice(14, 17), ['valuation', 'bull-base-bear', 'variant-perception'])
+  assert.equal(evaluateCompanyResearchContent({ sections: sections() }).coreCoverage.required, 19)
+})
+
+test('fixed research gaps in any of the three Workflow-owned sections block 19-section completion', () => {
+  for (const sectionId of ['valuation', 'bull-base-bear', 'variant-perception']) {
+    const value = sections()
+    const index = COMPANY_CORE_SECTION_IDS.indexOf(sectionId as typeof COMPANY_CORE_SECTION_IDS[number])
+    value[index] = { ...value[index]!, markdown: '研究缺口：估值输入不可得。影响：不提供未经核验的结果。', sourceCandidateIds: [] }
+    const quality = evaluateCompanyResearchContent({ sections: value })
+    assert.equal(quality.passed, false, sectionId)
+    assert.ok(quality.sectionChecks.find(check => check.sectionId === sectionId)?.reasons.includes('RESEARCH_GAP'), sectionId)
+    assert.equal(quality.coreCoverage.required, 19)
+  }
+})
+
+test('variant perception fails when only one cited expectation surface is supplied', () => {
+  const value = sections()
+  const index = COMPANY_CORE_SECTION_IDS.indexOf('variant-perception')
+  value[index] = { ...value[index]!, markdown: 'FY2026 EPS共识为10元/股。[annual-report@paragraph:1]', sourceCandidateIds: ['annual-report'] }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES'))
+})
+
+test('unsupported consensus-extrema fixed-PE scenarios and unverified expectation vintages fail closed', () => {
+  const value = sections()
+  const scenarioIndex = COMPANY_CORE_SECTION_IDS.indexOf('bull-base-bear')
+  value[scenarioIndex] = { ...value[scenarioIndex]!, markdown: 'Bear/Base/Bull EPS分别取共识低值、中位数和高值，三者均以同一当前PE计算：目标价 = EPS × PE。敏感性已计算。[annual-report@paragraph:1]' }
+  const scenario = evaluateCompanyResearchContent({ sections: value }).sectionChecks.find(check => check.sectionId === 'bull-base-bear')
+  assert.ok(scenario?.reasons.includes('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT'))
+
+  const variantIndex = COMPANY_CORE_SECTION_IDS.indexOf('variant-perception')
+  value[variantIndex] = { ...value[variantIndex]!, markdown: 'FY2026 EPS预期差异，历史数值版本 UNVERIFIED。[annual-report@paragraph:1] [consensus-report@paragraph:1]' }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
+})
+
+test('scenario quality gate does not mistake an explicit missing-input gap for use of the rejected shortcut', () => {
+  const value = sections()
+  const scenarioIndex = COMPANY_CORE_SECTION_IDS.indexOf('bull-base-bear')
+  value[scenarioIndex] = { ...value[scenarioIndex]!, markdown: '研究缺口：本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；因此不建立三情景估值。' }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'bull-base-bear')?.reasons.includes('RESEARCH_GAP'))
+  assert.ok(!quality.sectionChecks.find(check => check.sectionId === 'bull-base-bear')?.reasons.includes('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT'))
+})
 test('broad executive-division gap is rejected when the report already states executive roles, while a specific new-hire gap is retained', () => {
   const value = sections()
   const management = COMPANY_CORE_SECTION_IDS.indexOf('management-capital-allocation')
@@ -494,9 +563,9 @@ test('product and technology chapters carry an exact cited cross-method candidat
   const reconciled = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   assert.equal(reconciled.length, 2)
   for (const section of reconciled) {
-    assert.match(section.markdown, /中际旭创是有材料支持的具名竞争者/)
-    assert.match(section.markdown, /直接竞标、客户重叠及与公司产品同口径/)
-    assert.match(section.markdown, /\[public-web-peer-report@paragraph:3\]/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.match(section.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+    assert.doesNotMatch(section.markdown, /中际旭创是有材料支持的具名竞争者/)
     assert.ok(section.sourceCandidateIds?.includes('public-web-peer-report'))
   }
 })
@@ -512,9 +581,9 @@ test('CATL route carryover cites the separate passenger-car solution heading wit
     ]}]
   }
   const result=reconcileCompanyCompetitorEvidence({sections:[{id:'company-overview',markdown:'战略候选：宁德时代官网明确涉及乘用车动力电池，并宣传超快充、长寿命和高比能，构成动力电池场景的具名候选对照；现有材料不足以验证同一采购决策或完全可比性。[public-web-catl@paragraph:249]'}],methodResults:[candidate]})[0]!
-  assert.match(result.markdown,/将“乘用车”列为单独解决方案入口/)
-  assert.match(result.markdown,/该页面未将这些性能表述单独限定于乘用车/)
-  assert.match(result.markdown,/\[public-web-catl@paragraph:35\]/)
+  assert.match(result.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result.markdown,/将“乘用车”列为单独解决方案入口/)
+  assert.doesNotMatch(result.markdown,/\[public-web-catl@paragraph:35\]/)
   assert.doesNotMatch(result.markdown,/官网明确涉及乘用车动力电池/)
 })
 
@@ -529,9 +598,9 @@ test('cross-method reconciliation carries a scoped BYD peer route comparison int
   }
   const sections = [{ id: 'industry-exposure', markdown: '缺少可比公司或具体竞品产品、路线、客户覆盖和市占数据，无法作具名竞争对比。', sourceCandidateIds: ['annual'] }]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })[0]!
-  assert.match(result.markdown, /比亚迪与吉利银河E8可作有限纯电快充路线对照/)
-  assert.match(result.markdown, /\[public-web-geely-peer@paragraph:42\]/)
-  assert.match(result.markdown, /实际采购重叠、直接竞标、同口径性能成本及市场份额仍未验证/)
+  assert.match(result.markdown, /具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result.markdown, /比亚迪与吉利银河E8可作有限纯电快充路线对照/)
+  assert.match(result.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
   assert.doesNotMatch(result.markdown, /无法作具名竞争对比/)
   assert.ok(result.sourceCandidateIds?.includes('public-web-geely-peer'))
 })
@@ -548,7 +617,9 @@ test('competitor reconciliation recognizes attributed candidate wording and repa
     {id:'industry-exposure',markdown:'缺少可比公司或具体竞品产品、路线、客户覆盖和市占数据，无法作具名竞争对比。',sourceCandidateIds:['annual']},
   ]
   const result=reconcileCompanyCompetitorEvidence({sections,methodResults:[candidate]})
-  for(const section of result){assert.match(section.markdown,/中际旭创披露云计算及AI高速光互连产品路线/);assert.match(section.markdown,/实际客户重叠|客户重叠未证实/);assert.match(section.markdown,/\[public-web-peer@paragraph:26\]/)}
+  assert.doesNotMatch(result.find(section=>section.id==='products')!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(result.find(section=>section.id==='industry-exposure')!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  for(const section of result)assert.doesNotMatch(section.markdown,/中际旭创披露云计算及AI高速光互连产品路线/)
   assert.match(result.find(section=>section.id==='products')!.markdown,/不能据此推断客户偏好/)
 })
 
@@ -569,13 +640,34 @@ test('R104 reconciles broad competitor denials in overview, products, and risks 
   ]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   for (const section of result.slice(0, 3)) {
-    assert.match(section.markdown, /中际旭创披露高速光互连产品路线/)
-    assert.match(section.markdown, /\[public-web-peer@paragraph:26\]/)
-    assert.match(section.markdown, /直接竞标、客户重叠/); assert.match(section.markdown, /市场份额|份额数据/); assert.match(section.markdown, /同口径胜负仍未验证|同口径的性能、成本、价格或份额数据/)
-    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.doesNotMatch(section.markdown, /中际旭创披露高速光互连产品路线/)
+    assert.match(section.markdown, /直接竞标、客户重叠/); assert.match(section.markdown, /市场份额/); assert.match(section.markdown, /同口径成本\/性能胜负/)
+    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争|本节现有证据未验证直接竞标/)
     assert.ok(section.sourceCandidateIds?.includes('public-web-peer'))
   }
   assert.equal(result[3]!.markdown, sections[3]!.markdown)
+})
+
+test('competitor cross-reference replacement removes orphaned Chinese connectives from generated prose', () => {
+  const candidate: CompanyResearchMethodResult = {
+    skillId: 'competitive_market_map', status: 'complete', attempts: 1,
+    answer: '中际旭创是高速光互连的具名候选。', markdown: '已识别中际旭创产品路线。',
+    sections: [{ id: 'competition', markdown: '中际旭创是已识别候选。' }],
+    findings: [{ text: '中际旭创披露高速光互连产品路线，是具名候选；实际竞争关系未证实。', kind: 'fact', evidence: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:26' }] }],
+    sourceCandidateIds: ['public-web-peer'], limitations: [], risks: [], diagnostics: [],
+    executionEvidence: [{ sourceCandidateId: 'public-web-peer', title: '竞品产品资料', publisher: '公开资料', excerpts: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:26', text: '中际旭创披露高速光互连产品路线。' }] }],
+  }
+  const sections = [
+    { id: 'products', markdown: '产品规模可能支持成本改善；现有材料没有具名竞品。' },
+    { id: 'technologies', markdown: '竞争压力仍待核实，就没有具名竞品资料可供比对。' },
+  ]
+  const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
+  for (const section of result) {
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/u)
+    assert.doesNotMatch(section.markdown, /(?:现有|就)[；，,]\s*具名候选/u)
+    assert.doesNotMatch(section.markdown, /中际旭创披露高速光互连产品路线/u)
+  }
 })
 
 test('cross-method reconciliation catches the compact phrase no comparable competitor', () => {
@@ -589,7 +681,7 @@ test('cross-method reconciliation catches the compact phrase no comparable compe
   }
   const sections = [{ id: 'company-overview', markdown: '现有材料也没有可比竞品的产品、路线和经营数据。', sourceCandidateIds: ['annual'] }]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
-  assert.match(result[0]!.markdown, /鹏鼎控股披露FPC产品与应用/)
+  assert.match(result[0]!.markdown, /具名候选及产品路线见“竞争格局”章节/)
   assert.match(result[0]!.markdown, /直接竞标、客户重叠/)
   assert.doesNotMatch(result[0]!.markdown, /没有可比竞品/)
 })
@@ -621,10 +713,9 @@ test('cross-method competitor reconciliation recognizes Latin-script company nam
   ]
   const reconciled = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   for (const section of reconciled) {
-    assert.match(section.markdown, /InnoLight是有证据支持的具名竞争者/)
-    assert.match(section.markdown, /\[public-web-peer@paragraph:101\]/)
-    assert.match(section.markdown, /直接竞标、客户重叠/)
-    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.doesNotMatch(section.markdown, /InnoLight是有证据支持的具名竞争者/)
+    assert.match(section.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
   }
   assert.deepEqual(findKnownCompetitorDenials({ sections: reconciled, methodResults: [candidate] }), [])
   assert.equal(reconcileCompanyCompetitorEvidence({ sections, methodResults: [{ ...candidate, executionEvidence: [] }] }), sections)
@@ -652,6 +743,27 @@ test('monitoring progress citations stay attached to matching 100G/200G evidence
     assert.match(section.markdown,/不等同于本期销量、订单或收入/)
   }
   assert.match(fixed[0]!.markdown,/；\[interim@paragraph:362\]400G EML仍在研发/)
+})
+
+test('optical milestone checklist drops a citation whose source row is customer concentration', () => {
+  const technology: CompanyResearchMethodResult = {
+    skillId:'product_technology_analysis',status:'complete',attempts:1,answer:'芯片进入应用。',markdown:'技术进展。',sections:[],findings:[],sourceCandidateIds:['annual','interim'],limitations:[],risks:[],diagnostics:[],
+    executionEvidence:[{sourceCandidateId:'interim',title:'2026年半年度报告',publisher:'Company',excerpts:[
+      {sourceCandidateId:'interim',location:'paragraph:360',text:'400G及800G光模块中累计使用超千万颗。'},
+      {sourceCandidateId:'interim',location:'paragraph:362',text:'200G PAM4 EML芯片已进入量产阶段。'}
+    ]}]
+  }
+  const customer: CompanyResearchMethodResult = {
+    skillId:'company_risk_analysis',status:'complete',attempts:1,answer:'客户集中。',markdown:'风险。',sections:[],findings:[],sourceCandidateIds:['annual'],limitations:[],risks:[],diagnostics:[],
+    executionEvidence:[{sourceCandidateId:'annual',title:'2025年年度报告',publisher:'Company',excerpts:[
+      {sourceCandidateId:'annual',location:'paragraph:964',text:'前五名客户合计销售金额（元） 25,814,059,702.20'}
+    ]}]
+  }
+  const sections=[{id:'monitoring-checklist',markdown:'7. **光模块/光芯片认证、量产及交付进展**｜跟踪量产；[annual@paragraph:964]阈值未披露。[interim@paragraph:360] [interim@paragraph:362]'}]
+  const fixed=reconcileCompanyTechnologyProgressReferences({sections,methodResults:[technology,customer]})[0]!
+  assert.doesNotMatch(fixed.markdown,/annual@paragraph:964/)
+  assert.match(fixed.markdown,/interim@paragraph:360/)
+  assert.match(fixed.markdown,/interim@paragraph:362/)
 })
 
 test('revenue-driver reconciliation adds same-row product revenue and cost growth only with the full cited table header', () => {
@@ -1186,11 +1298,11 @@ test('risk reconciliation removes unsupported zero impairment and preserves a na
     {id:'risks',markdown:'| 竞争 | 风险影响 | 指标 | 缓释 | 材料没有同口径竞品业绩、产品路线或市场份额数据，不能验证相对优势。 | Juno Newco商誉原值人民币千元4,361,657，减值准备人民币千元0（该标的减值准备表未列示金额）。[interim@paragraph:4821] [interim@paragraph:4823] |',sourceCandidateIds:['interim']}
   ]
   const fixed=reconcileCompanyRiskBoundaries({sections})[1]!
-  assert.match(fixed.markdown,/虽识别宁德时代乘用车电池超快充路线这一候选对照/)
-  assert.match(fixed.markdown,/仍缺少同口径竞品业绩、价格、成本、市场份额及客户重叠数据/)
+  assert.match(fixed.markdown,/竞争章节已列具名候选及产品路线/)
+  assert.match(fixed.markdown,/同口径业绩、价格、成本、市场份额和客户重叠仍未验证/)
   assert.doesNotMatch(fixed.markdown,/减值准备人民币千元\s*0/)
   assert.match(fixed.markdown,/减值准备金额未在当前摘录中确认/)
-  assert.match(fixed.markdown,/\[catl@paragraph:249\]/)
+  assert.doesNotMatch(fixed.markdown,/\[catl@paragraph:249\]/)
 })
 
 test('structured year-over-year monitoring growth is cited to the structured financial source, not the prior-year-end balance rows',()=>{
@@ -1216,17 +1328,17 @@ test('risk matrix uses researched competitor candidates without claiming verifie
     {id:'competition',markdown:'中际旭创是光模块行业具名对照，东山精密路线另有EML、DFB产品。[industry@paragraph:55]'}
   ]
   const fixed=reconcileCompanyRiskBoundaries({sections})
-  assert.match(fixed[0]!.markdown,/竞争章节已识别中际旭创等具名对照及光模块\/EML产品路线/)
+  assert.match(fixed[0]!.markdown,/竞争章节列有具名候选及产品路线/)
   assert.match(fixed[0]!.markdown,/直接竞争关系、可比市场份额和成本\/毛利数据尚未证实/)
-  assert.match(fixed[0]!.markdown,/\[industry@paragraph:55\]/)
+  assert.doesNotMatch(fixed[0]!.markdown,/\[industry@paragraph:55\]/)
   const bydSections=[
     {id:'risks',markdown:'| 竞争风险 | 现有材料不能证实具体竞争对手或技术路线已构成某项冲击，现有材料未提供可比数据。 |'},
     {id:'competition',markdown:'吉利银河E8披露800V高压平台及SiC油冷电驱路线。[public-web-geely@paragraph:2]'}
   ]
   const bydFixed=reconcileCompanyRiskBoundaries({sections:bydSections})
-  assert.match(bydFixed[0]!.markdown,/竞争方法已识别吉利银河E8及其高压平台、SiC油冷电驱路线/)
+  assert.match(bydFixed[0]!.markdown,/竞争章节列有具名候选及技术路线/)
   assert.match(bydFixed[0]!.markdown,/直接替代、客户重叠、份额和同口径胜负仍未验证/)
-  assert.match(bydFixed[0]!.markdown,/\[public-web-geely@paragraph:2\]/)
+  assert.doesNotMatch(bydFixed[0]!.markdown,/\[public-web-geely@paragraph:2\]/)
 })
 
 test('cross-section reconciliation removes false evidence gaps, scopes customer evidence, and balances financial summary',()=>{
@@ -1467,9 +1579,9 @@ test('industry denial of any named comparator is narrowed when the competitive m
   const section={id:'industry-exposure',markdown:'竞争分析同样缺乏可具名比较对象及其产品规格、价格、产能、份额和客户认证材料，不能宣称排名、领先幅度或份额。'}
   const fixed=reconcileCompanyCompetitorEvidence({sections:[section],methodResults:[candidate]})[0]!
   assert.doesNotMatch(fixed.markdown,/缺乏可具名比较对象/)
-  assert.match(fixed.markdown,/鹏鼎控股/)
-  assert.match(fixed.markdown,/同口径性能成本及市场份额仍未验证/)
-  assert.match(fixed.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.match(fixed.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(fixed.markdown,/直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+  assert.doesNotMatch(fixed.markdown,/\[public-web-peer@paragraph:1\]/)
 })
 
 test('cross-method check rejects the observed Dongshan and BYD report contradictions verbatim', () => {
@@ -1514,6 +1626,7 @@ test('R137 prepared-analysis reconciliation restores exact BYD segment revenue, 
   const rawSections=[
     {id:'business-segments',markdown:'## 分部\n未提供具名竞品及同口径价格、毛利、份额或交付资料，无法做竞争比较。',sourceCandidateIds:['annual']},
     {id:'industry-exposure',markdown:'本轮供给材料中没有可核验的中国新能源汽车行业销量数字定位；上一版所引用的官方年报段落并未出现在本轮实际摘录中，故不保留该数字。公司级TAM边界仍无法建立。',sourceCandidateIds:['official-market']},
+    {id:'competition',markdown:'吉利公开品牌覆盖主流至豪华，并列有电池、电驱、辅助驾驶和智能座舱，属于乘用车候选对手；车型级重叠尚未证明。[public-web-geely@paragraph:95]',sourceCandidateIds:['public-web-geely']},
     {id:'supply-chain',markdown:'应收周转22.87天、存货周转106.21天、应付周转117.43天、现金转换周期11.65天。',sourceCandidateIds:['akshare-financial']}
   ]
   const annualSourceLines=Array.from({length:18},()=> '其他年报披露。')
@@ -1532,12 +1645,13 @@ test('R137 prepared-analysis reconciliation restores exact BYD segment revenue, 
   const segments=prepared.find(item=>item.id==='business-segments')!
   assert.match(segments.markdown,/汽车、汽车相关产品及其他产品收入648,645,636,000\.00元，占营业收入80\.68%/)
   assert.match(segments.markdown,/手机部件、组装及其他产品收入155,236,528,000\.00元，占营业收入19\.31%/)
-  assert.match(segments.markdown,/吉利公开品牌覆盖主流至豪华/)
-  assert.match(segments.markdown,/客户重叠|车型级重叠/)
+  assert.match(segments.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(segments.markdown,/未提供具名竞品/)
   assert.ok(segments.sourceCandidateIds?.includes('annual'))
   assert.ok(segments.sourceCandidateIds?.includes('public-web-geely'))
-  for(const ref of ['annual@paragraph:821','annual@paragraph:822','annual@paragraph:819','annual@paragraph:820','public-web-geely@paragraph:95'])assert.ok(segments.markdown.includes(`[${ref}]`))
+  for(const ref of ['annual@paragraph:821','annual@paragraph:822','annual@paragraph:819','annual@paragraph:820'])assert.ok(segments.markdown.includes(`[${ref}]`))
+  assert.match(prepared.find(item=>item.id==='competition')!.markdown,/吉利公开品牌覆盖主流至豪华/)
+  assert.match(prepared.find(item=>item.id==='competition')!.markdown,/\[public-web-geely@paragraph:95\]/)
 
   const industry=prepared.find(item=>item.id==='industry-exposure')!
   assert.match(industry.markdown,/2024年中国新能源汽车全年销量为1,286\.6万辆/)
@@ -1680,6 +1794,21 @@ test('cross-method competitor consistency checks each denial clause even if a ca
   assert.deepEqual(findKnownCompetitorDenials({ sections: [{ id: 'risks', markdown: '客户集中度未核实。风险矩阵称没有具名竞品。后文已将吉利列为候选。' }], methodResults: [competitor] }), [{ sectionId: 'risks', candidate: '吉利' }])
 })
 
+test('risk summary keeps a sourced peer route while narrowing the missing like-for-like comparison', () => {
+  const competitor: CompanyResearchMethodResult = {
+    skillId:'competitive_market_map',status:'complete',attempts:1,answer:'吉利银河E8是有证据支持的具名候选竞争者。',markdown:'吉利银河E8是有证据支持的具名候选竞争者。',
+    sections:[{id:'competition',markdown:'吉利银河E8是有证据支持的具名候选竞争者。'}],
+    findings:[{text:'吉利银河E8是有证据支持的具名候选竞争者，路线可作有限对照。',kind:'fact',evidence:[{sourceCandidateId:'public-web-peer',location:'paragraph:1'}]}],
+    sourceCandidateIds:['public-web-peer'],limitations:[],risks:[],diagnostics:[],
+    executionEvidence:[{sourceCandidateId:'public-web-peer',title:'吉利银河E8 官方车型资料',publisher:'Company',excerpts:[{sourceCandidateId:'public-web-peer',location:'paragraph:1',text:'吉利银河E8公开纯电车型产品路线及高压平台配置。'}]}]
+  }
+  const sections=[{id:'risks',markdown:'现有材料不足以作同业比较。'}]
+  const fixed=reconcileCompanyCompetitorEvidence({sections,methodResults:[competitor]})[0]!
+  assert.doesNotMatch(fixed.markdown,/现有材料不足以作同业比较/)
+  assert.match(fixed.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(fixed.markdown,/直接竞标、客户重叠、市场份额及同口径表现仍未验证/)
+})
+
 test('R174 competitor carryover selects the located peer rather than the target and does not invent a connective entity', () => {
   const method: CompanyResearchMethodResult = {
     skillId:'competitive_market_map',status:'complete',attempts:1,answer:'故仅是候选竞争者，不能认定直接竞争。',markdown:'路线比较。',sections:[],
@@ -1696,9 +1825,9 @@ test('R174 competitor carryover selects the located peer rather than the target 
   }
   const raw=[{id:'technologies',markdown:'本节未提供具名竞品的同口径比较。[annual@paragraph:1]',sourceCandidateIds:['annual']}]
   const result=reconcileCompanyCompetitorEvidence({sections:raw,methodResults:[method]})
-  assert.match(result[0]!.markdown,/吉利银河E8披露/)
-  assert.match(result[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
-  assert.match(result[0]!.markdown,/\[public-web-peer@paragraph:2\]/)
+  assert.match(result[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.doesNotMatch(result[0]!.markdown,/\[public-web-peer@paragraph:2\]/)
   assert.doesNotMatch(result[0]!.markdown,/候选.*比亚迪海豹/)
   assert.deepEqual(findKnownCompetitorDenials({sections:result,methodResults:[method]}),[])
   assert.deepEqual(findKnownCompetitorDenials({sections:[{id:'risks',markdown:'没有具名竞品。'}],methodResults:[method]}),[])
@@ -1712,24 +1841,31 @@ test('R174 competitor carryover selects the located peer rather than the target 
     const row=nonAutomotiveFixed.split('\n').find(line=>line.startsWith(`| ${label} |`))!
     assert.doesNotMatch(row,/吉利银河E8/)
   }
-  assert.match(nonAutomotiveFixed.split('\n').find(line=>line.startsWith('| 乘用车 |'))!,/吉利银河E8/)
+  assert.match(nonAutomotiveFixed.split('\n').find(line=>line.startsWith('| 乘用车 |'))!,/具名候选及产品路线见“竞争格局”章节/)
   const riskDenial = '没有具名竞品及其可比产品、技术路线、价格、成本或份额的证据，故不作排名。'
   const repairedRisk = reconcileCompanyCompetitorEvidence({sections:[{id:'risks',markdown:riskDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedRisk[0]!.markdown,/吉利银河E8披露/)
+  assert.match(repairedRisk[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(repairedRisk[0]!.markdown,/没有具名竞品/)
   const industryDenial = '缺少具体竞品同口径数据，无法进行具名竞争对比。'
   const repairedIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:industryDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedIndustry[0]!.markdown,/具名产品路线候选已由竞争方法核实/)
-  assert.match(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.match(repairedIndustry[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
   const broadIndustryDenial = '现有材料无具名汽车或电子制造竞争者及同口径产品、地域、价格、销量、产能或毛利率比较。'
   const repairedBroadIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:broadIndustryDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedBroadIndustry[0]!.markdown,/竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.match(repairedBroadIndustry[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(repairedBroadIndustry[0]!.markdown,/无具名汽车或电子制造竞争者/)
+
+  const insufficientEvidence='本次证据不含足够具名竞品、路线、区域份额或同口径成本/性能数据，无法进行可比竞争定位。'
+  const repairedInsufficientEvidence=reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:insufficientEvidence,sourceCandidateIds:[]}],methodResults:[method]})
+  assert.match(repairedInsufficientEvidence[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(repairedInsufficientEvidence[0]!.markdown,/直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+  assert.doesNotMatch(repairedInsufficientEvidence[0]!.markdown,/吉利银河E8披露/)
+  assert.doesNotMatch(repairedInsufficientEvidence[0]!.markdown,/不含足够具名竞品/)
 
   const comparisonOnlyFinding={...method,findings:[{text:'事实：吉利银河E8官方资料披露800V平台、SiC油冷电驱及充电相关宣传，构成纯电乘用车补能路线的具名对照；并无统一测试对比。',kind:'fact' as const,evidence:[{sourceCandidateId:'public-web-peer',location:'paragraph:2'}]}]}
   const scopedIndustryGap='未提供具名竞争者及可比产品路线、地区和客户层级资料，不能作竞争排名或份额判断。'
   const scopedIndustryFixed=reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:scopedIndustryGap,sourceCandidateIds:[]}],methodResults:[comparisonOnlyFinding]})[0]!.markdown
-  assert.match(scopedIndustryFixed,/吉利银河E8/)
+  assert.match(scopedIndustryFixed,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(scopedIndustryFixed,/未提供具名竞争者及可比产品路线/)
   assert.match(scopedIndustryFixed,/客户重叠|同口径|竞争关系/)
 })
@@ -1751,7 +1887,7 @@ test('R174 competitor carryover rewrites a product-table denial without consumin
   const row = rewritten.markdown.split('\n').find(line => line.startsWith('| 乘用车：'))!
   assert.equal(row.split(/(?<!\\)\|/u).length - 2, 5, 'competitor replacement stays within the comparison cell')
   assert.deepEqual(validateCompanyResearchMarkdownTables(rewritten.markdown), [])
-  assert.match(row, /竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.match(row, /具名候选及产品路线见“竞争格局”章节/)
   assert.match(row, /\| 公司称相关技术已规模化应用；产品级收入、成本及利润未披露 \[official-report@paragraph:165\] \[official-report@paragraph:166\] \|$/)
 
   const unrelatedPhoneRow = '| 手机部件 | 消费电子 | 结构件 | 本节产品资料未提供具名竞品的同口径比较。 | 产品级利润未披露 [official-report@paragraph:358] |'
@@ -1779,7 +1915,7 @@ test('a shared section is not counted complete when one required owning method f
   const failed:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'failed',attempts:2,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:[],limitations:['尚未完成资本配置'],risks:[],diagnostics:[]}
   const quality=evaluateCompanyResearchContent({sections:sections(),methodResults:[failed]})
   assert.equal(quality.passed,false)
-  assert.equal(quality.coreCoverage.completed,15)
+  assert.equal(quality.coreCoverage.completed,18)
   assert.ok(quality.sectionChecks.find(check=>check.sectionId==='management-capital-allocation')!.reasons.includes('OWNER_METHOD_NOT_COMPLETED:capital_allocation_review'))
 })
 
@@ -1887,6 +2023,31 @@ test('industry-exposure table citations bind split annual labels to the matching
   for(const paragraph of [833,834,835,836,837,838,839,840,841,842])assert.ok(displayedRow.includes(`[${source}@paragraph:${paragraph}]`),`period-labelled row missing paragraph ${paragraph}`)
   assert.doesNotMatch(displayedRow,/stale-2024-report/)
   assert.doesNotMatch(displayedFixed,/2025年度表头与单位/)
+})
+
+test('industry geography boundary cites the annual report region table as well as the product row',()=>{
+  const source='official-geography'
+  const method={skillId:'business_model_map',status:'complete',executionEvidence:[{sourceCandidateId:source,title:'2024年年度报告',excerpts:[
+    {sourceCandidateId:source,location:'paragraph:729',text:'分地区'},
+    {sourceCandidateId:source,location:'paragraph:730',text:'中国（包括港澳'},
+    {sourceCandidateId:source,location:'paragraph:731',text:'台地区）'},
+    {sourceCandidateId:source,location:'paragraph:732',text:'555,217,682,000.00 71.45%'},
+    {sourceCandidateId:source,location:'paragraph:733',text:'境外 221,884,773,000.00 28.55%'}
+  ]}]} as unknown as CompanyResearchMethodResult
+  const section={id:'industry-exposure',markdown:'| 公司汽车产品分类 | 汽车、汽车相关产品及其他产品 | 年报另列中国（含港澳台）与境外，但未提供产品与地区交叉表 | 客户边界 | 年度披露。[official-geography@paragraph:725] [official-geography@paragraph:726] |'}
+  const fixed=reconcileCompanyIndustryExposureTableCitations({sections:[section],methodResults:[method]})[0]!
+  for(const paragraph of [729,730,731,732,733])assert.ok(fixed.markdown.includes(`[${source}@paragraph:${paragraph}]`))
+  assert.ok(fixed.markdown.includes(`[${source}@paragraph:725]`),'product classification citations are retained')
+})
+
+test('malformed final industry row is restored only from the completed market-structure method row',()=>{
+  const sourceRow='| 计算机、通信和其他电子 | 39,643,732,616.04 | 34,153,971,460.65 | 13.85% | 8.67% | 8.83% | -0.12% [annual@paragraph:892] [annual@paragraph:893] [annual@paragraph:894] |'
+  const method={skillId:'market_structure_analysis',status:'complete',sections:[{id:'industry-exposure',markdown:`| 分类（分行业） | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减 | 营业成本比上年同期增减 | 毛利率比上年同期增减 |\n|---|---:|---:|---:|---:|---:|---:|\n${sourceRow}`}]} as unknown as CompanyResearchMethodResult
+  const malformed=`## 公司分类收入结构：行业口径\n| 分类（分行业） | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减 | 营业成本比上年同期增减 | 毛利率比上年同期增减 |\n|---|---:|---:|---:|---:|---:|---:|\n| 计算机、通信和其他电子 | 39,643,732,616.04\n\n说明文字继续保留。`
+  const repaired=repairCompanyIndustryExposureRowsFromMethod({sections:[{id:'industry-exposure',markdown:malformed}],methodResults:[method]})[0]!
+  assert.ok(repaired.markdown.includes(sourceRow))
+  assert.match(repaired.markdown,/说明文字继续保留/)
+  assert.equal(repairCompanyIndustryExposureRowsFromMethod({sections:[{id:'industry-exposure',markdown:malformed}],methodResults:[{...method,status:'failed'}] as CompanyResearchMethodResult[]})[0]!.markdown,malformed)
 })
 
 test('industry-exposure rows inherit the half-year period from the preceding table header',()=>{
@@ -2215,7 +2376,7 @@ test('R195 cross-section cleanup cites the exact industry margin row, scopes the
   assert.match(industry,/\[annual@paragraph:894\]/)
   assert.match(fixed.find(section=>section.id==='products')!.markdown,/未由独立客户验证或第三方测试验证/)
   const risk=reconcileCompanyRiskBoundaries({sections:fixed,methodResults:[competition]}).find(section=>section.id==='risks')!.markdown
-  assert.match(risk,/竞争章节列有PCB应用场景候选/)
+  assert.match(risk,/竞争章节列出具名候选及产品路线/)
   assert.equal([...risk.matchAll(/公司所述措施不等于已实现商业化成果/g)].length,1)
 })
 
@@ -2284,11 +2445,12 @@ test('interim industry and product revenue rates are labeled by their separate t
     {location:'paragraph:707',text:'汽车、汽车相关'},{location:'paragraph:708',text:'产品及其他产品 275,341,358,000.00 79.85% 302,506,271,000.00 81.48% -8.98%'}
   ]
   const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'两个分类表已提取。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-interim'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'CNINFO',excerpts:excerpts.map(item=>({...item,sourceCandidateId:'official-interim'}))}]}
-  const input=[{id:'revenue-profit-drivers',markdown:'半年报分行业表显示，交通运输设备及电气制造业收入同比下降，日用电子器件制造业收入小幅增加；分产品表中汽车类标签另有变化。',sourceCandidateIds:['official-interim']}]
+  const input=[{id:'revenue-profit-drivers',markdown:'半年报分行业表显示，交通运输设备及电气制造业收入同比下降，日用电子器件制造业收入小幅增加；分产品表中汽车类标签另有变化。',sourceCandidateIds:['official-interim']},{id:'growth-drivers',markdown:'半年度增长驱动应说明行业与产品量级。',sourceCandidateIds:['official-interim']}]
   const result=reconcileCompanyInterimIndustryProductComparison({sections:input,methodResults:[method]})
   const markdown=result[0]!.markdown
   assert.match(markdown,/分行业表为日用电子器件制造业收入同比增长0\.96%；交通运输设备及电气制造业收入同比下降8\.98%/)
   assert.match(markdown,/分产品表为电子及其他产品收入同比增长0\.96%；汽车、汽车相关产品及其他产品收入同比下降8\.98%/)
+  assert.match(result.find(item=>item.id==='growth-drivers')!.markdown,/日用电子器件制造业本报告期收入69,404,994,000\.00元、占营业收入20\.13%，同比增长0\.96%/)
   for(const paragraph of [693,694,699,701,702,703,705,706,707,708])assert.match(markdown,new RegExp(`\\[official-interim@paragraph:${paragraph}\\]`))
   assert.equal(reconcileCompanyInterimIndustryProductComparison({sections:result,methodResults:[method]})[0]!.markdown,markdown)
   const incomplete={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:705').map(item=>({...item,sourceCandidateId:'official-interim'}))}]}
@@ -2325,11 +2487,12 @@ test('R&D capitalization reconciliation separates issuer change column from the 
     {location:'paragraph:2247',text:'资本化研发投入占研发投入的比例 8.61% 1.78% 6.83%'}
   ]
   const method:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'complete',attempts:1,answer:'研发资本化情况。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-annual',title:'2025年年度报告',publisher:'CNINFO',excerpts:excerpts.map(item=>({...item,sourceCandidateId:'official-annual'}))}]}
-  const input=[{id:'management-capital-allocation',markdown:'| 研发资本化率 | 2025年8.61%、2024年1.78%，原表变动比例6.83% |',sourceCandidateIds:['official-annual']}]
+  const input=[{id:'management-capital-allocation',markdown:'| 研发资本化率 | 2025年8.61%、2024年1.78%，原表变动比例6.83% |\n\n现有确定性分析未提供对应年度百分点差，故不另行计算。',sourceCandidateIds:['official-annual']}]
   const fixed=reconcileCompanyRAndDCapitalizationRatioSpread({sections:input,methodResults:[method]})
   assert.match(fixed[0]!.markdown,/列披露6\.83%；按比例水平相减，8\.61%−1\.78%＝6\.83个百分点/)
   assert.match(fixed[0]!.markdown,/official-annual@paragraph:2243/)
   assert.match(fixed[0]!.markdown,/official-annual@paragraph:2247/)
+  assert.doesNotMatch(fixed[0]!.markdown,/未提供对应年度百分点差/)
   assert.equal(reconcileCompanyRAndDCapitalizationRatioSpread({sections:fixed,methodResults:[method]})[0]!.markdown,fixed[0]!.markdown)
   const missingHeader={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:2243').map(item=>({...item,sourceCandidateId:'official-annual'}))}]}
   assert.equal(reconcileCompanyRAndDCapitalizationRatioSpread({sections:input,methodResults:[missingHeader]})[0]!.markdown,input[0]!.markdown,'missing adjacent year/change header must withhold arithmetic')

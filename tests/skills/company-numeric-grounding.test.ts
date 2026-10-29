@@ -26,6 +26,26 @@ test('prepared financial growth percentages remain grounded when a cited structu
   assert.equal(validateCompanyNumericGrounding({ markdown: formula.replace('15.5476%', '99.99%'), ...options }).status, 'unsupported_numbers')
 })
 
+test('numeric grounding binds bare row values to a declared percent unit and keeps percentage points distinct', () => {
+  const candidateId = 'official-rd-ratio'
+  const filing = {
+    ...source,
+    candidate: { ...source.candidate, candidateId },
+    title: '年度报告',
+    content: '研发投入占营业收入比例（%） 4.56 23.71',
+  }
+  const valid = `本期研发投入占营业收入比例为4.56%，上期为23.71%。[${candidateId}@paragraph:1]`
+  const grounded = validateCompanyNumericGrounding({ markdown: valid, sources: [filing] })
+  assert.equal(grounded.status, 'grounded', JSON.stringify(grounded.diagnostics))
+
+  const wrongUnit = valid.replace('4.56%', '4.56个百分点')
+  assert.equal(
+    validateCompanyNumericGrounding({ markdown: wrongUnit, sources: [filing] }).status,
+    'unsupported_numbers',
+    'a source row that declares percent does not support percentage-point wording',
+  )
+})
+
 test('a balance-sheet change is grounded only from its exact cited row, current/prior header, and declared unit', () => {
   const candidateId = 'official-balance-sheet'
   const rows = new Map<number, string>([
@@ -155,6 +175,12 @@ test('BYD real half-year split header and industry rows ground both claims indep
   const markdown = `半年报分行业表列示：日用电子器件制造业毛利率5.04%，同比下降2.67%。${dailyRefs}；交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。${transportRefs}`
   const result = validateCompanyNumericGrounding({ markdown, sources: [filing] })
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
+  const missingTransportRowRefs = [716, 717, 724, 725, 726, 727, 728].map(paragraph => `[${candidateId}@paragraph:${paragraph}]`).join(' ')
+  const unsupportedWithoutValueRow = validateCompanyNumericGrounding({
+    markdown: `交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。${missingTransportRowRefs}`,
+    sources: [filing],
+  })
+  assert.equal(unsupportedWithoutValueRow.status, 'unsupported_numbers', 'the transportation row locator remains required for 22.33% and 1.98%')
 })
 
 test('segment gross-margin changes cannot borrow an equal-valued row from the other classification', () => {
@@ -1095,6 +1121,26 @@ test('numeric grounding carries a shared decline direction across separately per
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
 })
 
+test('numeric grounding carries one decline direction across an enumerated percent list with repeated approximation markers', () => {
+  const financial = { ...source, content: '结构化财务数据。' }
+  const preparedAnalysis = { financial: { growth: [
+    { metric: 'revenue', growthPercent: -7.128167265937922, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'operatingProfit', growthPercent: -21.239504732736314, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'netProfit', growthPercent: -20.535238859941177, sourceCandidateIds: ['filing-2025-003'] },
+  ] } }
+  const markdown = '营业收入、营业利润及净利润分别同比下降约7.13%、约21.24%及约20.54%。[filing-2025-003@paragraph:1]'
+  const grounded = validateCompanyNumericGrounding({ markdown, sources: [financial], preparedAnalysis })
+  assert.equal(grounded.status, 'grounded', JSON.stringify(grounded.diagnostics))
+
+  const wrongValueDirection = { financial: { growth: [
+    { metric: 'revenue', growthPercent: -7.128167265937922, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'operatingProfit', growthPercent: 21.239504732736314, sourceCandidateIds: ['filing-2025-003'] },
+    { metric: 'netProfit', growthPercent: -20.535238859941177, sourceCandidateIds: ['filing-2025-003'] },
+  ] } }
+  assert.equal(validateCompanyNumericGrounding({ markdown, sources: [financial], preparedAnalysis: wrongValueDirection }).status, 'unsupported_numbers', 'shared decline wording cannot ground a positive prepared value')
+  assert.equal(validateCompanyNumericGrounding({ markdown: markdown.replace('下降', '增长'), sources: [financial], preparedAnalysis }).status, 'unsupported_numbers', 'shared growth wording cannot ground negative prepared values')
+})
+
 test('numeric grounding supports explicitly shared monetary unit in one table cell only', () => {
   const result = validateCompanyNumericGrounding({ markdown: '| 经营现金流 / 资本开支 | 373 / 447亿元 |', sources: [], preparedAnalysis: { operatingCashFlow: 37310000000, capex: 44730000000 } })
   assert.equal(result.status, 'grounded')
@@ -1176,6 +1222,20 @@ test('percentage-point grounding admits the explicit deterministic display value
   const result = validateCompanyNumericGrounding({ markdown: formula, sources: [financial], preparedAnalysis })
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
   assert.equal(validateCompanyNumericGrounding({ markdown: formula.replace('14.2261', '14.2263'), sources: [financial], preparedAnalysis }).status, 'unsupported_numbers')
+})
+
+test('risk growth divergence reports a positive spread after describing one operand as declining', () => {
+  const financial = { ...source, candidate: { ...source.candidate, candidateId: 'financial' }, content: '结构化财务摘要；同比增速由代码计算。' }
+  const preparedAnalysis = { financial: { growthDivergences: [{
+    leftMetric: 'revenue', rightMetric: 'operatingCashFlow', unit: 'percentage_points',
+    currentPeriod: '2026-06-30', priorPeriod: '2025-06-30',
+    value: 68.5971982648607, displayValue: 68.5972, sourceCandidateIds: ['financial'],
+  }] } }
+  const claim = '2026年上半年累计收入增长与经营现金流下降之间的增速背离为68.5972个百分点。[financial@paragraph:1]'
+  const options = { sources: [financial], preparedAnalysis, trustedText: companyPreparedFinancialDateText(preparedAnalysis) }
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim, ...options }).status, 'grounded')
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim.replace('68.5972', '69.5972'), ...options }).status, 'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim.replace('背离为68.5972', '背离为负68.5972'), ...options }).status, 'unsupported_numbers')
 })
 
 test('ratio-change grounding admits only its deterministic displayed-operand calculation', () => {

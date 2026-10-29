@@ -133,7 +133,7 @@ test('Common Data Catalog rejects duplicate IDs and retains immutable metadata',
   const valuation = COMMON_DATA_CATALOG.find((definition) => definition.metricId === 'valuation_eps')
   assert.ok(valuation)
   assert.equal(valuation.meaning, '估值用年度每股收益（EPS）')
-  assert.deepEqual(valuation.consumers, ['valuation'])
+  assert.deepEqual(valuation.consumers, ['valuation', 'company-deep-research'])
   assert.equal(valuation.sourcePolicyStatus, 'CONFIGURED')
 
   const catalog = createCommonDataCatalog([valuation])

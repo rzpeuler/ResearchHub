@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "capturedAt": "2026-10-27",
+  "sourceCommit": "ec5065a60193254d095f4a8aaabf105d7c022234",
+  "change": {
+    "summary": "Split product revenue/share and margin-change claims before numeric grounding, bind only an unresolved exact same-label table row, exclude customer-concentration gaps from customer-preference detection, and repair a fused following-table header only when table widths prove the boundary.",
+    "syntheticRegressions": [
+      "business-driver finding binds a missing margin row when the same label is already cited in a separate revenue table",
+      "product method does not classify customer concentration review as an unsupported customer-preference claim",
+      "R174 separates a fused business-model margin table with a blank leading header and prose tail"
+    ],
+    "fixtures": "Synthetic source rows and malformed Markdown are embedded in the targeted test files; no additional fixture file is required."
+  },
+  "validation": {
+    "targetedTests": {
+      "command": "node --import tsx --test tests/skills/company-methods.test.ts tests/workflows/company-research-assembly.test.ts tests/workflows/company-content-quality.test.ts tests/workflows/company-valuation-sections.test.ts tests/workflows/company-deep-research.test.ts",
+      "result": "416 tests; 416 passed; 0 failed"
+    },
+    "typecheck": "npm run typecheck: passed",
+    "clientTypecheck": "npm run client:typecheck: passed",
+    "clientBuild": "npm run client:build: passed; existing large-chunk advisory emitted",
+    "fullNodeSuite": {
+      "command": "npm run test:node",
+      "result": "3166 tests; 3145 passed; 21 failed",
+      "baseline": "Compared with the saved post-136a085 rerun (3159 tests; 3138 passed; 21 failed), all 21 failing test identities are unchanged; 7 tests were added by intervening commits."
+    },
+    "fullClientSuite": {
+      "command": "npm run client:test",
+      "result": "223 tests; 218 passed; 5 failed",
+      "baseline": "Compared with the saved root baseline (205 tests; 199 passed; 6 failed), the five current failing identities were already present and one prior failing identity no longer reproduced; no new failure identity."
+    },
+    "diffCheck": "git diff --check: passed"
+  },
+  "liveReadOnlyRunsBeforeThisChange": {
+    "model": {
+      "provider": "openai-codex",
+      "modelId": "gpt-6-luna"
+    },
+    "knowledgeWrite": false,
+    "rawReportsProviderBodiesAndDisposableKnowledgeIncluded": false,
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "9b1dd032-2ab4-46f7-9e25-a4bc301ba9d0",
+        "reportId": "company-research-002594-9b1dd032-2ab4-46f7-9e25-a4bc301ba9d0",
+        "status": "blocked",
+        "coreChecks": "17/19",
+        "businessDriverMethod": "complete; industry-margin claim cited the 分行业 marker at paragraph 727 and its exact rows at paragraphs 728-730",
+        "otherFindings": [
+          "bull-base-bear has no attributable located evidence",
+          "variant-perception forecast value vintage remains unverified",
+          "business-model contains an ambiguous fused revenue/margin table"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "d12273361bfa955f7a762028c5085592bbf8e3419b0f07eb646af964eec8a9f2",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      },
+      {
+        "symbol": "002384",
+        "runId": "76d5a122-2fbf-4989-b8f9-85aeb79fcae7",
+        "reportId": "company-research-002384-76d5a122-2fbf-4989-b8f9-85aeb79fcae7",
+        "status": "blocked",
+        "coreChecks": "12/19",
+        "businessDriverMethod": "failed both attempts; the claim combined product revenue/share and margin change from separate tables with a repeated product label",
+        "productTechnologyMethod": "failed both attempts; first attempt timed out and the retry falsely classified a customer-concentration evidence gap as unsupported customer preference",
+        "otherFindings": [
+          "bull-base-bear has no attributable located evidence",
+          "variant-perception forecast value vintage remains unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "305954de79c0be0f8712865e0284660fd6f388f4917b3d3e60961961a049fd0a",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    ]
+  },
+  "liveReadOnlyVerificationOnCommittedChange": {
+    "sourceCommit": "e2e087060193254d095f4a8aaabf105d7c022234",
+    "model": {
+      "provider": "openai-codex",
+      "modelId": "gpt-6-luna"
+    },
+    "knowledgeWrite": false,
+    "rawReportsProviderBodiesAndDisposableKnowledgeIncluded": false,
+    "independentReview": "Two read-only reviewer agents confirmed the section statuses, cited row context, remaining gaps, and unchanged Knowledge hashes. Both workflow sidecars have reviewAttempts=0; these post-run audits do not change the Workflow gate status.",
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "71c2b462-e4db-4aac-b119-196f3aa23d2b",
+        "reportId": "company-research-002594-71c2b462-e4db-4aac-b119-196f3aa23d2b",
+        "status": "blocked",
+        "coreChecks": "16/19",
+        "businessDriverMethod": "complete; the industry-margin claim uses the 分行业 marker and paragraphs 727-730, not duplicate product rows 731-732",
+        "businessModel": "section passed and finalReport table diagnostics are empty; methodSections retains a table-format diagnostic",
+        "remainingBlockedSections": [
+          "competition: method failed both attempts and has no attributable evidence",
+          "bull-base-bear: no attributable located scenario evidence",
+          "variant-perception: forecast value vintage is unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "18534c2a493999eef0abf08d12f46a899eeb29016ae5f17d42fc3139ddca7377",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      },
+      {
+        "symbol": "002384",
+        "runId": "4f3ccce3-8854-4efc-9124-2e26c2c9d2f6",
+        "reportId": "company-research-002384-4f3ccce3-8854-4efc-9124-2e26c2c9d2f6",
+        "status": "blocked",
+        "coreChecks": "17/19",
+        "businessDriverMethod": "complete in one attempt without diagnostics; the final report supports the 3.86% precision-component margin change with table marker paragraph 796, table value row paragraph 798, and header/unit context paragraphs 784-791. No corresponding method finding specifically states 3.86%.",
+        "productTechnologyMethod": "complete in one attempt without diagnostics",
+        "businessModel": "section passed and finalReport table diagnostics are empty; the independent reviewer noted citations are not consistently inline for every table row",
+        "remainingBlockedSections": [
+          "bull-base-bear: no attributable located scenario evidence",
+          "variant-perception: forecast value vintage is unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "714fbf6cd2f527e0245336db446a43fde9238cc20883e3b527ee78564e284cc5",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    ]
+  },
+  "acceptance": {
+    "p0Status": "incomplete",
+    "reason": "The fresh committed-code pair and independent post-run audits still do not pass all 19 checks. Scenario assumptions lack attributable sources, historical forecast value vintages remain unverified, and Workflow semantic-review attempts are zero."
+  }
+}

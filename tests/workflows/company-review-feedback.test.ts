@@ -38,6 +38,8 @@ test('driver revision separates supplied financial rows from unresolved attribut
       reasons: ['漏掉幻想工业收入345.67亿元、22.33%毛利率〔official-secret@paragraph:730〕，应写销量增加导致增长。'],
     }]).join('\n')
     assert.match(feedback, /完整表头、标签及数值续行/)
+    assert.match(feedback, /半年报“营业收入构成”分产品表若已列本期占比，必须在收入结构中逐项列出具名产品、占比和精确行级引用/)
+    assert.match(feedback, /不得再称分部收入占比未披露/)
     assert.match(feedback, /不得因缺少量价或分部利润而否定已给出的收入行/)
     assert.match(feedback, /保留该项缺口/)
     assert.match(feedback, /有序操作数和差额方向/)
@@ -57,4 +59,27 @@ test('capital revision distinguishes historical action facts from missing valuat
     assert.match(feedback, /仍逐项列为缺口/)
     assert.doesNotMatch(feedback, /幻象公司|999|888|official-secret|paragraph:10154|应认定创造价值/)
   }
+})
+
+test('review feedback preserves disclosed employee-plan scope, technology progress, and named competitor boundaries', () => {
+  const plan = buildCompanyMethodReviewFeedback('management_governance_analysis', [{
+    sectionId: 'management-capital-allocation',
+    reasons: ['计划参与范围缺少披露。'],
+  }]).join('\n')
+  assert.match(plan, /完整名称、年份、适用对象或人员范围及人数/)
+  assert.match(plan, /不能再把已列明的计划期间、名称或参与范围称为未披露/)
+
+  const technology = buildCompanyMethodReviewFeedback('product_technology_analysis', [{
+    sectionId: 'technologies',
+    reasons: ['已有产品进入量产资料，但称无商业进展。'],
+  }]).join('\n')
+  assert.match(technology, /研发路线、累计使用、进入量产或应用进展/)
+  assert.match(technology, /不得将这些缺口扩大成没有商业转化证据/)
+
+  const risk = buildCompanyMethodReviewFeedback('company_risk_analysis', [{
+    sectionId: 'risks',
+    reasons: ['竞争章节已列具名对手，但称具名竞品横向数据未提供。'],
+  }]).join('\n')
+  assert.match(risk, /不得称“没有具名竞品\/路线”或“具名竞品未提供”/)
+  assert.match(risk, /尚未验证的直接采购重叠/)
 })
