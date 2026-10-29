@@ -10,7 +10,7 @@
 
 The two archived company reports were read and fingerprinted in a read-only pass. The baseline shows that both already have clear, evidence-backed theses, counterevidence and usable monitoring lists. It also identifies bounded editorial gains and a specific Dongshan citation-spacing defect. No candidate “after” text was generated or scored: the locally configured Pi model is unavailable, and substituting another model would violate the task boundary.
 
-The configured application setting names `openai-codex/gpt-6-luna`, but the root Runtime status reports no selected model and no configured Pi model providers. A local read-only Pi configuration check likewise found zero configured/authenticated providers. No prompt was sent, no API was called, and no fallback model or account was used. The minimum unlock is restoring the existing authorized Pi model configuration; then the same-source editorial replay can resume within the remaining 12-call budget.
+The configured application setting names `openai-codex/gpt-6-luna`, but the root Runtime status reports no selected model and no configured Pi model providers. A local read-only check with Pi model-network access disabled confirmed that the saved model is present in Pi's catalog but its provider is not configured (`providerAuthSource=null`). No prompt was sent, no API was called, and no fallback model or account was used. The minimum unlock is restoring the existing authorized Pi model configuration; then the same-source editorial replay can resume within the remaining 12-call budget.
 
 ## Definition of Done
 
