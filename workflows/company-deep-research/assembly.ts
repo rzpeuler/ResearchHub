@@ -87,6 +87,20 @@ function hasBasicEpsClaim(text: string): boolean {
   return /(?:基本\s*每股收益|基本\s*EPS|basic\s+EPS)/iu.test(text)
 }
 
+function hasAffirmativeReferencePeClaim(text: string): boolean {
+  const referencePe = /(?:参考\s*PE|参考市盈率|市盈率|P\/E)/iu
+  const explicitGap = /(?:研究缺口|缺少(?:合格)?(?:行情|估值输入)|(?:无法|不能|未能)(?:计算|核实|确认|得出)|未(?:核验|验证)|不具备(?:合格)?(?:行情|估值输入)|暂无(?:合格)?(?:行情|估值输入))[^。！？\n]{0,32}$/iu
+  const unavailableAfterClaim = /^\s*(?:尚)?(?:无法计算|不能计算|未能计算|不可计算|无法核实|无法确认|未核验|未验证)/iu
+  return text.split(/(?<=[。！？.!?])\s*|\r?\n/u).some(sentence => {
+    const prose = sentence.replace(/\[[^\]]*\]/gu, ' ')
+    const match = referencePe.exec(prose)
+    if (!match || match.index === undefined) return false
+    const before = prose.slice(0, match.index)
+    const after = prose.slice(match.index + match[0].length)
+    return !explicitGap.test(before.slice(-72)) && !unavailableAfterClaim.test(after)
+  })
+}
+
 function claimedEpsFiscalYears(text: string): Set<number> {
   const prose = text.replace(/\[[^\]]*\]/gu, ' ')
   const years = new Set<number>()
@@ -253,7 +267,7 @@ export function buildSynthesisEvidenceLedger(input: {
       return !source || !isQualifiedHistoricalMarketSource(source, input.asOf)
     })
     const wrongEpsLocator = section.id === 'valuation' && containsUnqualifiedEpsClaim(section.markdown, sectionReferences, exactEps)
-    const referencePeClaim = section.id === 'valuation' && /(?:参考\s*PE|参考市盈率|市盈率|P\/E)/iu.test(section.markdown)
+    const referencePeClaim = section.id === 'valuation' && hasAffirmativeReferencePeClaim(section.markdown)
     const referencePeFiscalYears = claimedEpsFiscalYears(section.markdown)
     const qualifiedEpsReferences = sectionReferences.filter(reference => exactEps.has(reference))
     const epsFiscalYearMismatch = section.id === 'valuation' && hasBasicEpsFiscalYearMismatch(section.markdown, sectionReferences, exactEps)
@@ -2883,7 +2897,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
         if (unqualifiedMarketCitation) throw new Error('REFERENCE_ERROR: unqualified current-reference market price cannot support a historical conclusion')
         if (hasUnqualifiedBasicEpsSentence(synthesisMarkdown, exactEps)) throw new Error('NUMERIC_METRIC_GROUNDING_ERROR: basic EPS claim must cite the unique annual-report basic EPS row for its stated fiscal year')
         const hasVerifiedValuation = workflowLedger.some(entry => entry.ownerWorkflow === 'valuation' && entry.eligibility === 'verified')
-        const positiveValuationClaim = /(?:参考\s*PE|参考市盈率|市盈率|P\/E)(?![^。！？\n]*(?:未核验|未验证|无法确认|不具备|不构成|缺少|研究缺口))/iu.test(synthesisMarkdown)
+        const positiveValuationClaim = hasAffirmativeReferencePeClaim(synthesisMarkdown)
         if (positiveValuationClaim && !hasVerifiedValuation) throw new Error('REFERENCE_ERROR: valuation conclusion requires a structurally qualified Workflow valuation entry')
         if(['investment-thesis','monitoring-checklist'].includes(section.id)&&![...synthesisMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
         const citationIds=[...new Set([...synthesisMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]

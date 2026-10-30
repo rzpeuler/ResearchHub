@@ -350,6 +350,104 @@ test('final synthesis rejects a correct basic EPS row claimed under the wrong fi
   assert.equal(result.sections.length, 19)
 })
 
+test('final synthesis rejects affirmative historical reference PE with a target-price disclaimer when valuation ledger is not qualified', async () => {
+  const annual = {
+    candidate: { candidateId: 'annual', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T16:00:00.000Z' },
+    title: '2025年年度报告', content: '年度报告披露经营情况。', contentHash: sha256('年度报告披露经营情况。'), retrievedAt: qualificationAsOf,
+  } as any
+  const annualMethod: CompanyResearchMethodResult = {
+    ...method,
+    sections: [{ id: 'company-overview', markdown: '年度报告披露经营情况。[annual@paragraph:1]' }],
+    findings: [{ text: '年度报告披露经营情况。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }],
+    sourceCandidateIds: ['annual'],
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '2025年年度报告', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '年度报告披露经营情况。' }] }],
+  }
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '研究缺口：缺少合格行情，无法计算参考 PE。', sourceCandidateIds: [] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
+  ] as const
+  const affirmativeOutput = { sections: ids.map(id => ({
+    id,
+    markdown: '参考 PE 反映历史估值水平，不构成目标价。[annual@paragraph:1]',
+    sourceCandidateIds: ['annual'],
+  })) }
+  const requests: unknown[] = []
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    requests.push(request)
+    return { operation: request.operation, output: affirmativeOutput }
+  } }
+  const result = await assembleCompanyResearch(
+    { ...input, asOf: qualificationAsOf, sources: [annual], reportSourceCandidateIds: ['annual'] },
+    [annualMethod], executor, () => qualificationAsOf, 2, {}, workflowSections,
+  )
+  assert.equal(requests.length, 2, JSON.stringify({ synthesisMode: result.synthesisMode, synthesisAttempts: result.synthesisAttempts, diagnostics: result.synthesisDiagnostics }))
+  assert.equal(result.synthesisMode, 'deterministic_fallback')
+  assert.equal(result.synthesisDiagnostics.length, 2)
+  assert.ok(result.synthesisDiagnostics.every(diagnostic => /valuation conclusion requires a structurally qualified Workflow valuation entry/u.test(diagnostic)), result.synthesisDiagnostics.join('; '))
+  assert.equal(result.sections.length, 19)
+})
+
+test('final synthesis allows an explicit missing-qualified-market research gap without a verified valuation ledger', async () => {
+  const annual = {
+    candidate: { candidateId: 'annual', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T16:00:00.000Z' },
+    title: '2025年年度报告', content: '年度报告披露经营情况。', contentHash: sha256('年度报告披露经营情况。'), retrievedAt: qualificationAsOf,
+  } as any
+  const annualMethod: CompanyResearchMethodResult = {
+    ...method,
+    findings: [{ text: '年度报告披露经营情况。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }],
+    sourceCandidateIds: ['annual'],
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '2025年年度报告', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '年度报告披露经营情况。' }] }],
+  }
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '研究缺口：缺少合格行情，无法计算参考 PE。', sourceCandidateIds: [] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
+  ] as const
+  const gapOutput = { sections: ids.map(id => ({
+    id,
+    markdown: '研究缺口：缺少合格行情，无法计算参考 PE。[annual@paragraph:1]',
+    sourceCandidateIds: ['annual'],
+  })) }
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: gapOutput }) }
+  const result = await assembleCompanyResearch(
+    { ...input, asOf: qualificationAsOf, sources: [annual], reportSourceCandidateIds: ['annual'] },
+    [annualMethod], executor, () => qualificationAsOf, 2, {}, workflowSections,
+  )
+  assert.equal(result.synthesisMode, 'reasoning_executor', result.synthesisDiagnostics.join('; '))
+  assert.equal(result.sections.length, 19)
+})
+
+test('final synthesis accepts affirmative reference PE when the Workflow ledger has qualified market and matching annual EPS evidence', async () => {
+  const annual = annualEpsSource()
+  const market = marketPriceSource(true)
+  const marketId = market.candidate.candidateId
+  const annualMethod: CompanyResearchMethodResult = {
+    ...method,
+    sections: [{ id: 'financial-quality', markdown: 'FY2025 基本每股收益 3.58 元/股 [annual@paragraph:3]' }],
+    findings: [{ text: 'FY2025 基本每股收益 3.58 元/股。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:3' }] }],
+    sourceCandidateIds: ['annual'],
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '2025年年度报告', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:3', text: '基本每股收益（元/股） 3.58 4.61 -22.34%' }] }],
+  }
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: `参考 PE 反映 FY2025 历史估值水平，不构成目标价。[${marketId}@paragraph:1] [annual@paragraph:3]`, sourceCandidateIds: [marketId, 'annual'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
+  ] as const
+  const positiveOutput = { sections: ids.map(id => ({
+    id,
+    markdown: `参考 PE 反映 FY2025 历史估值水平，不构成目标价。[${marketId}@paragraph:1] [annual@paragraph:3]`,
+    sourceCandidateIds: [marketId, 'annual'],
+  })) }
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: positiveOutput }) }
+  const result = await assembleCompanyResearch(
+    { ...input, asOf: qualificationAsOf, sources: [annual, market], reportSourceCandidateIds: ['annual', marketId] },
+    [annualMethod], executor, () => qualificationAsOf, 1, {}, workflowSections,
+  )
+  assert.equal(result.synthesisMode, 'reasoning_executor', result.synthesisDiagnostics.join('; '))
+  assert.equal(result.sections.length, 19)
+})
+
 test('same-number dividend row cannot satisfy an annual basic EPS claim or retry into success', async () => {
   const annual = annualEpsSource()
   const market = marketPriceSource(true)
