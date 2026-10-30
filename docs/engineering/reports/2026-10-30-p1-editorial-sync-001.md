@@ -78,6 +78,13 @@ Both archived P0 reports remain read-only and have 19 sections in the same stabl
 | Dongshan | `official-39e591fa149e4543` | `8009fc94cc5a754b4cf5c18132217ce704c216484c2922d74d92f7f008ba3330` |
 | Dongshan | `public-web-2e4e8f90fb9e55d6` | `2f75294be7dd9e226202b087758b83364fee4fa08e6d9225fd7582ff44f41835` |
 
+**Archived input file hashes:**
+
+| Company | Report SHA-256 | Analysis SHA-256 | Bundle SHA-256 | Workflow SHA-256 |
+| --- | --- | --- | --- | --- |
+| BYD 002594 | `2867b270318b21e334c28246935326dab19fa734c094253bb80637b2c32390c1` | `60c877932829d114eb02af13304402ec5599b4410df5bc63926f4f646489de35` | `1fd11c5f5e7764d23bd4950712faf056efeff09436dd983635b24c156a7a8739` | `43316166217675df70473ed86cf646fa988dd3dfc53be6c4e75f7f32bf6ff7f6` |
+| Dongshan 002384 | `6fa63686b889150551b42eab66b3ce32f4246871f5a3d4be99117d0e0d8917d4` | `72588193faff4c2e75fb2e07c0b07197619b8c23b9fa49f843e7f05ae34e98b3` | `691f3f561b02523f00865f574f6fd373b202c9dad98502abbd61fa3b5958067f` | `0cf91dfa99a0ca0b1daff3b8711e5e29ab1f07c1d693cfa7f986999adc718ebd` |
+
 No new sources or current research data were acquired. The archived BYD quote `82.01` was retrieved at `2026-10-27T20:20:02.952Z`, 3.324 seconds after its archived `asOf`; it is not historically qualified. The FY2025 basic EPS `3.58` is the actual annual-report EPS row at `official-f7c8d23d2829a5e8@paragraph:231`. Equal-value dividend rows at paragraphs 43/98/1115 are diagnostic alternatives, not the model's cited EPS row.
 
 ### Saved model artifacts and prior product review
@@ -167,6 +174,6 @@ The PR #11 safety-fix worktree/branch is absent from `git worktree list`, local 
 - **D4:** independent redline — PARTIAL/FAIL for product acceptance; BYD's saved automatic output falls back and the late quote cannot support a historical PE; Dongshan redline rejects numeric-detail leakage. Model outputs were not edited here.
 - **D5:** 19-section, P0, Knowledge and persistence invariants — PASS for isolation; historical `17/19 BLOCKED` and both valuation sections remain blocked.
 - **D6:** engineering validation — PASS for no new regression; clean-main's 21 Node and 5 Client known failures persist.
-- **D7:** PR reviewable, open and unmerged; branch/report push and PR description update are part of S5 delivery. CTO acceptance remains outstanding.
+- **D7:** PR reviewable, open and unmerged; sync evidence and PR description are delivered. CTO acceptance remains outstanding.
 
 Next acceptance should target only the factual/qualitative vetoes with an independently approved model-call budget and an auditable raw request/response record for both companies. Do not treat the editor prompt, deterministic replay, or passing engineering tests as product-quality acceptance. No model budget remains from the earlier P1 run (`12/12`); production authorization remains unknown.
