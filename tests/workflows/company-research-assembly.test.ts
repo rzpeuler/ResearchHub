@@ -143,7 +143,8 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
   assert.equal(requestPayload?.outputContract.properties.sections.maxItems, 2)
   assert.equal(requestPayload?.outputContract.properties.sections.items.properties.markdown.maxLength, 5000)
   assert.match(requestPayload?.instruction ?? '', /最多9项/)
-  assert.match(requestPayload?.instruction ?? '', /不在这两节抄录数字/)
+  assert.match(requestPayload?.instruction ?? '', /只有少量直接披露且经本轮证据核验的关键数值能实质说明主导经营驱动、最强反证或风险暴露时才纳入/)
+  assert.doesNotMatch(requestPayload?.instruction ?? '', /所有核心判断及跟踪项均用定性事实表述，不在这两节抄录数字/)
   assert.match(requestPayload?.instruction ?? '', /eligibility=blocked条目仅为阻塞诊断/)
   assert.match(requestPayload?.instruction ?? '', /定性表述纳入该估值路径的经济含义及章节明示的限制/)
   assert.match(requestPayload?.instruction ?? '', /monitoring-checklist只为verified的估值\/情景\/预期结论列出可重复观察的指标和触发条件/)
@@ -155,6 +156,29 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
   for (const id of ['valuation', 'bull-base-bear', 'variant-perception']) {
     assert.match(result.sections.find(section => section.id === id)?.markdown ?? '', /^研究缺口：/)
   }
+})
+
+test('final ReasoningExecutor request permits decisive verified numbers without asking synthesis sections to repeat full tables', async () => {
+  let finalRequest: { operation: string; instruction: string } | undefined
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    finalRequest = request
+    return { operation: request.operation, output: { sections: ids.map(id => ({
+      id,
+      markdown: '综合结论由本轮原文支持。[annual@paragraph:1]',
+      sourceCandidateIds: ['annual'],
+    })) } }
+  } }
+
+  const result = await assembleCompanyResearch(input, [method], executor, () => input.asOf)
+  const instruction = finalRequest?.instruction ?? ''
+  assert.equal(finalRequest?.operation, 'company_research_synthesis')
+  assert.equal(result.synthesisMode, 'reasoning_executor', result.synthesisDiagnostics.join('; '))
+  assert.match(instruction, /只有少量直接披露且经本轮证据核验的关键数值能实质说明主导经营驱动、最强反证或风险暴露时才纳入/)
+  assert.match(instruction, /方法章节须保留相应完整披露事实、期间、单位和直接引用/)
+  assert.match(instruction, /investment-thesis与monitoring-checklist从这些已核验事实中选择能实质说明主导驱动、最强反证或风险暴露的关键事实和直接披露数值/)
+  assert.match(instruction, /综合章节无需复抄完整数据表或重复同一数值/)
+  assert.doesNotMatch(instruction, /不在这两节抄录数字、百分比、日期或带数字的技术型号/)
+  assert.doesNotMatch(instruction, /必须把披露事实、期间、单位及其直接引用整合到相应论点或监控项/)
 })
 
 test('final synthesis may cite exact qualified Workflow-owned valuation inputs', async () => {
@@ -1876,6 +1900,10 @@ test('final synthesis repair removes an unavailable locator and uses only an all
 
 test('final synthesis instruction keeps R&D measures separate and prevents broad management-role gaps', async () => {
   const executor: ReasoningExecutor = { capabilities, execute: async (request) => {
+    assert.match(request.instruction, /按“核心判断→决定性经营驱动→最强支持证据与反证→失效条件”组织/)
+    assert.match(request.instruction, /两节以定性解释为主，只有少量直接披露且经本轮证据核验的关键数值/)
+    assert.match(request.instruction, /综合章节无需复抄完整数据表或重复同一数值/)
+    assert.match(request.instruction, /只有指标及观察对象实质相同才合并/)
     assert.match(request.instruction, /研发投入金额.*研发费用.*不同指标与期间/)
     assert.match(request.instruction, /不能笼统称“完整管理层分工缺失”/)
     assert.match(request.instruction, /具体新任高管履历、具体职责分工或任职后绩效/)
@@ -1885,7 +1913,8 @@ test('final synthesis instruction keeps R&D measures separate and prevents broad
     assert.match(request.instruction, /风险章节须保留竞争方法识别的具名候选公司/)
     assert.match(request.instruction, /不得一处写成本同比增速低于收入、另一处又写成本扩张更快/)
     assert.match(request.instruction, /先逐项检索本轮有效方法结果、findings 及 allowedEvidence 中与该节对应的具体原表行/)
-    assert.match(request.instruction, /已披露的分行业\/分产品收入金额与占比/)
+    assert.match(request.instruction, /收入驱动方法章节须分别列出已披露的分行业\/分产品收入金额与占比/)
+    assert.match(request.instruction, /investment-thesis与monitoring-checklist从这些已核验事实中选择能实质说明主导驱动/)
     assert.match(request.instruction, /已披露的并购完成\/并表事实、回购或员工计划购入与持有记录/)
     assert.match(request.instruction, /只有原表未给出的对价、支付细节、参与人数或后续回报可继续列为缺口/)
     assert.deepEqual((request.input as {qualityFeedback: string[]}).qualityFeedback, ['management-capital-allocation: latest employee shareholding plan'])
