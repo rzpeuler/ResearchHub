@@ -290,6 +290,66 @@ test('qualified reference PE monitoring fails closed for unverified inputs, miss
   assert.equal(verifiedLedger[0]?.eligibility, 'verified')
 })
 
+test('affirmative reference PE is blocked when market evidence is absent even with a target-price disclaimer', () => {
+  const annual = annualEpsSource()
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [annual], asOf: qualificationAsOf, allowedSourceCandidateIds: ['annual'],
+    workflowOwnedSections: [{
+      id: 'valuation', title: 'Valuation',
+      markdown: 'FY2025 基本 EPS 为 3.58 元/股 [annual@paragraph:3]，参考 PE 显示历史估值水平，不构成目标价。',
+      sourceCandidateIds: ['annual'],
+    }],
+  })
+  assert.equal(ledger[0]?.eligibility, 'blocked')
+  assert.ok(ledger[0]?.blockers?.includes('WORKFLOW_MARKET_PRICE_REFERENCE_REQUIRED_FOR_REFERENCE_PE'))
+})
+
+test('reference PE rejects a correct basic EPS row cited under the wrong claimed fiscal year', () => {
+  const annual = annualEpsSource()
+  const market = marketPriceSource(true)
+  const marketId = market.candidate.candidateId
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [annual, market], asOf: qualificationAsOf, allowedSourceCandidateIds: ['annual', marketId],
+    workflowOwnedSections: [{
+      id: 'valuation', title: 'Valuation',
+      markdown: `FY2024 基本 EPS 为 3.58 元/股 [annual@paragraph:3]；按 FY2024 盈利计算的参考 PE 为历史估值倍数 [${marketId}@paragraph:1]。`,
+      sourceCandidateIds: ['annual', marketId],
+    }],
+  })
+  assert.equal(ledger[0]?.eligibility, 'blocked')
+  assert.ok(ledger[0]?.blockers?.includes('WORKFLOW_BASIC_EPS_FISCAL_YEAR_MISMATCH'))
+})
+
+test('final synthesis rejects a correct basic EPS row claimed under the wrong fiscal year through retry exhaustion', async () => {
+  const annual = annualEpsSource()
+  const invalidOutput = { sections: ids.map(id => ({
+    id,
+    markdown: 'FY2024 基本每股收益 3.58 元/股 [annual@paragraph:3]',
+    sourceCandidateIds: ['annual'],
+  })) }
+  const requests: unknown[] = []
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    requests.push(request)
+    return { operation: request.operation, output: invalidOutput }
+  } }
+  const epsMethod: CompanyResearchMethodResult = {
+    ...method,
+    sections: [{ id: 'financial-quality', markdown: 'FY2025 基本每股收益 3.58 元/股 [annual@paragraph:3]' }],
+    findings: [{ text: 'FY2025 基本每股收益 3.58 元/股。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:3' }] }],
+    sourceCandidateIds: ['annual'],
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '2025 年报', publisher: 'Issuer', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:3', text: '基本每股收益（元/股） 3.58 4.61 -22.34%' }] }],
+  }
+  const result = await assembleCompanyResearch(
+    { ...input, asOf: qualificationAsOf, sources: [annual], reportSourceCandidateIds: ['annual'] },
+    [epsMethod], executor, () => qualificationAsOf, 2,
+  )
+  assert.equal(requests.length, 2)
+  assert.equal(result.synthesisMode, 'deterministic_fallback')
+  assert.equal(result.synthesisDiagnostics.length, 2)
+  assert.ok(result.synthesisDiagnostics.every(diagnostic => /(?:NUMERIC_METRIC_GROUNDING_ERROR|basic EPS claim must cite the unique annual-report basic EPS row)/u.test(diagnostic)), result.synthesisDiagnostics.join('; '))
+  assert.equal(result.sections.length, 19)
+})
+
 test('same-number dividend row cannot satisfy an annual basic EPS claim or retry into success', async () => {
   const annual = annualEpsSource()
   const market = marketPriceSource(true)

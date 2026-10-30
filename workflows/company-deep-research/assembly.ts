@@ -70,14 +70,14 @@ function isQualifiedHistoricalMarketSource(source: CompanySource, asOf: string |
   return true
 }
 
-function exactBasicEpsReferences(sources: readonly CompanySource[], asOf: string | undefined): Set<string> {
-  const references = new Set<string>()
+function exactBasicEpsReferences(sources: readonly CompanySource[], asOf: string | undefined): Map<string, number> {
+  const references = new Map<string, number>()
   if (!asOf) return references
   for (const source of sources) {
     const years = [...(source.candidate.title ?? '').matchAll(/(?:19|20)\d{2}/gu)].map(match => Number(match[0]))
     for (const fiscalYear of new Set(years)) {
       const selected = extractFilingBasicEps(sources as Parameters<typeof extractFilingBasicEps>[0], fiscalYear, asOf)
-      if (selected?.source.candidate.candidateId === source.candidate.candidateId) references.add(`${source.candidate.candidateId}@${selected.location}`)
+      if (selected?.source.candidate.candidateId === source.candidate.candidateId) references.set(`${source.candidate.candidateId}@${selected.location}`, fiscalYear)
     }
   }
   return references
@@ -87,11 +87,45 @@ function hasBasicEpsClaim(text: string): boolean {
   return /(?:基本\s*每股收益|基本\s*EPS|basic\s+EPS)/iu.test(text)
 }
 
-function containsUnqualifiedEpsClaim(text: string, references: readonly string[], exactEps: ReadonlySet<string>): boolean {
-  return hasBasicEpsClaim(text) && /\d/u.test(text) && !references.some(reference => exactEps.has(reference))
+function claimedEpsFiscalYears(text: string): Set<number> {
+  const prose = text.replace(/\[[^\]]*\]/gu, ' ')
+  const years = new Set<number>()
+  const patterns = [
+    /((?:FY\s*)?(?:19|20)\d{2}\s*(?:年|财年)?)[^。；;\n]{0,32}(?:基本\s*每股收益|基本\s*EPS|basic\s+EPS)/giu,
+    /(?:基本\s*每股收益|基本\s*EPS|basic\s+EPS)[^。；;\n]{0,32}((?:FY\s*)?(?:19|20)\d{2})/giu,
+  ]
+  for (const pattern of patterns) {
+    for (const match of prose.matchAll(pattern)) {
+      const year = match[1]?.match(/(?:19|20)\d{2}/u)?.[0]
+      if (year) years.add(Number(year))
+    }
+  }
+  return years
 }
 
-function hasUnqualifiedBasicEpsSentence(markdown: string, exactEps: ReadonlySet<string>): boolean {
+function containsUnqualifiedEpsClaim(text: string, references: readonly string[], exactEps: ReadonlyMap<string, number>): boolean {
+  if (!hasBasicEpsClaim(text) || !/\d/u.test(text)) return false
+  const citedYears = references.flatMap(reference => {
+    const fiscalYear = exactEps.get(reference)
+    return fiscalYear === undefined ? [] : [fiscalYear]
+  })
+  if (citedYears.length === 0) return true
+  const claimedYears = claimedEpsFiscalYears(text)
+  return [...claimedYears].some(year => !citedYears.includes(year))
+}
+
+function hasBasicEpsFiscalYearMismatch(text: string, references: readonly string[], exactEps: ReadonlyMap<string, number>): boolean {
+  if (!hasBasicEpsClaim(text)) return false
+  const claimedYears = claimedEpsFiscalYears(text)
+  if (claimedYears.size === 0) return false
+  const citedYears = references.flatMap(reference => {
+    const fiscalYear = exactEps.get(reference)
+    return fiscalYear === undefined ? [] : [fiscalYear]
+  })
+  return citedYears.length > 0 && [...claimedYears].some(year => !citedYears.includes(year))
+}
+
+function hasUnqualifiedBasicEpsSentence(markdown: string, exactEps: ReadonlyMap<string, number>): boolean {
   const sentences = markdown.split(/(?<=[。！？.!?])\s*|\r?\n/u)
   return sentences.some(sentence => {
     if (!containsUnqualifiedEpsClaim(sentence, [...sentence.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!), exactEps)) return false
@@ -220,9 +254,15 @@ export function buildSynthesisEvidenceLedger(input: {
     })
     const wrongEpsLocator = section.id === 'valuation' && containsUnqualifiedEpsClaim(section.markdown, sectionReferences, exactEps)
     const referencePeClaim = section.id === 'valuation' && /(?:参考\s*PE|参考市盈率|市盈率|P\/E)/iu.test(section.markdown)
-    const missingQualifiedEps = referencePeClaim && !sectionReferences.some(reference => exactEps.has(reference))
+    const referencePeFiscalYears = claimedEpsFiscalYears(section.markdown)
+    const qualifiedEpsReferences = sectionReferences.filter(reference => exactEps.has(reference))
+    const epsFiscalYearMismatch = section.id === 'valuation' && hasBasicEpsFiscalYearMismatch(section.markdown, sectionReferences, exactEps)
+    const missingQualifiedEps = referencePeClaim && (referencePeFiscalYears.size === 0
+      ? qualifiedEpsReferences.length === 0
+      : [...referencePeFiscalYears].some(fiscalYear => !qualifiedEpsReferences.some(reference => exactEps.get(reference) === fiscalYear)))
+    const missingPeMarketReference = referencePeClaim && marketReferences.length === 0
     const valuationNeedsMarketQualification = section.id === 'valuation' && marketReferences.length > 0 && unqualifiedMarketReference
-    if (section.id === 'valuation' && (valuationNeedsMarketQualification || wrongEpsLocator || missingQualifiedEps)) {
+    if (section.id === 'valuation' && (valuationNeedsMarketQualification || missingPeMarketReference || wrongEpsLocator || epsFiscalYearMismatch || missingQualifiedEps)) {
       entries.push({
         ownerWorkflow,
         sectionIds: [section.id],
@@ -230,7 +270,9 @@ export function buildSynthesisEvidenceLedger(input: {
         eligibility: 'blocked',
         blockers: [
           ...(valuationNeedsMarketQualification ? ['WORKFLOW_MARKET_PRICE_PIT_OR_VALUE_VERSION_UNVERIFIED'] : []),
+          ...(missingPeMarketReference ? ['WORKFLOW_MARKET_PRICE_REFERENCE_REQUIRED_FOR_REFERENCE_PE'] : []),
           ...(wrongEpsLocator ? ['WORKFLOW_BASIC_EPS_LOCATOR_NOT_UNIQUE_BASIC_EPS_ROW'] : []),
+          ...(epsFiscalYearMismatch ? ['WORKFLOW_BASIC_EPS_FISCAL_YEAR_MISMATCH'] : []),
           ...(missingQualifiedEps ? ['WORKFLOW_BASIC_EPS_ROW_NOT_BOUND_TO_REFERENCE_PE'] : []),
         ],
         text: `${section.title} 缺少可用于历史估值结论的结构化价格 PIT/版本证明或唯一基本 EPS 原表行；不得作为综合结论证据。`,
