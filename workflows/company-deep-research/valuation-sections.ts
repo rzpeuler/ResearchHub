@@ -88,6 +88,11 @@ function quoteSource(input: {
   readonly retrievalProvider?: string
   readonly sourceUrl?: string
   readonly retrievedAt: string
+  readonly observationAvailableAt: string
+  readonly valueVersion?: { readonly status: 'VERIFIED'; readonly versionId: string; readonly availableAt: string } | { readonly status: 'UNVERIFIED'; readonly reason?: string }
+  readonly marketFreshness?: unknown
+  readonly asOfMode: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
+  readonly pointInTimeQualified: boolean
 }): NormalizedResearchSource {
   const candidateId = `company-valuation-market-${input.company.symbol}-${input.priceDate}`
   const data = {
@@ -103,18 +108,23 @@ function quoteSource(input: {
     retrievalProvider: input.retrievalProvider,
     sourceUrl: input.sourceUrl,
     retrievedAt: input.retrievedAt,
+    observationAvailableAt: input.observationAvailableAt,
+    valueVersion: input.valueVersion,
+    valueVersionStatus: input.valueVersion?.status ?? 'UNVERIFIED',
+    marketFreshness: input.marketFreshness,
+    pointInTimeStatus: input.pointInTimeQualified ? 'within_cutoff' : 'current_reference_only',
   }
   const content = JSON.stringify(data)
   const title = `Company Research read-only market close ${input.company.symbol} ${input.priceDate}`
   return {
-    candidate: { candidateId, kind: 'structured_data', tier: 2, title, provider: input.retrievalProvider ?? 'AKShare', publishedAt: input.priceDate, metadata: { companySymbol: input.company.symbol, originPublisher: input.originPublisher, retrievalProvider: input.retrievalProvider, sourceUrl: input.sourceUrl, dataProvenance: { metricId: 'valuation_market_price', unit: 'CNY/share', observationDate: input.priceDate, asOfMode: 'point-in-time close', adjustmentMethod: 'UNADJUSTED', originalSourceId: input.originalSourceId } } },
+    candidate: { candidateId, kind: 'structured_data', tier: 2, title, provider: input.retrievalProvider ?? 'AKShare', publishedAt: input.priceDate, metadata: { companySymbol: input.company.symbol, originPublisher: input.originPublisher, retrievalProvider: input.retrievalProvider, sourceUrl: input.sourceUrl, dataProvenance: { metricId: 'valuation_market_price', unit: 'CNY/share', observationDate: input.priceDate, asOfMode: input.asOfMode, pointInTimeStatus: input.pointInTimeQualified ? 'within_cutoff' : 'current_reference_only', pointInTimeSafe: input.pointInTimeQualified, valueVersionStatus: input.valueVersion?.status ?? 'UNVERIFIED', adjustmentMethod: 'UNADJUSTED', originalSourceId: input.originalSourceId } } },
     retrievedAt: input.retrievedAt,
     title,
     content,
     contentHash: sha256(content),
     ...(input.sourceUrl ? { canonicalUrl: input.sourceUrl } : {}),
     publisher: input.originPublisher ?? 'Market data provider',
-    rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
+    rights: { accessScope: 'unknown', providerTermsKnown: false, retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false, redistributionAllowed: false },
   }
 }
 
@@ -524,6 +534,12 @@ export function buildCompanyValuationSections(input: {
     : undefined
   let quote = potentialQuote
   let quoteConsumption = 'REJECTED(QUOTE_NOT_AVAILABLE)'
+  const quoteValueVersion = quoteItem?.source?.valueVersion
+    ?? quoteItem?.acquisition?.observations?.find(observation => observation.source.valueVersion?.status === 'VERIFIED')?.source.valueVersion
+  const verifiedQuoteVersion = quoteValueVersion?.status === 'VERIFIED'
+    && !!quoteValueVersion.versionId.trim()
+    && validIsoTimestamp(quoteValueVersion.availableAt)
+    && Date.parse(quoteValueVersion.availableAt) <= Date.parse(input.asOf)
   const asOfValid = validIsoTimestamp(input.asOf)
   if (!asOfValid) {
     diagnostics.push('VALUATION_MARKET_PRICE_ASOF_INVALID')
@@ -546,6 +562,10 @@ export function buildCompanyValuationSections(input: {
     && Date.parse(potentialQuote.observationAvailableAt) <= Date.parse(asOfMode === 'CURRENT_VALUE_ONLY' ? potentialQuote.retrievedAt : input.asOf))) {
     quote = undefined
     quoteConsumption = 'REJECTED(MARKET_CLOSE_OR_UPSTREAM_PIT_GATE)'
+  } else if (asOfMode === 'HISTORICAL' && !verifiedQuoteVersion) {
+    quote = undefined
+    quoteConsumption = 'REJECTED(VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF)'
+    diagnostics.push('VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF')
   } else if (asOfMode === 'CURRENT_VALUE_ONLY' && Date.parse(potentialQuote.retrievedAt) > Date.parse(input.asOf)) {
     quoteConsumption = `CURRENT_REFERENCE_ONLY(retrievedAt=${potentialQuote.retrievedAt}>researchStart=${input.asOf}; historicalVersion=UNVERIFIED)`
     diagnostics.push('VALUATION_MARKET_PRICE_CURRENT_REFERENCE_ONLY_AFTER_ASOF')
@@ -583,6 +603,11 @@ export function buildCompanyValuationSections(input: {
     retrievalProvider: qualifiedQuote.retrievalProvider,
     sourceUrl: qualifiedQuote.sourceUrl,
     retrievedAt: qualifiedQuote.retrievedAt,
+    observationAvailableAt: qualifiedQuote.observationAvailableAt,
+    valueVersion: quoteValueVersion,
+    marketFreshness: quoteItem?.source?.marketFreshness,
+    asOfMode,
+    pointInTimeQualified: quoteConsumption.startsWith('HISTORICAL_ASOF_QUALIFIED('),
   }) : undefined
   const selectedEstimateIds = new Set(estimates.flatMap((estimate) => estimate.sourceCandidateIds))
   const estimateSources = surfaces.flatMap(surface => surface.sources).filter((source, index, all) => selectedEstimateIds.has(source.candidate.candidateId) && all.findIndex(candidate => candidate.candidate.candidateId === source.candidate.candidateId) === index)

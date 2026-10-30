@@ -8,9 +8,96 @@ import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { validateCompanyNumericGrounding, companyPreparedFinancialDateText } from '../../skills/company-research/numeric-grounding.ts'
 import type { NumericGroundingDiagnostic } from '../../skills/company-research/numeric-grounding.ts'
 import { companyCitedSplitDateText } from '../../skills/company-research/evidence.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
+import { extractFilingBasicEps } from './valuation-sections.ts'
 
 const idFor = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')
 const finalIds = ['investment-thesis','monitoring-checklist']
+
+type CompanySource = CompanyResearchInput['sources'][number]
+
+function sourceProvenance(source: CompanySource): Record<string, unknown> | undefined {
+  return source.candidate.metadata?.dataProvenance as Record<string, unknown> | undefined
+}
+
+function marketPriceContent(source: CompanySource): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(source.content)
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+    const record = value as Record<string, unknown>
+    return record.metricId === 'valuation_market_price' ? record : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isMarketPriceSource(source: CompanySource): boolean {
+  return sourceProvenance(source)?.metricId === 'valuation_market_price' || marketPriceContent(source) !== undefined
+}
+
+function isQualifiedHistoricalMarketSource(source: CompanySource, asOf: string | undefined): boolean {
+  if (!asOf || !source.contentHash || createHash('sha256').update(source.content, 'utf8').digest('hex') !== source.contentHash) return false
+  const provenance = sourceProvenance(source)
+  const content = marketPriceContent(source)
+  if (!provenance || !content
+    || provenance.metricId !== 'valuation_market_price'
+    || provenance.pointInTimeStatus !== 'within_cutoff'
+    || provenance.pointInTimeSafe !== true
+    || provenance.valueVersionStatus !== 'VERIFIED'
+    || source.rights?.accessScope !== 'public'
+    || source.rights.retentionAllowed !== true
+    || source.rights.aiProcessingAllowed !== true
+    || source.rights.derivativeKnowledgeAllowed !== true) return false
+  const observationDate = typeof content.observationDate === 'string' ? content.observationDate : undefined
+  const retrievedAt = typeof content.retrievedAt === 'string' ? content.retrievedAt : undefined
+  const observationAvailableAt = typeof content.observationAvailableAt === 'string' ? content.observationAvailableAt : undefined
+  const version = content.valueVersion as Record<string, unknown> | undefined
+  const freshness = content.marketFreshness as Record<string, unknown> | undefined
+  const cutoff = Date.parse(asOf)
+  if (!observationDate || !retrievedAt || !observationAvailableAt || !Number.isFinite(cutoff)
+    || content.unit !== 'CNY/share'
+    || source.retrievedAt !== retrievedAt
+    || !/^\d{4}-\d{2}-\d{2}$/u.test(observationDate)
+    || observationDate > asOf.slice(0, 10)
+    || observationAvailableAt !== dailyCloseAvailableAt(observationDate)
+    || !Number.isFinite(Date.parse(retrievedAt)) || Date.parse(retrievedAt) > cutoff
+    || Date.parse(observationAvailableAt) > cutoff
+    || version?.status !== 'VERIFIED'
+    || typeof version.versionId !== 'string' || !version.versionId.trim()
+    || typeof version.availableAt !== 'string' || !Number.isFinite(Date.parse(version.availableAt))
+    || Date.parse(version.availableAt) > cutoff
+    || freshness?.status !== 'FRESH') return false
+  return true
+}
+
+function exactBasicEpsReferences(sources: readonly CompanySource[], asOf: string | undefined): Set<string> {
+  const references = new Set<string>()
+  if (!asOf) return references
+  for (const source of sources) {
+    const years = [...(source.candidate.title ?? '').matchAll(/(?:19|20)\d{2}/gu)].map(match => Number(match[0]))
+    for (const fiscalYear of new Set(years)) {
+      const selected = extractFilingBasicEps(sources as Parameters<typeof extractFilingBasicEps>[0], fiscalYear, asOf)
+      if (selected?.source.candidate.candidateId === source.candidate.candidateId) references.add(`${source.candidate.candidateId}@${selected.location}`)
+    }
+  }
+  return references
+}
+
+function hasBasicEpsClaim(text: string): boolean {
+  return /(?:基本\s*每股收益|基本\s*EPS|basic\s+EPS)/iu.test(text)
+}
+
+function containsUnqualifiedEpsClaim(text: string, references: readonly string[], exactEps: ReadonlySet<string>): boolean {
+  return hasBasicEpsClaim(text) && /\d/u.test(text) && !references.some(reference => exactEps.has(reference))
+}
+
+function hasUnqualifiedBasicEpsSentence(markdown: string, exactEps: ReadonlySet<string>): boolean {
+  const sentences = markdown.split(/(?<=[。！？.!?])\s*|\r?\n/u)
+  return sentences.some(sentence => {
+    if (!containsUnqualifiedEpsClaim(sentence, [...sentence.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!), exactEps)) return false
+    return true
+  })
+}
 
 export interface SynthesisEvidenceLedgerEntry {
   readonly ownerSkill?: CompanyResearchMethodResult['skillId']
@@ -35,6 +122,7 @@ export interface SynthesisEvidenceLedgerEntry {
 export function buildSynthesisEvidenceLedger(input: {
   readonly methods: readonly CompanyResearchMethodResult[]
   readonly sources: CompanyResearchInput['sources']
+  readonly asOf?: string
   readonly workflowOwnedSections?: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }[]
   readonly allowedSourceCandidateIds?: readonly string[]
   readonly conflictedSourceCandidateIds?: readonly string[]
@@ -44,6 +132,7 @@ export function buildSynthesisEvidenceLedger(input: {
   const allowed = input.allowedSourceCandidateIds ? new Set(input.allowedSourceCandidateIds) : undefined
   const conflicted = new Set(input.conflictedSourceCandidateIds ?? [])
   const maxEntries = input.maxEntries ?? 160
+  const exactEps = exactBasicEpsReferences(input.sources, input.asOf)
   const workflowEntrySlots = Math.min(3, input.workflowOwnedSections?.length ?? 0)
   const methodEntryLimit = Math.max(0, maxEntries - workflowEntrySlots)
   const entries: SynthesisEvidenceLedgerEntry[] = []
@@ -65,6 +154,28 @@ export function buildSynthesisEvidenceLedger(input: {
     const sectionIds = [...new Set(method.sections.map(section => section.id))]
     for (const finding of method.findings) {
       if (!finding.text.trim() || finding.evidence.length === 0) continue
+      const references = finding.evidence.map(ref => `${ref.sourceCandidateId}@${ref.location}`)
+      const unqualifiedMarket = finding.evidence.some(ref => {
+        const source = sources.get(ref.sourceCandidateId)
+        return !!source && isMarketPriceSource(source) && !isQualifiedHistoricalMarketSource(source, input.asOf)
+      })
+      const wrongEpsLocator = containsUnqualifiedEpsClaim(finding.text, references, exactEps)
+      if (unqualifiedMarket || wrongEpsLocator) {
+        entries.push({
+          ownerSkill: method.skillId,
+          sectionIds,
+          kind: finding.kind,
+          eligibility: 'blocked',
+          blockers: [
+            ...(unqualifiedMarket ? ['METHOD_MARKET_PRICE_NOT_HISTORICALLY_QUALIFIED'] : []),
+            ...(wrongEpsLocator ? ['METHOD_BASIC_EPS_LOCATOR_NOT_UNIQUE_BASIC_EPS_ROW'] : []),
+          ],
+          text: '本条方法结论含未通过结构化价格 PIT 或基本 EPS 原表行资格校验的输入；不得作为估值结论证据。',
+          evidence: [],
+        })
+        if (entries.length >= methodEntryLimit) break
+        continue
+      }
       const evidence = finding.evidence.flatMap(ref => {
         const row = allowedRows.get(`${ref.sourceCandidateId}@${ref.location}`)
         if (!row || conflicted.has(ref.sourceCandidateId)) return []
@@ -97,6 +208,36 @@ export function buildSynthesisEvidenceLedger(input: {
     const unqualified = hasExplicitGap
       || hasUnverifiedStatus
       || section.id === 'bull-base-bear' && !hasScenarioContract
+    const sectionReferences = [...new Set([...section.markdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!))]
+    const marketReferences = sectionReferences.filter(reference => {
+      const sourceCandidateId = reference.slice(0, reference.lastIndexOf('@'))
+      const source = sources.get(sourceCandidateId)
+      return !!source && isMarketPriceSource(source)
+    })
+    const unqualifiedMarketReference = marketReferences.some(reference => {
+      const source = sources.get(reference.slice(0, reference.lastIndexOf('@')))
+      return !source || !isQualifiedHistoricalMarketSource(source, input.asOf)
+    })
+    const wrongEpsLocator = section.id === 'valuation' && containsUnqualifiedEpsClaim(section.markdown, sectionReferences, exactEps)
+    const referencePeClaim = section.id === 'valuation' && /(?:参考\s*PE|参考市盈率|市盈率|P\/E)/iu.test(section.markdown)
+    const missingQualifiedEps = referencePeClaim && !sectionReferences.some(reference => exactEps.has(reference))
+    const valuationNeedsMarketQualification = section.id === 'valuation' && marketReferences.length > 0 && unqualifiedMarketReference
+    if (section.id === 'valuation' && (valuationNeedsMarketQualification || wrongEpsLocator || missingQualifiedEps)) {
+      entries.push({
+        ownerWorkflow,
+        sectionIds: [section.id],
+        kind: 'inference',
+        eligibility: 'blocked',
+        blockers: [
+          ...(valuationNeedsMarketQualification ? ['WORKFLOW_MARKET_PRICE_PIT_OR_VALUE_VERSION_UNVERIFIED'] : []),
+          ...(wrongEpsLocator ? ['WORKFLOW_BASIC_EPS_LOCATOR_NOT_UNIQUE_BASIC_EPS_ROW'] : []),
+          ...(missingQualifiedEps ? ['WORKFLOW_BASIC_EPS_ROW_NOT_BOUND_TO_REFERENCE_PE'] : []),
+        ],
+        text: `${section.title} 缺少可用于历史估值结论的结构化价格 PIT/版本证明或唯一基本 EPS 原表行；不得作为综合结论证据。`,
+        evidence: [],
+      })
+      continue
+    }
     if (unqualified) {
       entries.push({
         ownerWorkflow,
@@ -2501,6 +2642,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
   const tableDiagnostics = validateCompanyResearchSectionTables(sections)
   const available=methods.filter(method=>method.status==='complete')
   const allowed=new Set(input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? [])
+  const exactEps = exactBasicEpsReferences(input.sources, input.asOf)
   const sourceById = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
   const conflicted = new Set(evidencePolicy.conflictedSourceCandidateIds ?? [])
   const verifiedEvidenceByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
@@ -2508,6 +2650,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     if (!allowed.has(packet.sourceCandidateId) || conflicted.has(packet.sourceCandidateId)) continue
     const source = sourceById.get(packet.sourceCandidateId)
     if (!source) continue
+    if (isMarketPriceSource(source) && !isQualifiedHistoricalMarketSource(source, input.asOf)) continue
     const supplied = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt]))
     for (const excerpt of packet.excerpts) {
       const match = /^paragraph:(\d+)$/.exec(excerpt.location)
@@ -2535,6 +2678,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
   const workflowLedger = buildSynthesisEvidenceLedger({
     methods: [],
     sources: input.sources,
+    asOf: input.asOf,
     workflowOwnedSections,
     allowedSourceCandidateIds: [...allowed],
     conflictedSourceCandidateIds: [...conflicted],
@@ -2641,6 +2785,18 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       validationEvidenceBySource.set(packet.sourceCandidateId, entries)
     }
   }
+  for (const entry of workflowLedger) {
+    if (entry.eligibility !== 'verified' || !entry.ownerWorkflow) continue
+    for (const evidence of entry.evidence) {
+      const source = sourceById.get(evidence.sourceCandidateId)
+      const paragraph = Number(/^paragraph:(\d+)$/u.exec(evidence.location)?.[1])
+      const exactLine = source && Number.isInteger(paragraph) && paragraph > 0 ? source.content.split(/\r?\n/u)[paragraph - 1] : undefined
+      if (!exactLine || exactLine !== evidence.excerpt) continue
+      const rows = validationEvidenceBySource.get(evidence.sourceCandidateId) ?? new Map()
+      rows.set(evidence.location, { location: evidence.location, text: exactLine })
+      validationEvidenceBySource.set(evidence.sourceCandidateId, rows)
+    }
+  }
   const validationEvidenceContexts = [...validationEvidenceBySource].map(([sourceCandidateId, excerpts]) => ({ sourceCandidateId, excerpts: [...excerpts.values()] }))
   const synthesisAttemptOutputs:{attempt:number;output:unknown;allowedCitations:readonly string[]}[]=[]
   let numericRepairIssues: readonly NumericGroundingDiagnostic[] = []
@@ -2677,6 +2833,16 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
         const tableErrors = validateCompanyResearchMarkdownTables(synthesisMarkdown)
         if (tableErrors.length) throw new Error(`FORMAT_ERROR: ${tableErrors.join('; ')}`)
         for(const match of synthesisMarkdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
+        const citedReferences = [...synthesisMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+        const unqualifiedMarketCitation = citedReferences.some(reference => {
+          const source = sourceById.get(reference.slice(0, reference.lastIndexOf('@')))
+          return !!source && isMarketPriceSource(source) && !isQualifiedHistoricalMarketSource(source, input.asOf)
+        })
+        if (unqualifiedMarketCitation) throw new Error('REFERENCE_ERROR: unqualified current-reference market price cannot support a historical conclusion')
+        if (hasUnqualifiedBasicEpsSentence(synthesisMarkdown, exactEps)) throw new Error('NUMERIC_METRIC_GROUNDING_ERROR: basic EPS claim must cite the unique annual-report basic EPS row for its stated fiscal year')
+        const hasVerifiedValuation = workflowLedger.some(entry => entry.ownerWorkflow === 'valuation' && entry.eligibility === 'verified')
+        const positiveValuationClaim = /(?:参考\s*PE|参考市盈率|市盈率|P\/E)(?![^。！？\n]*(?:未核验|未验证|无法确认|不具备|不构成|缺少|研究缺口))/iu.test(synthesisMarkdown)
+        if (positiveValuationClaim && !hasVerifiedValuation) throw new Error('REFERENCE_ERROR: valuation conclusion requires a structurally qualified Workflow valuation entry')
         if(['investment-thesis','monitoring-checklist'].includes(section.id)&&![...synthesisMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
         const citationIds=[...new Set([...synthesisMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
         if(citationIds.some(id=>!allowed.has(id))) throw new Error('REFERENCE_ERROR: cited source is not allowed for this report')

@@ -292,15 +292,24 @@ test('current-value mode accepts a close that becomes available after research s
   assert.ok(!result.diagnostics.includes('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE'))
 })
 
-test('a quote response retrieved by a historical cutoff remains eligible after exchange close', () => {
+test('a historical quote qualifies only with a cutoff-available fixture value version', () => {
   const asOf = '2026-10-27T20:19:59.628Z'
   const timelyQuote = { ...quote, observation: { ...quote.observation, priceDate: '2026-10-27' }, observationAvailableAt: dailyCloseAvailableAt('2026-10-27'), retrievedAt: '2026-10-27T20:19:59.627Z' }
-  const timelyAcquisition = { ...acquisition, valuationItems: [{ ...acquisition.valuationItems[0]!, value: timelyQuote }] } as unknown as CompanyReadOnlyAcquisition
+  const verifiedFixtureVersion = { status: 'VERIFIED', versionId: 'FIXTURE_ONLY:market-version-002594-20261027', availableAt: '2026-10-27T07:00:00.000Z' }
+  const timelyAcquisition = {
+    ...acquisition,
+    valuationItems: [{ ...acquisition.valuationItems[0]!, value: timelyQuote, source: { valueVersion: verifiedFixtureVersion } }],
+  } as unknown as CompanyReadOnlyAcquisition
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, asOfMode: 'HISTORICAL', acquisition: timelyAcquisition, sources: [filing] })
   assert.match(result.sections[0]!.markdown, /参考 PE/)
   assert.ok(result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
   assert.match(result.sections[1]!.markdown, /valuation_market_price=HISTORICAL_ASOF_QUALIFIED\(retrievedAt=.*<=asOf=/)
   assert.ok(!result.diagnostics.includes('VALUATION_MARKET_PRICE_VINTAGE_UNVERIFIED_AT_ASOF'))
+  const market = result.evidenceSources.find(source => source.candidate.candidateId.startsWith('company-valuation-market-'))!
+  assert.match(market.content, /FIXTURE_ONLY:market-version/u)
+  assert.equal(market.rights.accessScope, 'unknown')
+  assert.equal(market.rights.providerTermsKnown, false)
+  assert.equal(market.rights.retentionAllowed, false)
 })
 
 test('a historical quote response retrieved before exchange close availability fails closed', () => {
@@ -357,7 +366,7 @@ test('missing or invalid retrievedAt and invalid asOf fail closed with explicit 
   assert.match(invalidAsOf.sections[0]!.markdown, /^研究缺口：/)
 })
 
-test('same-day market close is rejected before the Shanghai session close and accepted after availability', () => {
+test('same-day close availability is necessary but a missing immutable version still fails closed', () => {
   const beforeClose = '2026-10-26T06:59:59.999Z'
   const earlyQuote = { ...quote, observationAvailableAt: dailyCloseAvailableAt('2026-10-26') }
   const earlyAcquisition = {
@@ -369,7 +378,9 @@ test('same-day market close is rejected before the Shanghai session close and ac
   assert.match(rejected.sections[0]!.markdown, /^研究缺口：/)
 
   const accepted = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing] })
-  assert.match(accepted.sections[0]!.markdown, /3\.58 CNY\/share/)
+  assert.ok(accepted.diagnostics.includes('VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF'))
+  assert.match(accepted.sections[0]!.markdown, /^研究缺口：/)
+  assert.doesNotMatch(accepted.sections[1]!.markdown, /HISTORICAL_ASOF_QUALIFIED/)
 })
 
 test('point proofs reject source-provider mismatches and missing internal-use rights', () => {
@@ -461,7 +472,12 @@ function scenarioPlan() {
 
 test('renders FY2026 per-share conditional reference-PE sensitivity and recalculates monotonically', () => {
   const candidate = scenarioPlan()
-  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing, candidate.profitSource], scenarioCandidate: candidate.plan })
+  const fixtureVersion = { status: 'VERIFIED', versionId: 'FIXTURE_ONLY:market-version-002594-20261026', availableAt: dailyCloseAvailableAt('2026-10-26') }
+  const qualifiedFixtureAcquisition = {
+    ...acquisition,
+    valuationItems: [{ ...acquisition.valuationItems[0]!, source: { valueVersion: fixtureVersion } }],
+  } as unknown as CompanyReadOnlyAcquisition
+  const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition: qualifiedFixtureAcquisition, sources: [filing, candidate.profitSource], scenarioCandidate: candidate.plan })
   const section = result.sections[1]!
   assert.match(section.markdown, /FY2025 参考 PE 的 FY2026 条件敏感性（非价格预测）/)
   assert.match(section.markdown, /DERIVED 的条件研究敏感性/)
