@@ -58,7 +58,7 @@ const filing: NormalizedResearchSource = {
   publisher: 'Issuer', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
 }
 
-function productionValuation(options: { retrievedAt?: string; withFixtureVersion?: boolean; asOfMode?: 'HISTORICAL' | 'CURRENT_VALUE_ONLY' }) {
+function productionValuation(options: { retrievedAt?: string; withFixtureVersion?: boolean; availableAt?: string; asOfMode?: 'HISTORICAL' | 'CURRENT_VALUE_ONLY' }) {
   const upstreamItem = upstreamQuoteItem(options)
   const acquisition = {
     expectationTargetFiscalYear: 2026, valuationBasisFiscalYear: 2025,
@@ -129,9 +129,13 @@ test('INT-03: historical builder rejects missing version and retrieval before ex
   const earlyRetrieval = productionValuation({ withFixtureVersion: true, retrievedAt: '2026-10-27T06:59:59.000Z' })
   assert.equal(earlyRetrieval.market, undefined)
   assert.ok(earlyRetrieval.result.diagnostics.includes('VALUATION_MARKET_CLOSE_NOT_PIT_SAFE'))
+
+  const lateVersion = productionValuation({ withFixtureVersion: true, availableAt: '2026-10-27T20:20:00.000Z' })
+  assert.equal(lateVersion.market, undefined)
+  assert.ok(lateVersion.result.diagnostics.includes('VALUATION_MARKET_PRICE_VALUE_VERSION_UNVERIFIED_AT_ASOF'))
 })
 
-test('INT-04: an ordinary method cannot smuggle the production quote locator into the synthesis handoff', async () => {
+test('INT-04: execution and deterministic method evidence cannot smuggle the production quote into synthesis', async () => {
   const { market } = productionValuation({ withFixtureVersion: true })
   assert.ok(market)
   const quoteRef = `${market.candidate.candidateId}@paragraph:1`
@@ -140,18 +144,23 @@ test('INT-04: an ordinary method cannot smuggle the production quote locator int
     findings: [{ text: '历史 PE 82.01。', kind: 'inference', evidence: [{ sourceCandidateId: market.candidate.candidateId, location: 'paragraph:1' }] }],
     executionEvidence: [{ sourceCandidateId: market.candidate.candidateId, title: 'quote', publisher: 'AKShare', excerpts: [{ sourceCandidateId: market.candidate.candidateId, location: 'paragraph:1', text: market.content }] }],
   }
-  let request: ReasoningRequest | undefined
-  const executor: ReasoningExecutor = {
-    capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }),
-    execute: async value => { request = value; return { operation: value.operation, output: {} } },
+  for (const evidencePath of ['executionEvidence', 'deterministicEvidence'] as const) {
+    const routedMethod: CompanyResearchMethodResult = evidencePath === 'executionEvidence'
+      ? methodWithQuote
+      : { ...methodWithQuote, executionEvidence: undefined, deterministicEvidence: methodWithQuote.executionEvidence }
+    let request: ReasoningRequest | undefined
+    const executor: ReasoningExecutor = {
+      capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }),
+      execute: async value => { request = value; return { operation: value.operation, output: {} } },
+    }
+    await assembleCompanyResearch({
+      company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf, sources: [filing, market],
+      reportSourceCandidateIds: [filing.candidate.candidateId, market.candidate.candidateId],
+    }, [routedMethod], executor, () => asOf, 1)
+    const payload = request!.input as { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] }
+    assert.ok(!payload.allowedCitations.includes(quoteRef), evidencePath)
+    assert.ok(!payload.allowedEvidence.some(item => `${item.sourceCandidateId}@${item.location}` === quoteRef), evidencePath)
   }
-  await assembleCompanyResearch({
-    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf, sources: [filing, market],
-    reportSourceCandidateIds: [filing.candidate.candidateId, market.candidate.candidateId],
-  }, [methodWithQuote], executor, () => asOf, 1)
-  const payload = request!.input as { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] }
-  assert.ok(!payload.allowedCitations.includes(quoteRef))
-  assert.ok(!payload.allowedEvidence.some(item => `${item.sourceCandidateId}@${item.location}` === quoteRef))
 })
 
 test('INT-05: an exact annual-report basic EPS row qualifies while a matching dividend amount does not', () => {
@@ -181,6 +190,41 @@ test('INT-06: unrelated direct filing evidence remains available while the marke
   assert.ok(payload.allowedEvidence.some(item => item.sourceCandidateId === 'fixture-annual-2025' && item.location === 'paragraph:1'))
   assert.ok(!payload.allowedCitations.some(item => item.startsWith(`${market.candidate.candidateId}@`)))
   assert.deepEqual(resultSectionIds(productionValuation({ withFixtureVersion: true }).result), ['valuation', 'bull-base-bear', 'variant-perception'])
+})
+
+test('INT-07: a production positive authorization route is NOT_EXECUTABLE_WITH_CURRENT_CONTRACT', () => {
+  const { result, market } = productionValuation({ withFixtureVersion: true })
+  assert.ok(market)
+  assert.equal(market.rights.accessScope, 'unknown')
+  assert.equal(market.rights.providerTermsKnown, false)
+  assert.equal(market.rights.retentionAllowed, false)
+  assert.match(market.content, /FIXTURE_ONLY:market-version/u)
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [filing, market], asOf, allowedSourceCandidateIds: [filing.candidate.candidateId, market.candidate.candidateId],
+    workflowOwnedSections: result.sections,
+  })
+  assert.ok(ledger.some(entry => entry.ownerWorkflow === 'valuation' && entry.eligibility === 'blocked'
+    && entry.blockers?.includes('WORKFLOW_MARKET_PRICE_PIT_OR_VALUE_VERSION_UNVERIFIED')))
+})
+
+test('INT-08: changed content hashes and conflicted quote sources cannot enter the valuation ledger', () => {
+  const { result, market } = productionValuation({ withFixtureVersion: true })
+  assert.ok(market)
+  const allowed = [filing.candidate.candidateId, market.candidate.candidateId]
+  const tampered = { ...market, content: `${market.content} tampered` }
+  const tamperedLedger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [filing, tampered], asOf, allowedSourceCandidateIds: allowed,
+    workflowOwnedSections: result.sections,
+  })
+  assert.ok(tamperedLedger.some(entry => entry.ownerWorkflow === 'valuation' && entry.eligibility === 'blocked'))
+  assert.ok(tamperedLedger.every(entry => !entry.evidence.some(evidence => evidence.sourceCandidateId === market.candidate.candidateId)))
+
+  const conflictedLedger = buildSynthesisEvidenceLedger({
+    methods: [], sources: [filing, market], asOf, allowedSourceCandidateIds: allowed,
+    conflictedSourceCandidateIds: [market.candidate.candidateId], workflowOwnedSections: result.sections,
+  })
+  assert.ok(conflictedLedger.some(entry => entry.ownerWorkflow === 'valuation' && entry.eligibility === 'blocked'))
+  assert.ok(conflictedLedger.every(entry => !entry.evidence.some(evidence => evidence.sourceCandidateId === market.candidate.candidateId)))
 })
 
 function resultSectionIds(result: ReturnType<typeof buildCompanyValuationSections>): string[] {
