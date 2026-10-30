@@ -1,0 +1,194 @@
+{
+  "bundleId": "research-bundle-7a1d0e94-6ef1-454f-a443-42255f378288",
+  "workflowRunId": "7a1d0e94-6ef1-454f-a443-42255f378288",
+  "createdAt": "2026-10-30T16:10:37.431Z",
+  "request": {
+    "query": "研究埃斯顿",
+    "mode": {
+      "type": "free_research"
+    },
+    "contextPolicy": {
+      "structuredKnowledge": true,
+      "sourceLibrary": true
+    },
+    "persistencePolicy": {
+      "writeKnowledge": false
+    }
+  },
+  "decision": {
+    "mode": "workflow",
+    "workflow": {
+      "id": "company_research",
+      "confidence": 0.99,
+      "arguments": {
+        "name": "埃斯顿",
+        "symbol": "002747",
+        "exchange": "SZ"
+      }
+    },
+    "skills": [
+      {
+        "id": "company_history_strategy",
+        "purpose": "Explain company history, strategic transitions and attributable outcomes."
+      },
+      {
+        "id": "business_model_map",
+        "purpose": "Explain how a company makes money and how its segments fit together."
+      },
+      {
+        "id": "product_technology_analysis",
+        "purpose": "Analyze product differentiation, technology and commercialization."
+      },
+      {
+        "id": "business_driver_analysis",
+        "purpose": "Attribute consolidated revenue and profit changes to supplied business drivers."
+      },
+      {
+        "id": "financial_quality_analysis",
+        "purpose": "Assess earnings quality, accruals, working capital, and cash conversion from supplied facts."
+      },
+      {
+        "id": "market_structure_analysis",
+        "purpose": "Define the market boundary, participants, and structural relationships."
+      },
+      {
+        "id": "competitive_market_map",
+        "purpose": "Map competitors and relative positioning from attributable evidence."
+      },
+      {
+        "id": "management_governance_analysis",
+        "purpose": "Assess management background, control, governance and incentives."
+      },
+      {
+        "id": "capital_allocation_review",
+        "purpose": "Review capital allocation decisions and attributable outcomes."
+      },
+      {
+        "id": "company_risk_analysis",
+        "purpose": "Assess company-specific risk transmission and monitoring signals."
+      }
+    ],
+    "entities": [
+      {
+        "type": "company",
+        "value": "埃斯顿",
+        "confidence": 1
+      }
+    ],
+    "missingRequiredInputs": [],
+    "contextPolicy": {
+      "structuredKnowledge": true,
+      "sourceLibrary": true
+    },
+    "persistencePolicy": {
+      "writeKnowledge": false
+    },
+    "rationale": "公司研究请求；按要求选用 company_research。仅提供公司名称，symbol 由可信目录后续解析；未提供历史截止日期。"
+  },
+  "summary": {
+    "mode": "Free Research",
+    "workflowId": "company_research",
+    "workflowLabel": "Company Research",
+    "selectedSkillIds": [
+      "company_history_strategy",
+      "business_model_map",
+      "product_technology_analysis",
+      "business_driver_analysis",
+      "financial_quality_analysis",
+      "market_structure_analysis",
+      "competitive_market_map",
+      "management_governance_analysis",
+      "capital_allocation_review",
+      "company_risk_analysis"
+    ],
+    "argumentsStatus": "extracted",
+    "argumentKeys": [
+      "exchange",
+      "name",
+      "symbol"
+    ],
+    "contextPolicy": {
+      "structuredKnowledge": true,
+      "sourceLibrary": true
+    },
+    "persistencePolicy": {
+      "writeKnowledge": false
+    }
+  },
+  "status": "blocked",
+  "structuredResult": {
+    "runId": "7a1d0e94-6ef1-454f-a443-42255f378288",
+    "status": "blocked",
+    "knowledgeBaseId": "kb-ai-compute-theme-v04-verified",
+    "reportId": "company-research-002747-7a1d0e94-6ef1-454f-a443-42255f378288",
+    "reportPath": "company-research-002747-7a1d0e94-6ef1-454f-a443-42255f378288.md",
+    "committedIds": [],
+    "proposalCount": 75,
+    "summary": "Company research did not complete",
+    "providerOutcomes": [
+      {
+        "provider": "akshare",
+        "providerAttempted": true,
+        "providerSucceeded": true,
+        "providerEmpty": false,
+        "providerFailed": true,
+        "usableSourceCount": 1
+      },
+      {
+        "provider": "cninfo",
+        "providerAttempted": true,
+        "providerSucceeded": true,
+        "providerEmpty": false,
+        "providerFailed": false,
+        "usableSourceCount": 3
+      },
+      {
+        "provider": "gdelt",
+        "providerAttempted": true,
+        "providerSucceeded": false,
+        "providerEmpty": false,
+        "providerFailed": true,
+        "usableSourceCount": 0
+      },
+      {
+        "provider": "public-web-company-research-evidence",
+        "providerAttempted": true,
+        "providerSucceeded": false,
+        "providerEmpty": true,
+        "providerFailed": false,
+        "usableSourceCount": 0
+      },
+      {
+        "provider": "tencent-company-market-history",
+        "providerAttempted": true,
+        "providerSucceeded": false,
+        "providerEmpty": false,
+        "providerFailed": true,
+        "usableSourceCount": 0
+      }
+    ],
+    "errorSummary": "METHOD_NOT_COMPLETED:business_driver_analysis:failed; METHOD_NOT_COMPLETED:business_driver_analysis:failed; METHOD_NO_RESEARCH_ANSWER:business_driver_analysis; METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:business_driver_analysis; revenue-profit-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis; growth-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis; growth-drivers:RESEARCH_GAP; catalysts:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis; catalysts:RESEARCH_GAP; catalysts:NO_A",
+    "themeScopeImpact": {
+      "status": "not_triggered",
+      "diagnostics": [
+        "Company Research did not complete successfully."
+      ]
+    }
+  },
+  "executionResult": {
+    "runId": "7a1d0e94-6ef1-454f-a443-42255f378288",
+    "workflowId": "company_research",
+    "executionStatus": "blocked",
+    "terminalStatus": "blocked",
+    "summary": "Company research did not complete",
+    "reportRef": "company-research-002747-7a1d0e94-6ef1-454f-a443-42255f378288",
+    "bundleRef": "research-bundle-7a1d0e94-6ef1-454f-a443-42255f378288",
+    "diagnostics": [],
+    "bundleStatus": "available"
+  },
+  "report": {
+    "reportId": "company-research-002747-7a1d0e94-6ef1-454f-a443-42255f378288"
+  },
+  "proposals": [],
+  "sourceLibraryHits": []
+}
